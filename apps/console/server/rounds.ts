@@ -52,6 +52,27 @@ export async function answerRound(roundId: string, answers: Answer[]): Promise<v
   await appendEvent(row.thread_id, { kind: 'round_answered', round_id: roundId });
 }
 
+// Used by GET /api/clarification-rounds/:id (read by Agent via `tempo_get_clarification_answers`).
+// Returns the discriminated union shape the MCP tool surface declares.
+export type RoundAnswersView =
+  | { status: 'pending' }
+  | { status: 'answered'; answered_at: string; answers: Answer[] };
+
+export async function getRoundAnswers(roundId: string): Promise<RoundAnswersView | null> {
+  const [row] = await db
+    .select()
+    .from(clarification_rounds)
+    .where(eq(clarification_rounds.id, roundId))
+    .limit(1);
+  if (!row) return null;
+  if (row.status === 'pending' || row.answered_at === null) return { status: 'pending' };
+  return {
+    status: 'answered',
+    answered_at: row.answered_at,
+    answers: (row.answers_json ?? []) as Answer[],
+  };
+}
+
 export async function getPendingRound(threadId: string): Promise<PendingRound | null> {
   const [row] = await db
     .select()

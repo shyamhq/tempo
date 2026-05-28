@@ -130,6 +130,11 @@ export const OpenRoundResponse = z.object({
   round_id: RoundId,
 });
 
+// GET /api/clarification-rounds/:id
+// Same shape as `tempo_get_clarification_answers` (MCP); re-exported for callers
+// that import only from `@tempo/contracts/http`.
+export { GetClarificationAnswersOutput as GetClarificationRoundResponse } from './mcp';
+
 // POST /api/clarification-rounds/:id/answers
 export const AnswerRoundRequest = z.object({
   answers: z.array(Answer).min(1),

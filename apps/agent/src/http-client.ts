@@ -71,9 +71,6 @@ export class ConsoleClient {
     );
   }
 
-  // TODO Phase 2: Console exposes no GET endpoint for round answers; this
-  // route does not yet exist on the server side and will 404 until added.
-  // See AGENTS.md "Spotted but not fixed".
   getRoundAnswers(roundId: RoundId) {
     return this.send(
       'GET',
