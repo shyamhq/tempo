@@ -2,10 +2,10 @@
 
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
 import { useCallback, useEffect, useRef } from 'react';
-import { CommentMark } from './comment-mark';
+import { Markdown } from 'tiptap-markdown';
 import { useComposerStore } from '@/lib/stores/composer-store';
+import { CommentMark } from './comment-mark';
 
 // Plan editor. Markdown is the source of truth (D4) — the editor parses it
 // on mount and on every external refetch, and serializes back to markdown
@@ -22,12 +22,17 @@ export function PlanEditor({
   readOnly?: boolean;
 }) {
   const begin = useComposerStore((s) => s.begin);
+  const lastCreatedCommentId = useComposerStore((s) => s.lastCreatedCommentId);
+  const composerRange = useComposerStore((s) => s.range);
+  const clearLastCreated = useComposerStore((s) => s.setLastCreated);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(markdown);
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ codeBlock: { HTMLAttributes: { class: 'bg-surface-2 rounded-md p-3 text-mono text-sm' } } }),
+      StarterKit.configure({
+        codeBlock: { HTMLAttributes: { class: 'bg-surface-2 rounded-md p-3 text-mono text-sm' } },
+      }),
       Markdown.configure({ html: false, breaks: true, transformPastedText: true }),
       CommentMark,
     ],
@@ -79,8 +84,25 @@ export function PlanEditor({
     const ctxFrom = Math.max(0, from - 60);
     const ctxTo = Math.min(editor.state.doc.content.size, to + 60);
     const context = editor.state.doc.textBetween(ctxFrom, ctxTo, '\n');
-    begin(quote, context);
+    begin(quote, context, { from, to });
   }, [editor, begin]);
+
+  // After the Comment row is created (composer-store records its id), wrap
+  // the captured range with `CommentMark` so the highlight appears without
+  // waiting for a server refetch.
+  useEffect(() => {
+    if (!editor || !lastCreatedCommentId || !composerRange) return;
+    const { from, to } = composerRange;
+    if (from >= to) return;
+    editor
+      .chain()
+      .setTextSelection({ from, to })
+      .setCommentMark(lastCreatedCommentId)
+      .setTextSelection(to)
+      .run();
+    clearLastCreated(null);
+    useComposerStore.setState({ range: null });
+  }, [editor, lastCreatedCommentId, composerRange, clearLastCreated]);
 
   return (
     <div>

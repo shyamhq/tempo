@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Comment, Reply } from '@tempo/contracts';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api-client';
@@ -26,9 +26,7 @@ export function CommentsRail({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xs font-medium uppercase tracking-wider text-ink-subtle">
-          Comments
-        </h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-ink-subtle">Comments</h2>
         <label className="flex items-center gap-2 text-xs text-ink-subtle cursor-pointer">
           <input
             type="checkbox"
@@ -40,9 +38,7 @@ export function CommentsRail({
         </label>
       </div>
 
-      {composer.open ? (
-        <NewCommentCard threadId={threadId} />
-      ) : null}
+      {composer.open ? <NewCommentCard threadId={threadId} /> : null}
 
       {visible.length === 0 && !composer.open ? (
         <p className="text-xs text-ink-tertiary py-4 text-center border border-dashed border-hairline rounded-md">
@@ -82,8 +78,7 @@ export function CommentsRail({
 }
 
 function NewCommentCard({ threadId }: { threadId: string }) {
-  const { plan_quote, plan_context, draft, setDraft, cancel } =
-    useComposerStore();
+  const { plan_quote, plan_context, draft, setDraft, cancel, setLastCreated } = useComposerStore();
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
@@ -95,6 +90,8 @@ function NewCommentCard({ threadId }: { threadId: string }) {
           payload: { type: 'text', text: draft.trim() },
         });
       }
+      // The editor watches this to wrap the captured range with CommentMark.
+      setLastCreated(c.id);
       cancel();
     } finally {
       setSubmitting(false);
@@ -103,9 +100,7 @@ function NewCommentCard({ threadId }: { threadId: string }) {
 
   return (
     <div className="rounded-md border border-accent/40 bg-surface-2 p-3">
-      <p className="text-xs text-ink-tertiary mb-2 italic line-clamp-2">
-        “{plan_quote}”
-      </p>
+      <p className="text-xs text-ink-tertiary mb-2 italic line-clamp-2">“{plan_quote}”</p>
       <Textarea
         autoFocus
         placeholder="Comment…"
@@ -117,12 +112,7 @@ function NewCommentCard({ threadId }: { threadId: string }) {
         <Button variant="ghost" size="sm" onClick={cancel}>
           Cancel
         </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={submitting || !draft.trim()}
-          onClick={submit}
-        >
+        <Button variant="primary" size="sm" disabled={submitting || !draft.trim()} onClick={submit}>
           {submitting ? 'Sending…' : 'Comment'}
         </Button>
       </div>
@@ -161,9 +151,7 @@ function CommentCard({ comment, archived = false }: { comment: Comment; archived
           : 'border-hairline bg-surface-1'
       } p-3`}
     >
-      <p className="text-xs text-ink-tertiary mb-2 italic line-clamp-2">
-        “{comment.plan_quote}”
-      </p>
+      <p className="text-xs text-ink-tertiary mb-2 italic line-clamp-2">“{comment.plan_quote}”</p>
       <div className="space-y-2">
         {comment.replies.map((r) => (
           <ReplyRow key={r.id} reply={r} />
@@ -225,13 +213,9 @@ function ReplyRow({ reply }: { reply: Reply }) {
           {reply.author}
         </span>
         {isEditProposed ? (
-          <span className="text-[10px] text-accent-hover">
-            proposed edit
-          </span>
+          <span className="text-[10px] text-accent-hover">proposed edit</span>
         ) : null}
-        {isEditDone ? (
-          <span className="text-[10px] text-success">edit applied</span>
-        ) : null}
+        {isEditDone ? <span className="text-[10px] text-success">edit applied</span> : null}
       </div>
       <p className="text-xs text-ink whitespace-pre-wrap">{text}</p>
       {isEditProposed && reply.payload.type === 'edit_proposed' ? (
