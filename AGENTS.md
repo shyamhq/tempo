@@ -131,6 +131,7 @@ _Things noticed during work that are out of scope for the current task. Move the
 - **Event-log monotonic counter uses `COUNT(*)` per thread inside a transaction.** This is correct under SQLite's single-writer model but means every append does a full count. Cheap until a thread accumulates many thousands of events. Replace with a `(thread_id) -> next_sequence` counter table only if profiling shows it.
 - **Initial-prompt does not yet include the workflow examples the Agent SDK persona typically needs.** Phase 2 integration will likely refine the prose after the first end-to-end run reveals what Claude does and doesn't pick up from the catalog alone.
 - **`replaceSection` heading match is "dumb" by design** (case-insensitive substring against the target string). It does not handle ambiguous headings (two with the same name) or any markdown that isn't ATX-style (`#`-prefixed) headings. Acceptable for MVP; revisit when a real Plan exposes the limitation.
+- **No HTTP endpoint backs `tempo_get_clarification_answers`** (spotted in 1.B). Console exposes `POST /api/clarification-rounds/:id/answers` for the Dev's submission but no GET to read the resulting answers. The CLI's `ConsoleClient.getRoundAnswers` calls `GET /api/clarification-rounds/:id` (does not yet exist; will 404 until Phase 2.1 adds it). Suggested shape: returns the `GetClarificationAnswersOutput` discriminated union (`{status:'pending'}` or `{status:'answered', answered_at, answers}`).
 
 ---
 
@@ -228,7 +229,7 @@ Starting commit hashes (Phase 0 baseline):
 - `2f4ee11` [0.5] design system + observability
 
 - [x] **Agent A — Console backend** (`apps/console/app/api/**`, `apps/console/server/**`, Drizzle queries) — All 17 route handlers + 11 server modules wired through Zod contracts. Plan three-null collapsed into discriminated `{ status, body | null }` (schema unchanged; coalesced at read boundary). Event-log uses per-thread COUNT(*) inside a transaction as the monotonic counter source. SSE + long-poll share the same poll loop (~500ms cadence, 25s heartbeat). Comment archive reconciliation runs on every plan write (substring then bounded-window Levenshtein with 15% tolerance).
-- [~] **Agent B — Agent CLI** (`apps/agent/**`)
+- [x] **Agent B — Agent CLI** (`apps/agent/**`) — `tempo-agent connect <token>` orchestrator: `POST /api/sessions` with repo metadata, `GET initial-prompt`, in-process MCP server registering all 9 `tempo_*` tools via `@anthropic-ai/claude-agent-sdk`'s `createSdkMcpServer` + `tool()`, Claude session started with `query()` and streamed to stdout. Typed `ConsoleClient` (one method per endpoint, contract-validated, 3-attempt retry on network errors). Dev-friendly errors wrapped at top-level `main().catch`. No SDK fallback needed — `@anthropic-ai/claude-agent-sdk@0.3.154` is real and exposes `createSdkMcpServer` + `tool()` + `query({ mcpServers })`.
 - [~] **Agent C — Console UI** (`apps/console/app/(ui)/**`, components, Tiptap, TanStack Query, Zustand)
 
 ### Phase 2 — Integration (sequential, main session)
@@ -315,6 +316,15 @@ The Dev may be away (asleep / disconnected) while this build runs. To keep movin
 - **2026-05-28 1.A** — _Activity status is not persisted as a column; it's reconstructed from the latest `activity_pill` event._
   - **Rationale**: Adding a column would mean either (a) on every `setActivityStatus` write to both the event log and the row (two seams to keep in sync) or (b) a separate `activity` table. The event log is already authoritative — and read once on Thread mount, then streamed live thereafter. One seam beats two.
   - **Alternatives rejected**: Storing on `sessions.last_activity_*` columns — couples activity to session lifetime; the Thread view wants the latest activity regardless of which session emitted it.
+
+- **2026-05-28 1.B** — _`tempo_get_clarification_answers` calls a Console endpoint that does not yet exist (`GET /api/clarification-rounds/:id`)._
+  - **Rationale**: Agent A's scope landed all 9 MCP-tool-backing HTTP endpoints except a GET for round answers — `answerRound` writes `answers_json` and emits `round_answered`, but nothing reads it back over HTTP. The CLI handler stays a thin 5-line translator (MCP arg → one HTTP call → return) and references the missing route as a TODO. Filed under "Spotted but not fixed" for Phase 2.1 to add on the Console side. Alternative considered: reconstruct answers from the long-poll event stream in the CLI — rejected, because that pushes Thread state into the CLI (the Console is the single source of truth) and violates the "each MCP tool ≈ one HTTP endpoint" alignment in the contracts.
+
+- **2026-05-28 1.B** — _Claude Agent SDK is `@anthropic-ai/claude-agent-sdk` (verified at install)._
+  - **Rationale**: `bun pm view` resolved the package at 0.3.154, published the day of this build, exposing `query({ prompt, options: { mcpServers } })` for the session and `createSdkMcpServer({ name, tools: [tool(...)] })` for the in-process MCP server. The `T5` decision predicted "the exact SDK package name verified at implementation time" — verified. No `spawn('claude', ['--print', …])` fallback needed.
+
+- **2026-05-28 1.B** — _CLI streams the Claude session by selectively printing `assistant` text/tool-use blocks and discarding the rest._
+  - **Rationale**: The SDK emits ~30 message types (assistant, system, partial, hook, status, etc.). Printing them all is noise; printing only assistant `text` + a `[tool_name]` marker for `tool_use` blocks gives the Dev a readable transcript. Other messages go to `logger.debug` for diagnosis. Alternative considered: pipe raw JSON to stdout — rejected, makes the terminal unreadable. Revisit if the Dev wants a verbose mode (add `--debug` flag later; punted as YAGNI for MVP).
 
 - **2026-05-28 0.4** — _SQLite driver: `@libsql/client` (with `drizzle-orm/libsql`) instead of `better-sqlite3`._
   - **Rationale**: `better-sqlite3`'s native binding fails to load under Bun (`ERR_DLOPEN_FAILED`); our dev loop is Bun-based (T1) and our prod loop is Node-based (T11), so we need a driver that works on both runtimes with the same `file:` URL.
