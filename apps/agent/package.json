@@ -1,0 +1,17 @@
+{
+  "name": "tempo-agent",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "tempo-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "build": "bun build --target=node --bundle src/cli.ts --outfile dist/cli.js",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}
