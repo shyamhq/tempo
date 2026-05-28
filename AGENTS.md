@@ -122,6 +122,18 @@ These rules are how every change is judged before it lands. They are heavily inf
 
 25. **Ask back rather than guess** when the plan doesn't cover something. The Dev would rather answer a clarifying question than have an agent invent — except when "Autonomous-mode policy" applies (see below), in which case follow that policy.
 
+### Deploy
+
+The repo ships a multi-stage `Dockerfile` (Bun build → Node 20 standalone runtime) and a `fly.toml` (app `tempo-console`, 256MB shared VM, `tempo_data` volume mounted at `/data`, SQLite at `file:/data/tempo.db`). First-time deploy from the Dev's machine:
+
+```
+fly launch --copy-config --no-deploy            # only if app does not yet exist
+fly volumes create tempo_data --size 1 -r iad
+fly deploy
+```
+
+Subsequent deploys: `fly deploy`. Phase 2 leaves execution to the Dev (gate #24 — no `fly deploy` from inside the build agent).
+
 ### Smoke
 
 End-to-end manual smoke run from `/home/user/tempo` (2026-05-28, Phase 2.2):
