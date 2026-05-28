@@ -122,6 +122,20 @@ These rules are how every change is judged before it lands. They are heavily inf
 
 25. **Ask back rather than guess** when the plan doesn't cover something. The Dev would rather answer a clarifying question than have an agent invent — except when "Autonomous-mode policy" applies (see below), in which case follow that policy.
 
+### Smoke
+
+End-to-end manual smoke run from `/home/user/tempo` (2026-05-28, Phase 2.2):
+
+1. `cp .env.example apps/console/.env.local` → `bun run --filter @tempo/console db:migrate` (migrations applied; default workspace seeded).
+2. `bun dev` in `apps/console` → ready at `http://localhost:3000` (Next 16.2.6 Turbopack, ~400ms cold).
+3. `POST /api/threads` (curl `-H X-Tempo-Dev:1`) → returned `{ thread.id, connect_token: tmp_… }`.
+4. `bun run --filter tempo-agent dev connect tmp_…` → logged `attached to thread … as session …`, registered MCP tools, Claude session started and asked for `mcp__tempo__tempo_attach` permission (env had ANTHROPIC_API_KEY set, so we hit the SDK-permission checkpoint instead of the documented "needs ANTHROPIC_API_KEY" line — same purpose: the wire is confirmed working).
+5. `GET /threads/<id>` → HTTP 200. `GET /api/threads/<id>` → confirmed `attached_repo_path` propagated through `latestAttachedRepo()` into `GetThreadResponse`.
+6. `POST /api/threads/<id>/comments` with curl + `curl -N /events?cursor=…` in parallel → SSE delivered `event: comment_added` frame within ~1s of the POST.
+7. Dev server killed (`pkill -f "next dev"`).
+
+To rerun: same steps. The DB lives at `apps/console/data/tempo.db`; delete it for a clean run.
+
 ### Spotted but not fixed
 
 _Things noticed during work that are out of scope for the current task. Move them to a real task or fix them on purpose — don't drive-by._
