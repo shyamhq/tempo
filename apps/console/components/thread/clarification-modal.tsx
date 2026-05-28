@@ -1,18 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import type { Answer, PendingRound, Question } from '@tempo/contracts';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api-client';
 
 type DraftMap = Record<
@@ -26,7 +21,8 @@ function initDraft(questions: Question[]): DraftMap {
   const out: DraftMap = {};
   for (const q of questions) {
     if (q.type === 'single_choice') out[q.id] = { type: 'single_choice', choice: null, other: '' };
-    else if (q.type === 'multi_choice') out[q.id] = { type: 'multi_choice', choices: new Set(), other: '' };
+    else if (q.type === 'multi_choice')
+      out[q.id] = { type: 'multi_choice', choices: new Set(), other: '' };
     else out[q.id] = { type: 'open_text', text: '' };
   }
   return out;
@@ -40,8 +36,7 @@ export function ClarificationModal({ round }: { round: PendingRound }) {
   const [error, setError] = useState<string | null>(null);
 
   const answers = toAnswers(round.questions, draft);
-  const ready =
-    answers !== null && answers.length === round.questions.length;
+  const ready = answers !== null && answers.length === round.questions.length;
 
   const submit = async () => {
     if (!answers) return;
@@ -60,9 +55,7 @@ export function ClarificationModal({ round }: { round: PendingRound }) {
     <Dialog open>
       <DialogContent showClose={false} className="max-w-xl">
         <DialogTitle>The Agent has questions</DialogTitle>
-        <DialogDescription>
-          Answer to continue planning.
-        </DialogDescription>
+        <DialogDescription>Answer to continue planning.</DialogDescription>
         <div className="mt-5 space-y-5 max-h-[60vh] overflow-y-auto pr-1">
           {round.questions.map((q, i) => (
             <QuestionField
@@ -76,11 +69,7 @@ export function ClarificationModal({ round }: { round: PendingRound }) {
         </div>
         {error ? <p className="text-xs text-red-400 mt-3">{error}</p> : null}
         <div className="mt-5 flex justify-end">
-          <Button
-            variant="primary"
-            disabled={!ready || submitting}
-            onClick={submit}
-          >
+          <Button variant="primary" disabled={!ready || submitting} onClick={submit}>
             {submitting ? 'Submitting…' : 'Submit answers'}
           </Button>
         </div>
@@ -129,7 +118,10 @@ function QuestionField({
           onValueChange={(v) => onChange({ ...value, choice: v })}
         >
           {question.options.map((opt) => (
-            <label key={opt} className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
+            <label
+              key={opt}
+              className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer"
+            >
               <RadioGroupItem value={opt} id={`${question.id}-${opt}`} />
               <span>{opt}</span>
             </label>
@@ -168,7 +160,10 @@ function QuestionField({
         {label}
         <div className="flex flex-col gap-2">
           {question.options.map((opt) => (
-            <label key={opt} className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer">
+            <label
+              key={opt}
+              className="flex items-center gap-2 text-sm text-ink-muted cursor-pointer"
+            >
               <Checkbox
                 checked={value.choices.has(opt)}
                 onCheckedChange={(c) => toggle(opt, c === true)}

@@ -12,11 +12,7 @@ import type { ConsoleClient } from './http-client';
 
 type Json = unknown;
 
-export function buildMcpServer(
-  client: ConsoleClient,
-  sessionId: SessionId,
-  threadId: ThreadId,
-) {
+export function buildMcpServer(client: ConsoleClient, sessionId: SessionId, threadId: ThreadId) {
   return createSdkMcpServer({
     name: 'tempo',
     version: '0.1.0',
@@ -59,21 +55,13 @@ export function buildMcpServer(
         async (args) => wrap(await client.poll(threadId, args.cursor)),
       ),
 
-      tool(
-        'tempo_post_reply',
-        'Post a Reply on a Comment.',
-        PostReplyInput.shape,
-        async (args) => {
-          const reply = await client.postReply(args.comment_id, args.payload);
-          return wrap({ reply_id: reply.id });
-        },
-      ),
+      tool('tempo_post_reply', 'Post a Reply on a Comment.', PostReplyInput.shape, async (args) => {
+        const reply = await client.postReply(args.comment_id, args.payload);
+        return wrap({ reply_id: reply.id });
+      }),
 
-      tool(
-        'tempo_resolve_comment',
-        'Resolve a Comment.',
-        ResolveCommentInput.shape,
-        async (args) => wrap(await client.resolveComment(args.comment_id)),
+      tool('tempo_resolve_comment', 'Resolve a Comment.', ResolveCommentInput.shape, async (args) =>
+        wrap(await client.resolveComment(args.comment_id)),
       ),
 
       tool(

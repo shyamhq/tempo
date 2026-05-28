@@ -1,14 +1,12 @@
-import { forwardRef, type ButtonHTMLAttributes } from 'react';
+import { type ButtonHTMLAttributes, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md';
 
 const variantClass: Record<Variant, string> = {
-  primary:
-    'bg-accent text-on-accent hover:bg-accent-hover border border-transparent',
-  secondary:
-    'bg-surface-2 text-ink hover:bg-surface-3 border border-hairline',
+  primary: 'bg-accent text-on-accent hover:bg-accent-hover border border-transparent',
+  secondary: 'bg-surface-2 text-ink hover:bg-surface-3 border border-hairline',
   ghost:
     'bg-transparent text-ink-muted hover:text-ink hover:bg-surface-2 border border-transparent',
   danger:

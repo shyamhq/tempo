@@ -17,7 +17,9 @@ export async function connect(token: ConnectToken): Promise<void> {
 
   const session = await client.createSession(repo);
   logger.debug({ session }, 'session created');
-  process.stdout.write(`attached to thread ${session.thread_id} as session ${session.session_id}\n`);
+  process.stdout.write(
+    `attached to thread ${session.thread_id} as session ${session.session_id}\n`,
+  );
 
   const initialPrompt = await client.getInitialPrompt(session.session_id);
   logger.debug({ chars: initialPrompt.length }, 'fetched initial prompt');

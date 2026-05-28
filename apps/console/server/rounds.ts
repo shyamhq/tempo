@@ -84,4 +84,3 @@ export async function getPendingRound(threadId: string): Promise<PendingRound | 
   if (!row) return null;
   return { id: row.id, questions: row.questions_json as Question[] };
 }
-

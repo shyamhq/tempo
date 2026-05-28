@@ -60,14 +60,17 @@ function bodyHint(body: unknown): string {
 }
 
 export function toDevMessage(err: unknown): string {
-  if (err instanceof AuthError) return `failed: ${err.message}. Re-copy the connect command from the Thread page.`;
+  if (err instanceof AuthError)
+    return `failed: ${err.message}. Re-copy the connect command from the Thread page.`;
   if (err instanceof NetworkError) return `failed: ${err.message}. Is the Console running?`;
   if (err instanceof HttpStatusError) {
-    if (err.status === 404) return `failed: Console route ${err.url} not found — Console version mismatch?`;
+    if (err.status === 404)
+      return `failed: Console route ${err.url} not found — Console version mismatch?`;
     if (err.status === 409) return `failed: ${err.message}`;
     return `failed: ${err.message}`;
   }
-  if (err instanceof ContractError) return `failed: ${err.message}. Console and CLI versions may be out of sync.`;
+  if (err instanceof ContractError)
+    return `failed: ${err.message}. Console and CLI versions may be out of sync.`;
   if (err instanceof TempoError) return `failed: ${err.message}`;
   if (err instanceof Error) return `failed: ${err.message}`;
   return `failed: ${String(err)}`;

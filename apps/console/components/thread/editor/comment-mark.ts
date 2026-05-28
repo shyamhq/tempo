@@ -13,8 +13,7 @@ export const CommentMark = Mark.create({
       commentId: {
         default: null,
         parseHTML: (el) => el.getAttribute('data-comment-id'),
-        renderHTML: (attrs) =>
-          attrs.commentId ? { 'data-comment-id': attrs.commentId } : {},
+        renderHTML: (attrs) => (attrs.commentId ? { 'data-comment-id': attrs.commentId } : {}),
       },
     };
   },
@@ -27,8 +26,7 @@ export const CommentMark = Mark.create({
     return [
       'span',
       mergeAttributes(HTMLAttributes, {
-        class:
-          'bg-accent/15 border-b border-accent/50 cursor-pointer rounded-sm',
+        class: 'bg-accent/15 border-b border-accent/50 cursor-pointer rounded-sm',
       }),
       0,
     ];

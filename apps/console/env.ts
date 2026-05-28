@@ -8,9 +8,7 @@ const Env = z.object({
     .default('file:./data/tempo.db'),
   CONSOLE_URL: z.string().url().default('http://localhost:3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  LOG_LEVEL: z
-    .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
-    .default('info'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
 const parsed = Env.safeParse(process.env);

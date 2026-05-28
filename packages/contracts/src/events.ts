@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import {
+  ActivityStatus,
   Actor,
   Comment,
   CommentId,
   EventId,
   IsoTimestamp,
-  Plan,
-  ActivityStatus,
   PendingRound,
+  Plan,
   ProposalStatus,
   Reply,
   ReplyId,

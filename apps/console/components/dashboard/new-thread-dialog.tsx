@@ -1,19 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { Check, Copy, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Copy, Check, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
-  DialogTitle,
   DialogDescription,
+  DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { api, ApiError } from '@/lib/api-client';
+import { ApiError, api } from '@/lib/api-client';
 
 export function NewThreadDialog() {
   const router = useRouter();
@@ -78,8 +78,7 @@ export function NewThreadDialog() {
           <>
             <DialogTitle>Thread created</DialogTitle>
             <DialogDescription>
-              Run this in your repo to connect the Agent. The token is shown
-              once.
+              Run this in your repo to connect the Agent. The token is shown once.
             </DialogDescription>
             <div className="mt-4 rounded-md border border-hairline bg-surface-2 p-3 font-mono text-xs text-ink break-all flex items-start gap-2">
               <span className="flex-1">{connectCmd}</span>
@@ -89,11 +88,7 @@ export function NewThreadDialog() {
                 className="shrink-0 text-ink-subtle hover:text-ink"
                 aria-label="Copy connect command"
               >
-                {copied ? (
-                  <Check className="h-4 w-4 text-success" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
+                {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
             <div className="mt-4 flex justify-end gap-2">
@@ -118,8 +113,7 @@ export function NewThreadDialog() {
           <>
             <DialogTitle>New Thread</DialogTitle>
             <DialogDescription>
-              Describe what you want to plan. The Agent will explore and ask
-              clarifications.
+              Describe what you want to plan. The Agent will explore and ask clarifications.
             </DialogDescription>
             <div className="mt-4 space-y-3">
               <label className="block">
@@ -142,19 +136,13 @@ export function NewThreadDialog() {
                   rows={4}
                 />
               </label>
-              {error ? (
-                <p className="text-xs text-red-400">{error}</p>
-              ) : null}
+              {error ? <p className="text-xs text-red-400">{error}</p> : null}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button
-                variant="primary"
-                disabled={submitting || !title.trim()}
-                onClick={submit}
-              >
+              <Button variant="primary" disabled={submitting || !title.trim()} onClick={submit}>
                 {submitting ? 'Creating…' : 'Create Thread'}
               </Button>
             </div>

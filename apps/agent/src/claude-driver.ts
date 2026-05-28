@@ -1,4 +1,4 @@
-import { query, type McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk';
+import { type McpSdkServerConfigWithInstance, query } from '@anthropic-ai/claude-agent-sdk';
 import { logger } from './logger';
 
 export async function runClaudeSession(
@@ -22,7 +22,11 @@ function streamToTerminal(message: unknown): void {
   const m = message as { type?: string; message?: { content?: unknown } };
 
   if (m.type === 'assistant' && m.message && Array.isArray(m.message.content)) {
-    for (const block of m.message.content as Array<{ type?: string; text?: string; name?: string }>) {
+    for (const block of m.message.content as Array<{
+      type?: string;
+      text?: string;
+      name?: string;
+    }>) {
       if (block.type === 'text' && typeof block.text === 'string') {
         process.stdout.write(block.text);
       } else if (block.type === 'tool_use' && block.name) {

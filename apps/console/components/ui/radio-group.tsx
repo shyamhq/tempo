@@ -8,9 +8,7 @@ export const RadioGroup = forwardRef<
   HTMLDivElement,
   React.ComponentPropsWithoutRef<typeof RG.Root>
 >(function RadioGroup({ className, ...rest }, ref) {
-  return (
-    <RG.Root ref={ref} className={cn('flex flex-col gap-2', className)} {...rest} />
-  );
+  return <RG.Root ref={ref} className={cn('flex flex-col gap-2', className)} {...rest} />;
 });
 
 export const RadioGroupItem = forwardRef<

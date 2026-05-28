@@ -1,6 +1,6 @@
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { db } from './index';
 import { defaultWorkspaceId } from './ids';
+import { db } from './index';
 import { workspaces } from './schema';
 
 async function main() {

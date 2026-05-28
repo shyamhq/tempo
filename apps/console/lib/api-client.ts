@@ -1,26 +1,26 @@
-import { z } from 'zod';
 import {
-  ApproveThreadResponse,
-  AnswerRoundRequest,
+  type AnswerRoundRequest,
   AnswerRoundResponse,
-  CreateCommentRequest,
+  ApproveThreadResponse,
+  type CreateCommentRequest,
   CreateCommentResponse,
-  CreateReplyRequest,
+  type CreateReplyRequest,
   CreateReplyResponse,
-  CreateThreadRequest,
+  type CreateThreadRequest,
   CreateThreadResponse,
-  DecideProposalRequest,
+  type DecideProposalRequest,
   DecideProposalResponse,
   GetThreadResponse,
   ListThreadsResponse,
-  OpenRoundRequest,
+  type OpenRoundRequest,
   OpenRoundResponse,
   ReopenThreadResponse,
   ResolveCommentResponse,
   UnresolveCommentResponse,
-  WritePlanRequest,
+  type WritePlanRequest,
   WritePlanResponse,
 } from '@tempo/contracts/http';
+import type { z } from 'zod';
 
 // Dev auth: single header for the MVP single-user Console.
 const DEV_HEADERS: HeadersInit = {
@@ -75,8 +75,7 @@ export const api = {
   createThread: (input: z.infer<typeof CreateThreadRequest>) =>
     request('POST', '/api/threads', input, CreateThreadResponse),
 
-  getThread: (id: string) =>
-    request('GET', `/api/threads/${id}`, undefined, GetThreadResponse),
+  getThread: (id: string) => request('GET', `/api/threads/${id}`, undefined, GetThreadResponse),
 
   writePlan: (threadId: string, input: z.infer<typeof WritePlanRequest>) =>
     request('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),

@@ -14,7 +14,9 @@ export const threads = sqliteTable('threads', {
     .references(() => workspaces.id),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
-  status: text('status', { enum: ['unapproved', 'approved'] }).notNull().default('unapproved'),
+  status: text('status', { enum: ['unapproved', 'approved'] })
+    .notNull()
+    .default('unapproved'),
   connect_token_hash: text('connect_token_hash').notNull(),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updated_at: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
@@ -90,7 +92,9 @@ export const clarification_rounds = sqliteTable('clarification_rounds', {
     .references(() => threads.id),
   questions_json: text('questions_json', { mode: 'json' }).notNull(),
   answers_json: text('answers_json', { mode: 'json' }),
-  status: text('status', { enum: ['pending', 'answered'] }).notNull().default('pending'),
+  status: text('status', { enum: ['pending', 'answered'] })
+    .notNull()
+    .default('pending'),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   answered_at: text('answered_at'),
 });

@@ -1,9 +1,9 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
 import { Event, EventKind } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
+import { useEffect, useRef } from 'react';
 import type { z } from 'zod';
 
 type ThreadView = z.infer<typeof GetThreadResponse>;
@@ -77,9 +77,7 @@ function apply(
         return {
           ...next,
           comments: next.comments.map((c) =>
-            c.id === ev.comment_id
-              ? { ...c, replies: [...c.replies, ev.reply] }
-              : c,
+            c.id === ev.comment_id ? { ...c, replies: [...c.replies, ev.reply] } : c,
           ),
         };
       }
@@ -139,10 +137,7 @@ function apply(
           ...next,
           comments: next.comments.filter((c) => c.id !== ev.comment_id),
           archived_comments: archived
-            ? [
-                ...next.archived_comments,
-                { ...archived, archived_at: ev.created_at },
-              ]
+            ? [...next.archived_comments, { ...archived, archived_at: ev.created_at }]
             : next.archived_comments,
         };
       }

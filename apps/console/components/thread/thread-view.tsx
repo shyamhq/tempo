@@ -1,19 +1,19 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import type { GetThreadResponse } from '@tempo/contracts/http';
 import { ArrowLeft, GitBranch } from 'lucide-react';
 import Link from 'next/link';
+import { useCallback } from 'react';
 import type { z } from 'zod';
-import type { GetThreadResponse } from '@tempo/contracts/http';
-import { api } from '@/lib/api-client';
-import { useThreadEvents } from '@/hooks/use-thread-events';
-import { PlanEditor } from '@/components/thread/editor/editor';
-import { CommentsRail } from '@/components/thread/comments-rail';
 import { ClarificationModal } from '@/components/thread/clarification-modal';
+import { CommentsRail } from '@/components/thread/comments-rail';
+import { PlanEditor } from '@/components/thread/editor/editor';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
-import { SessionPill, ActivityPill } from '@/components/thread/pills';
+import { ActivityPill, SessionPill } from '@/components/thread/pills';
 import { Button } from '@/components/ui/button';
+import { useThreadEvents } from '@/hooks/use-thread-events';
+import { api } from '@/lib/api-client';
 
 type View = z.infer<typeof GetThreadResponse>;
 
@@ -77,17 +77,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-hairline bg-canvas/85 backdrop-blur">
         <div className="mx-auto max-w-7xl px-6 h-14 flex items-center gap-3">
-          <Link
-            href="/"
-            className="text-ink-subtle hover:text-ink"
-            aria-label="Back to Threads"
-          >
+          <Link href="/" className="text-ink-subtle hover:text-ink" aria-label="Back to Threads">
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div className="flex-1 min-w-0">
-            <h1 className="font-display text-sm font-semibold truncate">
-              {view.thread.title}
-            </h1>
+            <h1 className="font-display text-sm font-semibold truncate">{view.thread.title}</h1>
           </div>
           <SessionPill status={view.session_status} />
           <ActivityPill activity={view.activity} />
@@ -110,8 +104,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           {approved ? <HandoffBanner planMarkdown={markdown} /> : null}
           {view.plan.body === null ? (
             <p className="text-sm text-ink-subtle border border-dashed border-hairline rounded-md p-6 text-center">
-              The Agent hasn't drafted a Plan yet. When it does, edits appear
-              here live.
+              The Agent hasn't drafted a Plan yet. When it does, edits appear here live.
             </p>
           ) : (
             <PlanEditor
@@ -131,9 +124,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </aside>
       </div>
 
-      {view.pending_round ? (
-        <ClarificationModal round={view.pending_round} />
-      ) : null}
+      {view.pending_round ? <ClarificationModal round={view.pending_round} /> : null}
     </div>
   );
 }

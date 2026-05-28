@@ -1,13 +1,13 @@
-import {
-  type ActivityStatus,
-  type CommentId,
-  type ConnectToken,
-  type EventId,
-  type ReplyPayload,
-  type RoundId,
-  type SessionId,
-  type ThreadId,
-  type QuestionInput,
+import type {
+  ActivityStatus,
+  CommentId,
+  ConnectToken,
+  EventId,
+  QuestionInput,
+  ReplyPayload,
+  RoundId,
+  SessionId,
+  ThreadId,
 } from '@tempo/contracts';
 import {
   CreateReplyResponse,
@@ -19,11 +19,8 @@ import {
   SetActivityStatusResponse,
   WritePlanResponse,
 } from '@tempo/contracts/http';
-import {
-  AttachOutput,
-  GetClarificationAnswersOutput,
-} from '@tempo/contracts/mcp';
-import { z } from 'zod';
+import { AttachOutput, GetClarificationAnswersOutput } from '@tempo/contracts/mcp';
+import type { z } from 'zod';
 import { AuthError, ContractError, HttpStatusError, NetworkError } from './errors';
 import { logger } from './logger';
 
@@ -51,7 +48,12 @@ export class ConsoleClient {
   }
 
   setActivityStatus(sessionId: SessionId, status: ActivityStatus) {
-    return this.send('POST', `/api/sessions/${sessionId}/status`, status, SetActivityStatusResponse);
+    return this.send(
+      'POST',
+      `/api/sessions/${sessionId}/status`,
+      status,
+      SetActivityStatusResponse,
+    );
   }
 
   getPlan(threadId: ThreadId) {
@@ -90,7 +92,12 @@ export class ConsoleClient {
   }
 
   postReply(commentId: CommentId, payload: ReplyPayload) {
-    return this.send('POST', `/api/comments/${commentId}/replies`, { payload }, CreateReplyResponse);
+    return this.send(
+      'POST',
+      `/api/comments/${commentId}/replies`,
+      { payload },
+      CreateReplyResponse,
+    );
   }
 
   resolveComment(commentId: CommentId) {
@@ -187,5 +194,9 @@ function isNetworkError(err: unknown): boolean {
   ) {
     return true;
   }
-  return err.message.includes('fetch failed') || err.message.includes('Unable to connect') || err.name === 'TypeError';
+  return (
+    err.message.includes('fetch failed') ||
+    err.message.includes('Unable to connect') ||
+    err.name === 'TypeError'
+  );
 }

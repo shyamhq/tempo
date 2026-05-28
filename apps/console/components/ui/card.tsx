@@ -13,9 +13,6 @@ export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   );
 }
 
-export function CardBody({
-  className,
-  ...rest
-}: HTMLAttributes<HTMLDivElement>) {
+export function CardBody({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn('p-4', className)} {...rest} />;
 }
