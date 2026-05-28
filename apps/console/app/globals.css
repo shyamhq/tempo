@@ -1,0 +1,53 @@
+@import 'tailwindcss';
+
+/*
+ * Palette derived from apps/console/DESIGN.md (linear.app spec via getdesign).
+ * Accent is Linear's lavender today; planned swap to a Tempo-specific
+ * accent (warm amber or teal) is in T15 of the plan file.
+ */
+
+@theme {
+  --color-canvas: #010102;
+  --color-surface-1: #0f1011;
+  --color-surface-2: #141516;
+  --color-surface-3: #18191a;
+  --color-surface-4: #191a1b;
+  --color-ink: #f7f8f8;
+  --color-ink-muted: #d0d6e0;
+  --color-ink-subtle: #8a8f98;
+  --color-ink-tertiary: #62666d;
+  --color-hairline: #23252a;
+  --color-hairline-strong: #34343a;
+  --color-hairline-tertiary: #3e3e44;
+  --color-accent: #5e6ad2;
+  --color-accent-hover: #828fff;
+  --color-accent-focus: #5e69d1;
+  --color-success: #27a644;
+  --color-on-accent: #ffffff;
+
+  --font-display:
+    'Linear Display', 'SF Pro Display', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', system-ui, sans-serif;
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
+  --font-mono:
+    'Berkeley Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+}
+
+html {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  color: var(--color-ink);
+}
