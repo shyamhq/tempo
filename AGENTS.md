@@ -219,9 +219,13 @@ Updated by every agent as they make progress. `[x]` = done, `[~]` = in progress,
 
 Agents launched from this session via the `Agent` tool with `isolation: "worktree"`. Each agent is briefed with the relevant D/T decisions, the files it owns, the contracts it consumes, and the files it must not touch. Each agent applies the Pocock vocabulary + deletion test.
 
-- [ ] **Agent A — Console backend** (`apps/console/app/api/**`, `apps/console/server/**`, Drizzle queries)
-- [ ] **Agent B — Agent CLI** (`apps/agent/**`)
-- [ ] **Agent C — Console UI** (`apps/console/app/(ui)/**`, components, Tiptap, TanStack Query, Zustand)
+Starting commit hashes (Phase 0 baseline):
+- `8f4cacc` [0.1-0.4] foundation: monorepo, contracts, drizzle schema
+- `2f4ee11` [0.5] design system + observability
+
+- [~] **Agent A — Console backend** (`apps/console/app/api/**`, `apps/console/server/**`, Drizzle queries)
+- [~] **Agent B — Agent CLI** (`apps/agent/**`)
+- [~] **Agent C — Console UI** (`apps/console/app/(ui)/**`, components, Tiptap, TanStack Query, Zustand)
 
 ### Phase 2 — Integration (sequential, main session)
 
