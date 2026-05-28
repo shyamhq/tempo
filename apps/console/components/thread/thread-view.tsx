@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, GitBranch } from 'lucide-react';
 import Link from 'next/link';
 import type { z } from 'zod';
 import type { GetThreadResponse } from '@tempo/contracts/http';
@@ -91,6 +91,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </div>
           <SessionPill status={view.session_status} />
           <ActivityPill activity={view.activity} />
+          <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
           {approved ? (
             <Button variant="ghost" onClick={reopen}>
@@ -135,4 +136,29 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       ) : null}
     </div>
   );
+}
+
+function RepoChip({ remote, path }: { remote: string | null; path: string | null }) {
+  if (!remote && !path) return null;
+  const label = remote ? shortRemote(remote) : (path ?? '');
+  const title = [remote, path].filter(Boolean).join(' — ');
+  return (
+    <span
+      title={title}
+      className="inline-flex items-center gap-1 text-xs text-ink-subtle px-2 py-0.5 rounded border border-hairline max-w-[16rem] truncate"
+    >
+      <GitBranch className="h-3 w-3 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function shortRemote(remote: string): string {
+  try {
+    const u = new URL(remote);
+    const seg = u.pathname.replace(/^\/+|\.git$/g, '');
+    return seg || u.hostname;
+  } catch {
+    return remote;
+  }
 }

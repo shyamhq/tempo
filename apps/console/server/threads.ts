@@ -88,6 +88,26 @@ export async function latestSessionStatus(threadId: string) {
   return s?.status ?? 'pending';
 }
 
+// Repo chrome for the Thread header: the most-recent session's repo metadata,
+// or {null, null} if no Agent has ever connected.
+export async function latestAttachedRepo(
+  threadId: string,
+): Promise<{ attached_repo_remote: string | null; attached_repo_path: string | null }> {
+  const [s] = await db
+    .select({
+      attached_repo_remote: sessions.attached_repo_remote,
+      attached_repo_path: sessions.attached_repo_path,
+    })
+    .from(sessions)
+    .where(eq(sessions.thread_id, threadId))
+    .orderBy(desc(sessions.created_at))
+    .limit(1);
+  return {
+    attached_repo_remote: s?.attached_repo_remote ?? null,
+    attached_repo_path: s?.attached_repo_path ?? null,
+  };
+}
+
 export function nowIso() {
   return new Date().toISOString();
 }

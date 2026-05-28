@@ -54,6 +54,10 @@ export const GetThreadResponse = z.object({
   comments: z.array(Comment),
   archived_comments: z.array(Comment),
   session_status: SessionStatus,
+  // Repo chrome for the Thread header (D5). Drawn from the latest connected
+  // session's `attached_repo_*`. Both null when no session has connected yet.
+  attached_repo_remote: z.string().nullable(),
+  attached_repo_path: z.string().nullable(),
   activity: ActivityStatus.nullable(),
   last_event_id: EventId,
 });
