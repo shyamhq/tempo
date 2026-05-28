@@ -126,7 +126,11 @@ These rules are how every change is judged before it lands. They are heavily inf
 
 _Things noticed during work that are out of scope for the current task. Move them to a real task or fix them on purpose — don't drive-by._
 
-- **`Plan` schema permits inconsistent null shape** (`packages/contracts/src/primitives.ts`). Today `Plan = { markdown: nullable, status, updated_at: nullable, updated_by: nullable }` permits `{ markdown: 'hi', updated_at: null, updated_by: null }` which is presumably impossible. Cleanest fix is a discriminated `body: { markdown, updated_at, updated_by } | null`. Out of scope here because it'd ripple through `apps/console/db/schema.ts` (three columns currently independently nullable) and the upcoming server modules. **Owner**: the agent doing Phase 1.A.
+- ~~**`Plan` schema permits inconsistent null shape**~~ — **Fixed in 1.A** (2026-05-28). `Plan` is now `{ status, body: { markdown, updated_at, updated_by } | null }`. DB schema unchanged: the three nullable columns (`body_markdown`, `updated_at`, `updated_by`) are coalesced into `body` at the server read boundary and either all-null or all-set on write. No migration needed since the on-disk shape was already correct; only the contract was permitting an impossible combination.
+- **Activity pill is read by scanning the events table for the latest `activity_pill` row.** Cheap at MVP scale, but if events grow large this becomes an indexed `ORDER BY id DESC LIMIT 1` over a kind filter — fine for now; revisit if the events table goes past a few hundred thousand rows or if cold reads start blocking the Thread view render.
+- **Event-log monotonic counter uses `COUNT(*)` per thread inside a transaction.** This is correct under SQLite's single-writer model but means every append does a full count. Cheap until a thread accumulates many thousands of events. Replace with a `(thread_id) -> next_sequence` counter table only if profiling shows it.
+- **Initial-prompt does not yet include the workflow examples the Agent SDK persona typically needs.** Phase 2 integration will likely refine the prose after the first end-to-end run reveals what Claude does and doesn't pick up from the catalog alone.
+- **`replaceSection` heading match is "dumb" by design** (case-insensitive substring against the target string). It does not handle ambiguous headings (two with the same name) or any markdown that isn't ATX-style (`#`-prefixed) headings. Acceptable for MVP; revisit when a real Plan exposes the limitation.
 
 ---
 
@@ -223,7 +227,7 @@ Starting commit hashes (Phase 0 baseline):
 - `8f4cacc` [0.1-0.4] foundation: monorepo, contracts, drizzle schema
 - `2f4ee11` [0.5] design system + observability
 
-- [~] **Agent A — Console backend** (`apps/console/app/api/**`, `apps/console/server/**`, Drizzle queries)
+- [x] **Agent A — Console backend** (`apps/console/app/api/**`, `apps/console/server/**`, Drizzle queries) — All 17 route handlers + 11 server modules wired through Zod contracts. Plan three-null collapsed into discriminated `{ status, body | null }` (schema unchanged; coalesced at read boundary). Event-log uses per-thread COUNT(*) inside a transaction as the monotonic counter source. SSE + long-poll share the same poll loop (~500ms cadence, 25s heartbeat). Comment archive reconciliation runs on every plan write (substring then bounded-window Levenshtein with 15% tolerance).
 - [~] **Agent B — Agent CLI** (`apps/agent/**`)
 - [~] **Agent C — Console UI** (`apps/console/app/(ui)/**`, components, Tiptap, TanStack Query, Zustand)
 
@@ -303,6 +307,14 @@ The Dev may be away (asleep / disconnected) while this build runs. To keep movin
   - **Rationale**: The environment's commit-signing helper (`/tmp/code-sign`) returns `signing server returned status 400 {"error":{"message":"missing source"}}`. This is an environment-runner / signing-service config issue, not something fixable from inside the container. Without bypassing, no progress can be committed and durability is lost across compaction. The Dev explicitly asked for commits at every checkpoint.
   - **Scope of the bypass**: Local-only commits. **No pushes have happened.** When the Dev returns: either re-sign commits with `git rebase -i --exec 'git commit --amend --no-edit'` once signing is fixed, or accept unsigned local history.
   - **Alternatives rejected**: (a) Stalling until the Dev returns — contradicts the explicit "commit after every task" instruction; (b) Trying to provide a `source` parameter — the binary's only documented flag is `-h`; no path to fix from inside.
+
+- **2026-05-28 1.A** — _Dev auth in the Console is a single header (`X-Tempo-Dev: 1`), not a real session cookie._
+  - **Rationale**: MVP is single-user. The contract already says "session cookie = dev" in a comment but no auth system exists. Picking a header keeps the route handlers thin and lets the UI add `credentials: 'include'` later without re-shaping the server. The Agent side is real (Bearer token hashed against `threads.connect_token_hash`).
+  - **Alternatives rejected**: (a) Build an `iron-session` cookie now — out of scope and pre-mature for a single-user MVP; (b) No dev auth at all — leaves the Plan + Comment write paths unauthenticated even locally.
+
+- **2026-05-28 1.A** — _Activity status is not persisted as a column; it's reconstructed from the latest `activity_pill` event._
+  - **Rationale**: Adding a column would mean either (a) on every `setActivityStatus` write to both the event log and the row (two seams to keep in sync) or (b) a separate `activity` table. The event log is already authoritative — and read once on Thread mount, then streamed live thereafter. One seam beats two.
+  - **Alternatives rejected**: Storing on `sessions.last_activity_*` columns — couples activity to session lifetime; the Thread view wants the latest activity regardless of which session emitted it.
 
 - **2026-05-28 0.4** — _SQLite driver: `@libsql/client` (with `drizzle-orm/libsql`) instead of `better-sqlite3`._
   - **Rationale**: `better-sqlite3`'s native binding fails to load under Bun (`ERR_DLOPEN_FAILED`); our dev loop is Bun-based (T1) and our prod loop is Node-based (T11), so we need a driver that works on both runtimes with the same `file:` URL.

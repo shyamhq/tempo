@@ -39,11 +39,16 @@ export const ActivityStatus = z.object({
 });
 export type ActivityStatus = z.infer<typeof ActivityStatus>;
 
+export const PlanBody = z.object({
+  markdown: z.string(),
+  updated_at: IsoTimestamp,
+  updated_by: Actor,
+});
+export type PlanBody = z.infer<typeof PlanBody>;
+
 export const Plan = z.object({
-  markdown: z.string().nullable(),
   status: ThreadStatus,
-  updated_at: IsoTimestamp.nullable(),
-  updated_by: Actor.nullable(),
+  body: PlanBody.nullable(),
 });
 export type Plan = z.infer<typeof Plan>;
 
