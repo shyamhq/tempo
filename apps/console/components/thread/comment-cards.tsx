@@ -76,6 +76,14 @@ export function CommentCard({
   const [expanded, setExpanded] = useState(false);
   const [firstReplyOverflows, setFirstReplyOverflows] = useState(false);
   const firstReplyRef = useRef<HTMLDivElement>(null);
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = replyRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [replyDraft]);
 
   useEffect(() => {
     if (!focused) setExpanded(false);
@@ -129,6 +137,7 @@ export function CommentCard({
     <div
       onClick={onFocus}
       onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onFocus?.();
@@ -166,13 +175,14 @@ export function CommentCard({
         !resolved ? (
           <div className="mt-2">
             <Textarea
+              ref={replyRef}
               placeholder="Reply…"
               value={replyDraft}
               onChange={(e) => setReplyDraft(e.target.value)}
               onKeyDown={onReplyKeyDown}
               onClick={(e) => e.stopPropagation()}
-              rows={2}
-              className="text-xs"
+              rows={1}
+              className="text-xs min-h-0 resize-none overflow-hidden"
             />
             <div className="mt-2 flex items-center justify-between">
               <Button

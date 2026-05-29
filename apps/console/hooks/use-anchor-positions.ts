@@ -6,9 +6,16 @@ import { useEffect, useState } from 'react';
 // Reads anchor y-coordinates of every CommentMark span (saved + pending) in
 // the editor's DOM, normalised to a container element so the rail's canvas
 // can absolutely-position cards aligned with their text. Recomputes on
-// editor updates (debounced), editor-DOM resizes, and window resize. Page
-// and rail scroll are not triggers: positions are container-relative and
-// invariant under either scroll.
+// editor updates (debounced), editor-DOM resizes, and window resize.
+//
+// Scroll-invariance assumption (load-bearing): the editor and the container
+// share a single scroll context (the page). Both `anchor.top` and
+// `container.top` shift by the same delta under page scroll, so the stored
+// `anchor.top − container.top` doesn't change and no scroll listener is
+// needed. If you ever wrap the editor or the rail in an element with
+// `overflow: auto | scroll`, that breaks — positions will drift silently
+// because only one of the two rects will shift. In that case, re-add a
+// listener on the new scroll ancestor (or measure on every focus change).
 export function useAnchorPositions(
   editor: Editor | null,
   containerEl: HTMLElement | null,
