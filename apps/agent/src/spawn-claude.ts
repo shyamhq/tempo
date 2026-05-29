@@ -29,6 +29,11 @@ const TEMPO_TOOL_NAMES = [
   'mcp__tempo__tempo_post_reply',
   'mcp__tempo__tempo_resolve_comment',
   'mcp__tempo__tempo_set_status',
+  // ScheduleWakeup powers the polling-loop heartbeat described in the
+  // server-rendered initial prompt: the Agent schedules its own re-wake every
+  // ~30s so Comments arriving while it's idle get picked up between Stop-hook
+  // long-poll windows.
+  'ScheduleWakeup',
 ];
 
 export async function spawnInteractiveClaude(args: {
@@ -36,6 +41,7 @@ export async function spawnInteractiveClaude(args: {
   sessionId: SessionId;
   threadId: ThreadId;
   token: ConnectToken;
+  cursorFile: string;
 }): Promise<number> {
   const configPath = writeMcpConfig(args);
 
@@ -51,6 +57,7 @@ export async function spawnInteractiveClaude(args: {
       TEMPO_SESSION_ID: args.sessionId,
       TEMPO_THREAD_ID: args.threadId,
       TEMPO_CONSOLE_URL: env.TEMPO_CONSOLE_URL,
+      TEMPO_CURSOR_FILE: args.cursorFile,
     });
   } finally {
     process.off('SIGINT', onSigint);
@@ -60,21 +67,30 @@ export async function spawnInteractiveClaude(args: {
 
 function hookSettingsJson(): string {
   // PreToolUse hook: re-invokes this CLI as `hook-relay`, which reads the
-  // payload from stdin and POSTs a one-line summary to the Console. Inlined
-  // via `--settings` (Claude accepts file path or JSON string) so there's
-  // nothing to clean up. Matcher "*" covers every tool name.
+  // payload from stdin and POSTs a one-line summary to the Console.
+  //
+  // Stop hook: re-invokes as `stop-hook`, which long-polls the Console for
+  // new events and blocks the stop (with `decision: "block"` + an
+  // `additionalContext` nudge) if any arrived. Timeout is 30s — slightly
+  // above the 25s long-poll wait so the hook returns its JSON before Claude
+  // kills it.
+  //
+  // Both inlined via `--settings` (Claude accepts file path or JSON string)
+  // so there's nothing to clean up. Matcher "*" covers every tool name.
+  const command = (sub: string) =>
+    `${shellEscape(process.execPath)} ${shellEscape(CLI_PATH)} ${sub}`;
   return JSON.stringify({
     hooks: {
       PreToolUse: [
         {
           matcher: '*',
-          hooks: [
-            {
-              type: 'command',
-              command: `${shellEscape(process.execPath)} ${shellEscape(CLI_PATH)} hook-relay`,
-              timeout: 2,
-            },
-          ],
+          hooks: [{ type: 'command', command: command('hook-relay'), timeout: 2 }],
+        },
+      ],
+      Stop: [
+        {
+          matcher: '*',
+          hooks: [{ type: 'command', command: command('stop-hook'), timeout: 30 }],
         },
       ],
     },

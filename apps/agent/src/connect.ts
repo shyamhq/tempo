@@ -1,6 +1,9 @@
 import { exec } from 'node:child_process';
+import { rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
-import type { ConnectToken } from '@tempo/contracts';
+import { type ConnectToken, ZERO_EVENT_CURSOR } from '@tempo/contracts';
 import { env } from './env';
 import { ConsoleClient } from './http-client';
 import { logger } from './logger';
@@ -23,14 +26,22 @@ export async function connect(token: ConnectToken): Promise<void> {
   const initialPrompt = await client.getInitialPrompt(session.session_id);
   logger.debug({ chars: initialPrompt.length }, 'fetched initial prompt');
 
+  const cursorFile = join(tmpdir(), `tempo-cursor-${session.session_id}`);
+  writeFileSync(cursorFile, ZERO_EVENT_CURSOR, { mode: 0o600 });
+
   process.stdout.write('launching claude with tempo tools...\n\n');
-  const exitCode = await spawnInteractiveClaude({
-    initialPrompt,
-    sessionId: session.session_id,
-    threadId: session.thread_id,
-    token,
-  });
-  process.exit(exitCode);
+  try {
+    const exitCode = await spawnInteractiveClaude({
+      initialPrompt,
+      sessionId: session.session_id,
+      threadId: session.thread_id,
+      token,
+      cursorFile,
+    });
+    process.exit(exitCode);
+  } finally {
+    rmSync(cursorFile, { force: true });
+  }
 }
 
 async function collectRepoMetadata(): Promise<{

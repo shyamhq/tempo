@@ -102,6 +102,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           ) : (
             <PlanEditor
               markdown={markdown}
+              comments={view.comments}
               onSave={onSave}
               onFocusComment={setFocusedCommentId}
               onEditorReady={setEditor}

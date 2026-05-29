@@ -29,7 +29,18 @@ function render(title: string, description: string): string {
 4. Draft and revise the Plan with tempo_write_plan. Pull the latest with tempo_pull_plan before each rewrite.
 5. Reply to Dev comments with tempo_post_reply (text, edit_done, or edit_proposed). Resolve threads with tempo_resolve_comment when addressed.
 6. Update the Dev on what you're doing via tempo_set_status.
-7. Poll for new Console events with tempo_poll between actions.
+
+# Polling loop
+
+After every meaningful action (drafting/revising the Plan, posting a Reply, answering a Round), you MUST:
+
+1. Call tempo_poll with the cursor of the most recent event you have seen. Start from the last_event_id returned by tempo_attach; advance it using the cursor returned by each tempo_poll response.
+2. Act on every event returned: tempo_post_reply for new Comments, tempo_pull_plan if plan_edited_by_dev appears, etc.
+3. Then call ScheduleWakeup(delaySeconds=30, prompt="Continue the Tempo planning loop. Call tempo_poll with the latest cursor and act on any new events. If the Thread is approved or the Dev told you to stop, do not schedule another wake.", reason="poll the Console for new Dev activity") so you re-wake in 30 seconds.
+
+Stop scheduling new wakeups only when (a) the Thread status becomes approved, or (b) the Dev tells you in chat to stop.
+
+A Stop hook will also nudge you with an "additionalContext" system reminder when new events arrive — when you see that nudge, call tempo_poll immediately on the next turn (use your own cursor from the last tempo_attach/tempo_poll response, not the cursor mentioned in the nudge).
 
 # Tools
 

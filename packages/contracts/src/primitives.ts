@@ -18,6 +18,11 @@ export type RoundId = z.infer<typeof RoundId>;
 export type EventId = z.infer<typeof EventId>;
 export type ConnectToken = z.infer<typeof ConnectToken>;
 
+// Sentinel matching newEventId(0) on the Console. Lexicographically less than
+// every real event ID, so passing it as a cursor to longPoll/readEventsAfter
+// returns all events since thread creation.
+export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
+
 export const ThreadStatus = z.enum(['unapproved', 'approved']);
 export const SessionStatus = z.enum(['pending', 'connected', 'disconnected']);
 export const ActivityLabel = z.enum(['exploring', 'thinking', 'drafting', 'writing', 'idle']);

@@ -1,5 +1,6 @@
 'use client';
 
+import type { Comment } from '@tempo/contracts';
 import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
@@ -8,6 +9,7 @@ import { MessageSquarePlus } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { useComposerStore } from '@/lib/stores/composer-store';
+import { findAnchor } from './anchor-find';
 import { CommentMark } from './comment-mark';
 
 // Plan editor. Markdown is the source of truth (D4) — the editor parses it
@@ -15,12 +17,14 @@ import { CommentMark } from './comment-mark';
 // on debounced save.
 export function PlanEditor({
   markdown,
+  comments,
   onSave,
   onFocusComment,
   onEditorReady,
   readOnly = false,
 }: {
   markdown: string;
+  comments: Comment[];
   onSave: (markdown: string) => void;
   onFocusComment?: (commentId: string | null) => void;
   onEditorReady?: (editor: Editor | null) => void;
@@ -33,6 +37,11 @@ export function PlanEditor({
   const setLastCreated = useComposerStore((s) => s.setLastCreated);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(markdown);
+  // Suppresses the debounced onSave while the re-apply effect below stamps
+  // CommentMarks for already-stored Comments. Without this guard, every
+  // re-apply tick would write the marks-stripped markdown back to the server,
+  // invalidate the cache, and re-run the effect — pong loop.
+  const reapplyingMarks = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -60,6 +69,7 @@ export function PlanEditor({
       },
     },
     onUpdate: ({ editor }) => {
+      if (reapplyingMarks.current) return;
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
         const md = (
@@ -84,6 +94,70 @@ export function PlanEditor({
     lastSaved.current = markdown;
     editor.commands.setContent(markdown, { emitUpdate: false });
   }, [markdown, editor]);
+
+  // Re-apply CommentMarks for stored Comments. Marks don't survive markdown
+  // serialization (html:false on the Markdown extension), so on every mount,
+  // external content swap, or change to the Comments list we need to find
+  // each anchor in the doc and stamp the mark back. `reapplyingMarks.current`
+  // suppresses the onSave debounce during this pass.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: markdown is the trigger that the prior effect just ran setContent and wiped marks; we must re-stamp after the doc swap.
+  useEffect(() => {
+    if (!editor) return;
+    if (composerOpen || lastCreatedCommentId) return;
+
+    // Walk text nodes and accumulate the union range per commentId. A mark
+    // applied across multiple text fragments (e.g. spanning a hard break) lands
+    // as one mark on each fragment; we want one combined range so unsetting
+    // covers the whole span in a single pass.
+    const existing = new Map<string, { from: number; to: number }>();
+    editor.state.doc.descendants((node, pos) => {
+      if (!node.isText) return true;
+      const mark = node.marks.find((m) => m.type.name === 'comment');
+      const id = mark?.attrs.commentId as string | null | undefined;
+      if (!id) return false;
+      const from = pos;
+      const to = pos + node.nodeSize;
+      const prev = existing.get(id);
+      existing.set(
+        id,
+        prev ? { from: Math.min(prev.from, from), to: Math.max(prev.to, to) } : { from, to },
+      );
+      return false;
+    });
+
+    const wanted = new Set(comments.map((c) => c.id));
+    const toUnset: { from: number; to: number }[] = [];
+    for (const [id, range] of existing) {
+      if (!wanted.has(id)) toUnset.push(range);
+    }
+
+    const toApply: { id: string; from: number; to: number }[] = [];
+    for (const c of comments) {
+      if (existing.has(c.id)) continue;
+      const range = findAnchor(editor.state.doc, c.plan_quote, c.plan_context);
+      if (range) toApply.push({ id: c.id, ...range });
+    }
+
+    if (toUnset.length === 0 && toApply.length === 0) return;
+
+    reapplyingMarks.current = true;
+    try {
+      let chain = editor.chain();
+      for (const r of toUnset) {
+        chain = chain.setTextSelection(r).unsetCommentMark();
+      }
+      for (const a of toApply) {
+        chain = chain.setTextSelection({ from: a.from, to: a.to }).setCommentMark(a.id);
+      }
+      chain.run();
+    } finally {
+      // Reset on a microtask so the synchronous onUpdate triggered by .run()
+      // sees the guard set.
+      queueMicrotask(() => {
+        reapplyingMarks.current = false;
+      });
+    }
+  }, [editor, comments, composerOpen, lastCreatedCommentId, markdown]);
 
   const startComment = useCallback(() => {
     if (!editor) return;
