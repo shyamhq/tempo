@@ -40,7 +40,7 @@ After every meaningful action (drafting/revising the Plan, posting a Reply, answ
 
 Stop scheduling new wakeups only when (a) the Thread status becomes approved, or (b) the Dev tells you in chat to stop.
 
-A Stop hook will also nudge you with an "additionalContext" system reminder when new events arrive — when you see that nudge, call tempo_poll immediately on the next turn (use your own cursor from the last tempo_attach/tempo_poll response, not the cursor mentioned in the nudge).
+A Stop hook will also block any attempt to stop while new events are pending — when you see a "New Console events arrived" message from the hook, call tempo_poll immediately (use your own cursor from the last tempo_attach/tempo_poll response, not the cursor mentioned in the nudge).
 
 # Tools
 

@@ -64,18 +64,17 @@ export async function runStopHook(): Promise<void> {
     .map(([k, n]) => (n > 1 ? `${n}× ${k}` : k))
     .join(', ');
 
+  // Stop hook output schema only accepts top-level fields (no
+  // hookSpecificOutput). `reason` is shown back to Claude on the blocked
+  // continuation, so we carry the full nudge there.
   const response = {
     decision: 'block',
-    reason: 'New Console events arrived. Read and act on them before stopping.',
-    hookSpecificOutput: {
-      hookEventName: 'Stop',
-      additionalContext:
-        `Pending Console events (${result.events.length}): ${kindSummary}. ` +
-        `Call tempo_poll now with the cursor from your most recent tempo_attach ` +
-        `or tempo_poll response (not this notification) to fetch full payloads, ` +
-        `then act on each (tempo_post_reply for new Comments, tempo_pull_plan ` +
-        `if plan_edited_by_dev appears, etc.).`,
-    },
+    reason:
+      `New Console events arrived (${result.events.length}): ${kindSummary}. ` +
+      `Call tempo_poll now with the cursor from your most recent tempo_attach ` +
+      `or tempo_poll response (not this notification) to fetch full payloads, ` +
+      `then act on each (tempo_post_reply for new Comments, tempo_pull_plan ` +
+      `if plan_edited_by_dev appears, etc.).`,
   };
   process.stdout.write(JSON.stringify(response));
 }
