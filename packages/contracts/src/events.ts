@@ -3,6 +3,7 @@ import {
   ActivityStatus,
   Comment,
   CommentId,
+  DiscussionMessage,
   EventId,
   IsoTimestamp,
   PendingRound,
@@ -92,6 +93,11 @@ export const SessionDisconnectedEvent = eventBase.extend({
   kind: z.literal('session_disconnected'),
 });
 
+export const DiscussionMessagePostedEvent = eventBase.extend({
+  kind: z.literal('discussion_message_posted'),
+  message: DiscussionMessage,
+});
+
 export const Event = z.discriminatedUnion('kind', [
   CommentAddedEvent,
   ReplyAddedEvent,
@@ -107,6 +113,7 @@ export const Event = z.discriminatedUnion('kind', [
   AgentToolUseEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
+  DiscussionMessagePostedEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -125,5 +132,6 @@ export const EventKind = z.enum([
   'agent_tool_use',
   'session_connected',
   'session_disconnected',
+  'discussion_message_posted',
 ]);
 export type EventKind = z.infer<typeof EventKind>;

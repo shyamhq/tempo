@@ -60,6 +60,42 @@
     monospace;
 
   --radius-pill: 9999px;
+
+  /* Adaptive three-column layout for the Thread view kicks in at 1600px so
+     the Plan never loses width to either the Comments rail or the Discussion
+     panel on smaller screens. Tailwind v4: override `2xl` via theme var. */
+  --breakpoint-2xl: 1600px;
+}
+
+/* Discussion FAB: subtle accent-ring pulse when a Clarification Round is
+   pending. 1.4s loop keeps the Dev's attention without being distracting.
+   Bound to --color-accent via color-mix so a brand-colour change updates the
+   pulse without touching this rule. */
+@keyframes discussion-fab-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-accent) 0%, transparent);
+  }
+}
+
+.discussion-fab-pulse {
+  animation: discussion-fab-pulse 1.4s ease-in-out infinite;
+}
+
+/* Discussion Message entry — short slide-up + opacity, single motion
+   vocabulary shared with the panel transition. */
+@keyframes discussion-message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 html {

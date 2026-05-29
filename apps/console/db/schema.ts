@@ -91,6 +91,20 @@ export const replies = sqliteTable('replies', {
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const discussion_messages = sqliteTable(
+  'discussion_messages',
+  {
+    id: text('id').primaryKey(),
+    thread_id: text('thread_id')
+      .notNull()
+      .references(() => threads.id),
+    author: text('author', { enum: ['dev', 'agent'] }).notNull(),
+    text: text('text').notNull(),
+    created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [index('idx_discussion_messages_thread').on(t.thread_id, t.created_at, t.id)],
+);
+
 export const clarification_rounds = sqliteTable('clarification_rounds', {
   id: text('id').primaryKey(),
   thread_id: text('thread_id')

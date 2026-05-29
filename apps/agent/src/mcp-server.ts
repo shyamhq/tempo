@@ -5,6 +5,7 @@ import {
   AskClarificationsInput,
   GetClarificationAnswersInput,
   PollInput,
+  PostDiscussionMessageInput,
   PostReplyInput,
   WritePlanInput,
 } from '@tempo/contracts/mcp';
@@ -72,6 +73,19 @@ export async function runStdioMcpServer(args: {
     async (args) => {
       const reply = await client.postReply(args.comment_id, args.payload);
       return wrap({ reply_id: reply.id });
+    },
+  );
+
+  server.registerTool(
+    'tempo_post_discussion_message',
+    {
+      description:
+        'Post a free-form Message in the Thread Discussion (unanchored, no Plan quote). Use for approach-level talk, not line-level pushback on the Plan (use tempo_post_reply for that).',
+      inputSchema: PostDiscussionMessageInput.shape,
+    },
+    async (args) => {
+      const message = await client.postDiscussionMessage(threadId, args.text);
+      return wrap({ message_id: message.id });
     },
   );
 

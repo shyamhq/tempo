@@ -4,6 +4,8 @@ import {
   ApproveThreadResponse,
   type CreateCommentRequest,
   CreateCommentResponse,
+  type CreateDiscussionMessageRequest,
+  CreateDiscussionMessageResponse,
   type CreateReplyRequest,
   CreateReplyResponse,
   type CreateThreadRequest,
@@ -110,4 +112,15 @@ export const api = {
 
   deleteThread: (threadId: string) =>
     request('DELETE', `/api/threads/${threadId}`, undefined, DeleteThreadResponse),
+
+  postDiscussionMessage: (
+    threadId: string,
+    input: z.infer<typeof CreateDiscussionMessageRequest>,
+  ) =>
+    request(
+      'POST',
+      `/api/threads/${threadId}/discussion/messages`,
+      input,
+      CreateDiscussionMessageResponse,
+    ),
 };

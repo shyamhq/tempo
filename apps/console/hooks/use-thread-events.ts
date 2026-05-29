@@ -15,10 +15,22 @@ export const toolFeedKey = (threadId: string) => ['thread', threadId, 'tool-feed
 // setQueryData so a single network stream feeds every Plan/Comment/Modal
 // subscriber. Reconnects automatically (the browser's EventSource handles
 // reconnects; we restart from the last applied event id).
-export function useThreadEvents(threadId: string, initialCursor: string) {
+//
+// `onPlanEditedByAgent` is the direct trigger for the "Plan updated by Agent"
+// UI (toast + editor ring pulse) — fired at the SSE boundary so it can't be
+// lost in a cache-diff race between updated_at and updated_by.
+export function useThreadEvents(
+  threadId: string,
+  initialCursor: string,
+  onPlanEditedByAgent?: () => void,
+) {
   const qc = useQueryClient();
   const cursorRef = useRef(initialCursor);
   cursorRef.current = initialCursor;
+  // Latest-ref so a new callback identity on every parent render doesn't
+  // re-subscribe the EventSource (the effect deps are [threadId, qc] only).
+  const planEditedByAgentRef = useRef(onPlanEditedByAgent);
+  planEditedByAgentRef.current = onPlanEditedByAgent;
 
   useEffect(() => {
     if (!threadId) return;
@@ -36,6 +48,7 @@ export function useThreadEvents(threadId: string, initialCursor: string) {
           const ev = parsed.data;
           cursorRef.current = ev.id;
           apply(qc, threadId, ev);
+          if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
         } catch {
           // ignore malformed frame
         }
@@ -113,9 +126,11 @@ function apply(
       case 'plan_edited_by_dev':
       case 'plan_edited_by_agent': {
         // Body markdown is fetched on refetch (the SSE event carries only the timestamp).
-        // Bump updated_at so subscribers see a change; consumers may invalidate to pull body.
+        // Bump updated_at + updated_by together so the two metadata fields can't disagree
+        // in the cache between the SSE write and the refetch landing.
+        const by: 'agent' | 'dev' = ev.kind === 'plan_edited_by_agent' ? 'agent' : 'dev';
         const body = next.plan.body
-          ? { ...next.plan.body, updated_at: ev.updated_at }
+          ? { ...next.plan.body, updated_at: ev.updated_at, updated_by: by }
           : next.plan.body;
         return { ...next, plan: { ...next.plan, body } };
       }
@@ -149,6 +164,13 @@ function apply(
         return { ...next, session_status: 'connected' };
       case 'session_disconnected':
         return { ...next, session_status: 'disconnected' };
+      case 'discussion_message_posted': {
+        if (next.discussion.messages.some((m) => m.id === ev.message.id)) return next;
+        return {
+          ...next,
+          discussion: { messages: [...next.discussion.messages, ev.message] },
+        };
+      }
       default:
         return next;
     }

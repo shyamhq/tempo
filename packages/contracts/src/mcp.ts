@@ -5,8 +5,10 @@ import {
   Answer,
   Comment,
   CommentId,
+  DiscussionMessage,
   EventId,
   IsoTimestamp,
+  MessageId,
   PendingRound,
   Plan,
   Question,
@@ -24,6 +26,9 @@ export const AttachOutput = z.object({
   plan: Plan,
   pending_round: PendingRound.nullable(),
   comments: z.array(Comment),
+  discussion: z.object({
+    messages: z.array(DiscussionMessage),
+  }),
   last_event_id: EventId,
 });
 
@@ -74,6 +79,13 @@ export const PostReplyOutput = z.object({
   reply_id: ReplyId,
 });
 
+export const PostDiscussionMessageInput = z.object({
+  text: z.string().min(1).max(8_000),
+});
+export const PostDiscussionMessageOutput = z.object({
+  message_id: MessageId,
+});
+
 export const SetStatusInput = ActivityStatus;
 export const SetStatusOutput = z.object({
   ok: z.literal(true),
@@ -87,6 +99,7 @@ export const McpTool = z.enum([
   'tempo_get_clarification_answers',
   'tempo_poll',
   'tempo_post_reply',
+  'tempo_post_discussion_message',
   'tempo_set_status',
 ]);
 export type McpTool = z.infer<typeof McpTool>;
@@ -94,6 +107,7 @@ export type McpTool = z.infer<typeof McpTool>;
 export const McpErrorCode = z.enum([
   'thread_approved',
   'round_already_pending',
+  'round_pending',
   'round_not_found',
   'comment_not_found',
   'session_not_found',

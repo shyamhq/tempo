@@ -58,6 +58,15 @@ export function CommentsCanvas({
     [comments, positions, pendingY, composerOpen, focusedCommentId, heights],
   );
 
+  const canvasHeight = useMemo(() => {
+    let maxBottom = 0;
+    for (const [id, y] of layout.placements) {
+      const h = heights.get(id) ?? 0;
+      if (y + h > maxBottom) maxBottom = y + h;
+    }
+    return Math.max(editorHeight, maxBottom);
+  }, [layout.placements, heights, editorHeight]);
+
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       if (!focusedCommentId) return;
@@ -84,7 +93,7 @@ export function CommentsCanvas({
     <div
       ref={setContainerEl}
       className="relative"
-      style={{ minHeight: editorHeight ? `${editorHeight}px` : undefined }}
+      style={{ minHeight: canvasHeight ? `${canvasHeight}px` : undefined }}
     >
       {!hasAnything ? (
         <p className="text-xs text-ink-tertiary py-4 text-center border border-dashed border-hairline rounded-md">
@@ -206,7 +215,7 @@ function computeLayout({
   const focusedIdx = focusedId ? entries.findIndex((e) => e.id === focusedId) : -1;
 
   if (focusedIdx === -1) {
-    let cursor = -Infinity;
+    let cursor = -CARD_GAP;
     for (const e of entries) {
       const placed = Math.max(e.anchorY, cursor + CARD_GAP);
       placements.set(e.id, placed);
@@ -223,7 +232,7 @@ function computeLayout({
   for (let i = focusedIdx - 1; i >= 0; i--) {
     // biome-ignore lint/style/noNonNullAssertion: i is in-bounds by loop condition
     const e = entries[i]!;
-    const desired = Math.min(e.anchorY, upBottom - CARD_GAP - e.height);
+    const desired = Math.max(0, Math.min(e.anchorY, upBottom - CARD_GAP - e.height));
     placements.set(e.id, desired);
     upBottom = desired;
   }

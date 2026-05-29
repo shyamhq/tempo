@@ -40,7 +40,13 @@ A Dev-authored note anchored to a quoted text range in the current Plan. Anchore
 A flat-listed follow-up on a Comment. Either Dev or Agent can post. Agent Replies carry one of three payloads (D18): `text`, `edit_done`, or `edit_proposed`. Proposed edits surface inline Approve/Reject buttons; only Approve mutates the Plan (D18). Reject may carry an optional reason text (D23).
 
 ### Clarification Round
-A structured batch of questions the Agent posts to the Dev (D10). Three question types (D14): `single_choice`, `multi_choice`, `open_text`. Choice questions may allow a `Other (specify)` write-in. All questions in a Round are required. At most one Round in `pending` state per Thread (D12); a pending Round blocks Plan and Comments via a modal (D13). Answered atomically.
+A structured batch of questions the Agent posts to the Dev (D10). Three question types (D14): `single_choice`, `multi_choice`, `open_text`. Choice questions may allow a `Other (specify)` write-in. All questions in a Round are required. At most one Round in `pending` state per Thread (D12); a pending Round blocks Plan, Comments, and Dev Discussion input (D13 — amended D31: the Round renders inline in the Discussion panel as a structured card, not a modal). Answered atomically.
+
+### Discussion
+A singleton (one per Thread) free-form channel between Dev and Agent for unanchored, approach-level talk — questions about the approach, the codebase, the Agent's reasoning. Distinct from Comments (which are anchored to a Plan text range) and Clarification Rounds (which are Agent-initiated structured forms). Append-only stream of Messages. Frozen when the Thread is `approved` and unfrozen on Reopen — same lifecycle as Plan + Comments. Stays in the Thread; not part of the handoff payload (D3). Lives in a toggleable left-side panel in the Console (D31); when a Round is pending the panel auto-opens and the Dev composer is disabled.
+
+### Message
+One entry in a Discussion. Authored by Dev or Agent. Text only — no anchor, no resolved state, no edit-proposal payloads (those belong on Replies, which require an anchor). Append-only (D20). Rendered with the same markdown pipeline as Reply text (`MarkdownText`).
 
 ### Handoff card
 The post-Approve UI element: a card containing a Copy Plan button + a metadata header (Thread title + Thread URL) prepended to the copied markdown (D22). The Dev pastes the result into a fresh Claude Code session to begin execution. Tempo does not re-enter the picture after handoff (D3).

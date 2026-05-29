@@ -6,6 +6,7 @@ import {
   Comment,
   CommentId,
   ConnectToken,
+  DiscussionMessage,
   EventId,
   IsoTimestamp,
   PendingRound,
@@ -52,6 +53,9 @@ export const GetThreadResponse = z.object({
   plan: Plan,
   pending_round: PendingRound.nullable(),
   comments: z.array(Comment),
+  discussion: z.object({
+    messages: z.array(DiscussionMessage),
+  }),
   session_status: SessionStatus,
   // Repo chrome for the Thread header (D5). Drawn from the latest connected
   // session's `attached_repo_*`. Both null when no session has connected yet.
@@ -151,6 +155,12 @@ export const AnswerRoundRequest = z.object({
   answers: z.array(Answer).min(1),
 });
 export const AnswerRoundResponse = z.object({ ok: z.literal(true) });
+
+// POST /api/threads/:id/discussion/messages
+export const CreateDiscussionMessageRequest = z.object({
+  text: z.string().min(1).max(8_000),
+});
+export const CreateDiscussionMessageResponse = DiscussionMessage;
 
 // POST /api/threads/:id/approve
 export const ApproveThreadResponse = z.object({ ok: z.literal(true) });

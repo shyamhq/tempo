@@ -5,10 +5,11 @@ import type { GetThreadResponse } from '@tempo/contracts/http';
 import type { Editor } from '@tiptap/core';
 import { ArrowLeft, GitBranch, Loader2, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { z } from 'zod';
-import { ClarificationModal } from '@/components/thread/clarification-modal';
 import { CommentsRail } from '@/components/thread/comments-rail';
+import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
+import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanEditor } from '@/components/thread/editor/editor';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { ActivityPill, SessionPill } from '@/components/thread/pills';
@@ -27,12 +28,21 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     staleTime: 30_000,
   });
 
-  useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id);
-
   const [editor, setEditor] = useState<Editor | null>(null);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
+  const [userOpenedDiscussion, setUserOpenedDiscussion] = useState(false);
+  const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
+
+  useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id, () =>
+    setPlanUpdatedAt(Date.now()),
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setDiscussionSeenAt(window.localStorage.getItem(`tempo:thread:${threadId}:discussion_seen_at`));
+  }, [threadId]);
 
   useEffect(() => {
     if (planUpdatedAt === null) return;
@@ -42,24 +52,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const view = data ?? initial;
   const markdown = view.plan.body?.markdown ?? '';
-  const planUpdatedAtIso = view.plan.body?.updated_at ?? null;
-  const planUpdatedBy = view.plan.body?.updated_by ?? null;
-  const lastSeenPlanUpdate = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (planUpdatedAtIso === null) {
-      lastSeenPlanUpdate.current = null;
-      return;
-    }
-    if (lastSeenPlanUpdate.current === null) {
-      lastSeenPlanUpdate.current = planUpdatedAtIso;
-      return;
-    }
-    if (planUpdatedAtIso !== lastSeenPlanUpdate.current) {
-      lastSeenPlanUpdate.current = planUpdatedAtIso;
-      if (planUpdatedBy === 'agent') setPlanUpdatedAt(Date.now());
-    }
-  }, [planUpdatedAtIso, planUpdatedBy]);
 
   const onSave = useCallback(
     async (md: string) => {
@@ -94,10 +86,50 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const approved = view.status === 'approved';
 
+  // Single source of truth for D13 blocking enforcement: `pending_round !== null`
+  // forces the panel open, hides its close button, and disables the composer.
+  // User-opened state (userOpenedDiscussion) controls the panel otherwise.
+  const discussionOpen = userOpenedDiscussion || view.pending_round !== null;
+
+  const unreadCount = useMemo(() => {
+    if (discussionOpen) return 0;
+    if (!discussionSeenAt) {
+      return view.discussion.messages.filter((m) => m.author === 'agent').length;
+    }
+    return view.discussion.messages.filter(
+      (m) => m.author === 'agent' && m.created_at > discussionSeenAt,
+    ).length;
+  }, [view.discussion.messages, discussionSeenAt, discussionOpen]);
+
+  const openDiscussion = useCallback(() => setUserOpenedDiscussion(true), []);
+  const closeDiscussion = useCallback(() => setUserOpenedDiscussion(false), []);
+  const markOpened = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const now = new Date().toISOString();
+    window.localStorage.setItem(`tempo:thread:${threadId}:discussion_seen_at`, now);
+    setDiscussionSeenAt(now);
+  }, [threadId]);
+
+  const gridClass = discussionOpen
+    ? 'grid-cols-[360px_1fr] 2xl:grid-cols-[360px_1fr_360px]'
+    : 'grid-cols-1 lg:grid-cols-[1fr_360px]';
+
+  // Onkeydown for ⌘/ panel toggle — only when no Round is pending (Round-sticky).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '/' && !view.pending_round) {
+        e.preventDefault();
+        setUserOpenedDiscussion((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [view.pending_round]);
+
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-hairline bg-canvas/85 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-6 h-14 flex items-center gap-3">
+        <div className="mx-auto max-w-[1600px] px-6 h-14 flex items-center gap-3">
           <Link href="/" className="text-ink-subtle hover:text-ink" aria-label="Back to Threads">
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -120,7 +152,21 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-6 py-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
+      <div className={`mx-auto max-w-[1600px] px-6 py-6 grid gap-6 ${gridClass}`}>
+        {discussionOpen ? (
+          <aside className="h-[calc(100dvh-3.5rem-3rem)] sticky top-[calc(3.5rem+1.5rem)]">
+            <DiscussionPanel
+              threadId={threadId}
+              messages={view.discussion.messages}
+              pendingRound={view.pending_round}
+              approved={approved}
+              sessionStatus={view.session_status}
+              onClose={closeDiscussion}
+              onOpened={markOpened}
+            />
+          </aside>
+        ) : null}
+
         <section>
           {approved ? <HandoffBanner planMarkdown={markdown} /> : null}
           {view.plan.body === null ? (
@@ -144,7 +190,10 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             </div>
           )}
         </section>
-        <aside>
+
+        {/* Comments rail visible at all viewports when Discussion is closed; on
+            ≥1600px it stays visible alongside an open Discussion. */}
+        <aside className={`self-start ${discussionOpen ? 'hidden 2xl:block' : ''}`}>
           <CommentsRail
             threadId={threadId}
             comments={view.comments}
@@ -167,7 +216,12 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      {view.pending_round ? <ClarificationModal round={view.pending_round} /> : null}
+      <DiscussionButton
+        open={discussionOpen}
+        unreadCount={unreadCount}
+        roundPending={view.pending_round !== null}
+        onClick={openDiscussion}
+      />
     </div>
   );
 }

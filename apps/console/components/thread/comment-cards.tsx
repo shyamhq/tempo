@@ -1,7 +1,7 @@
 'use client';
 
 import type { Comment, Reply } from '@tempo/contracts';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api-client';
@@ -73,6 +73,26 @@ export function CommentCard({
 }) {
   const [replyDraft, setReplyDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [firstReplyOverflows, setFirstReplyOverflows] = useState(false);
+  const firstReplyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!focused) setExpanded(false);
+  }, [focused]);
+
+  const effectivelyExpanded = focused || expanded;
+
+  useLayoutEffect(() => {
+    if (effectivelyExpanded) return;
+    const el = firstReplyRef.current;
+    if (!el) return;
+    const check = () => setFirstReplyOverflows(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [effectivelyExpanded, comment.replies]);
 
   const sendReply = async () => {
     if (!replyDraft.trim()) return;
@@ -101,10 +121,12 @@ export function CommentCard({
 
   const resolved = comment.resolved_by !== null;
   const border = focused ? 'border-2 border-accent' : 'border-hairline';
+  const firstReply = comment.replies[0];
+  const extraReplyCount = Math.max(0, comment.replies.length - 1);
+  const showMoreVisible = !effectivelyExpanded && (firstReplyOverflows || extraReplyCount > 0);
 
   return (
     <div
-      data-comment-id={comment.id}
       onClick={onFocus}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -117,23 +139,67 @@ export function CommentCard({
       className={`rounded-md border bg-surface-1 ${border} p-3 cursor-pointer transition-colors`}
       title={comment.plan_quote ?? undefined}
     >
-      <div className="space-y-2">
-        {comment.replies.map((r) => (
-          <ReplyRow key={r.id} reply={r} />
-        ))}
-      </div>
-      {!resolved ? (
-        <div className="mt-2">
-          <Textarea
-            placeholder="Reply…"
-            value={replyDraft}
-            onChange={(e) => setReplyDraft(e.target.value)}
-            onKeyDown={onReplyKeyDown}
-            onClick={(e) => e.stopPropagation()}
-            rows={2}
-            className="text-xs"
-          />
-          <div className="mt-2 flex items-center justify-between">
+      {effectivelyExpanded ? (
+        <div className="space-y-2">
+          {comment.replies.map((r) => (
+            <ReplyRow key={r.id} reply={r} />
+          ))}
+        </div>
+      ) : firstReply ? (
+        <ReplyRow reply={firstReply} bodyRef={firstReplyRef} clamp />
+      ) : null}
+
+      {showMoreVisible ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded(true);
+          }}
+          className="mt-2 text-xs text-accent-hover hover:underline"
+        >
+          Show more{extraReplyCount > 0 ? ` (${extraReplyCount} ${extraReplyCount === 1 ? 'reply' : 'replies'})` : ''}
+        </button>
+      ) : null}
+
+      {effectivelyExpanded ? (
+        !resolved ? (
+          <div className="mt-2">
+            <Textarea
+              placeholder="Reply…"
+              value={replyDraft}
+              onChange={(e) => setReplyDraft(e.target.value)}
+              onKeyDown={onReplyKeyDown}
+              onClick={(e) => e.stopPropagation()}
+              rows={2}
+              className="text-xs"
+            />
+            <div className="mt-2 flex items-center justify-between">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void toggleResolve();
+                }}
+              >
+                Resolve
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={submitting || !replyDraft.trim()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void sendReply();
+                }}
+              >
+                Reply
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-2 flex justify-end">
             <Button
               variant="ghost"
               size="sm"
@@ -142,40 +208,24 @@ export function CommentCard({
                 void toggleResolve();
               }}
             >
-              Resolve
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={submitting || !replyDraft.trim()}
-              onClick={(e) => {
-                e.stopPropagation();
-                void sendReply();
-              }}
-            >
-              Reply
+              Unresolve
             </Button>
           </div>
-        </div>
-      ) : (
-        <div className="mt-2 flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              void toggleResolve();
-            }}
-          >
-            Unresolve
-          </Button>
-        </div>
-      )}
+        )
+      ) : null}
     </div>
   );
 }
 
-function ReplyRow({ reply }: { reply: Reply }) {
+function ReplyRow({
+  reply,
+  bodyRef,
+  clamp = false,
+}: {
+  reply: Reply;
+  bodyRef?: React.RefObject<HTMLDivElement | null>;
+  clamp?: boolean;
+}) {
   const isEditProposed = reply.payload.type === 'edit_proposed';
   const isEditDone = reply.payload.type === 'edit_done';
 
@@ -196,7 +246,9 @@ function ReplyRow({ reply }: { reply: Reply }) {
         ) : null}
         {isEditDone ? <span className="text-[10px] text-success">edit applied</span> : null}
       </div>
-      <MarkdownText text={text} />
+      <div ref={bodyRef} className={clamp ? 'line-clamp-3' : undefined}>
+        <MarkdownText text={text} />
+      </div>
       {isEditProposed && reply.payload.type === 'edit_proposed' ? (
         <div className="mt-2 rounded border border-hairline bg-surface-3 p-2 text-[11px] font-mono text-ink-muted whitespace-pre-wrap">
           {reply.payload.replacement}

@@ -6,8 +6,9 @@ import { useEffect, useState } from 'react';
 // Reads anchor y-coordinates of every CommentMark span (saved + pending) in
 // the editor's DOM, normalised to a container element so the rail's canvas
 // can absolutely-position cards aligned with their text. Recomputes on
-// editor updates (debounced), editor-DOM resizes, window resize, and window
-// scroll — see resolved U6 in .plans/comments-docs-style.md.
+// editor updates (debounced), editor-DOM resizes, and window resize. Page
+// and rail scroll are not triggers: positions are container-relative and
+// invariant under either scroll.
 export function useAnchorPositions(
   editor: Editor | null,
   containerEl: HTMLElement | null,
@@ -61,7 +62,6 @@ export function useAnchorPositions(
     resizeObserver.observe(root);
 
     window.addEventListener('resize', schedule, { passive: true });
-    window.addEventListener('scroll', schedule, { passive: true });
 
     schedule();
 
@@ -71,7 +71,6 @@ export function useAnchorPositions(
       editor.off('update', onEditorUpdate);
       resizeObserver.disconnect();
       window.removeEventListener('resize', schedule);
-      window.removeEventListener('scroll', schedule);
     };
   }, [editor, containerEl]);
 

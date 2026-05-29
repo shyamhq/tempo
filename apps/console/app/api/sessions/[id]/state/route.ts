@@ -1,4 +1,5 @@
 import { listCommentsForThread } from '../../../../../server/comments';
+import { listMessagesForThread } from '../../../../../server/discussion';
 import { latestEventId } from '../../../../../server/event-log';
 import { err, ok } from '../../../../../server/http';
 import { getPlan } from '../../../../../server/plan';
@@ -12,10 +13,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!session) return err('session_not_found', 404);
   const thread = await getThread(session.thread_id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, pending_round, comments, last_event_id] = await Promise.all([
+  const [plan, pending_round, comments, messages, last_event_id] = await Promise.all([
     getPlan(thread.id),
     getPendingRound(thread.id),
     listCommentsForThread(thread.id),
+    listMessagesForThread(thread.id),
     latestEventId(thread.id),
   ]);
   return ok({
@@ -23,6 +25,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     plan,
     pending_round,
     comments,
+    discussion: { messages },
     last_event_id,
   });
 }

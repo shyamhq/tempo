@@ -10,6 +10,7 @@ import type {
   ThreadId,
 } from '@tempo/contracts';
 import {
+  CreateDiscussionMessageResponse,
   CreateReplyResponse,
   CreateSessionResponse,
   EventsLongPollResponse,
@@ -96,6 +97,15 @@ export class ConsoleClient {
       `/api/comments/${commentId}/replies`,
       { payload },
       CreateReplyResponse,
+    );
+  }
+
+  postDiscussionMessage(threadId: ThreadId, text: string) {
+    return this.send(
+      'POST',
+      `/api/threads/${threadId}/discussion/messages`,
+      { text },
+      CreateDiscussionMessageResponse,
     );
   }
 

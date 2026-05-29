@@ -5,6 +5,7 @@ import { defaultWorkspaceId } from '../db/ids';
 import {
   clarification_rounds,
   comments,
+  discussion_messages,
   events,
   plans,
   replies,
@@ -97,6 +98,7 @@ export async function deleteThread(threadId: string): Promise<void> {
       await tx.delete(replies).where(inArray(replies.comment_id, commentIds));
     }
     await tx.delete(comments).where(eq(comments.thread_id, threadId));
+    await tx.delete(discussion_messages).where(eq(discussion_messages.thread_id, threadId));
     await tx.delete(clarification_rounds).where(eq(clarification_rounds.thread_id, threadId));
     await tx.delete(events).where(eq(events.thread_id, threadId));
     await tx.delete(sessions).where(eq(sessions.thread_id, threadId));

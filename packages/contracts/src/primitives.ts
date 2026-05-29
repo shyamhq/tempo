@@ -6,6 +6,7 @@ export const PlanId = z.string().regex(/^pln_[A-Z0-9]{26}$/);
 export const CommentId = z.string().regex(/^cmt_[A-Z0-9]{26}$/);
 export const ReplyId = z.string().regex(/^rep_[A-Z0-9]{26}$/);
 export const RoundId = z.string().regex(/^rnd_[A-Z0-9]{26}$/);
+export const MessageId = z.string().regex(/^msg_[A-Z0-9]{26}$/);
 export const EventId = z.string().regex(/^evt_[0-9]{14,}$/);
 export const ConnectToken = z.string().regex(/^tmp_[A-Za-z0-9_-]{32,}$/);
 
@@ -15,6 +16,7 @@ export type PlanId = z.infer<typeof PlanId>;
 export type CommentId = z.infer<typeof CommentId>;
 export type ReplyId = z.infer<typeof ReplyId>;
 export type RoundId = z.infer<typeof RoundId>;
+export type MessageId = z.infer<typeof MessageId>;
 export type EventId = z.infer<typeof EventId>;
 export type ConnectToken = z.infer<typeof ConnectToken>;
 
@@ -155,3 +157,12 @@ export const Comment = z.object({
   replies: z.array(Reply),
 });
 export type Comment = z.infer<typeof Comment>;
+
+export const DiscussionMessage = z.object({
+  id: MessageId,
+  thread_id: ThreadId,
+  author: Actor,
+  text: z.string().min(1).max(8_000),
+  created_at: IsoTimestamp,
+});
+export type DiscussionMessage = z.infer<typeof DiscussionMessage>;
