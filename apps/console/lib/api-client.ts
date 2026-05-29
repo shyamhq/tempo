@@ -10,6 +10,7 @@ import {
   CreateThreadResponse,
   type DecideProposalRequest,
   DecideProposalResponse,
+  DeleteThreadResponse,
   GetThreadResponse,
   ListThreadsResponse,
   type OpenRoundRequest,
@@ -106,4 +107,7 @@ export const api = {
 
   reopenThread: (threadId: string) =>
     request('POST', `/api/threads/${threadId}/reopen`, {}, ReopenThreadResponse),
+
+  deleteThread: (threadId: string) =>
+    request('DELETE', `/api/threads/${threadId}`, undefined, DeleteThreadResponse),
 };

@@ -1,8 +1,16 @@
 import type { ThreadSummary } from '@tempo/contracts';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { defaultWorkspaceId } from '../db/ids';
-import { plans, sessions, threads } from '../db/schema';
+import {
+  clarification_rounds,
+  comments,
+  events,
+  plans,
+  replies,
+  sessions,
+  threads,
+} from '../db/schema';
 import { newPlanId, newThreadId } from './ids';
 import { mintConnectToken } from './tokens';
 
@@ -69,6 +77,32 @@ export async function approveThread(threadId: string) {
     .update(threads)
     .set({ status: 'approved', updated_at: nowIso() })
     .where(eq(threads.id, threadId));
+}
+
+export async function deleteThread(threadId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [t] = await tx
+      .select({ id: threads.id })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .limit(1);
+    if (!t) throw new Error('thread_not_found');
+
+    const commentRows = await tx
+      .select({ id: comments.id })
+      .from(comments)
+      .where(eq(comments.thread_id, threadId));
+    const commentIds = commentRows.map((c) => c.id);
+    if (commentIds.length > 0) {
+      await tx.delete(replies).where(inArray(replies.comment_id, commentIds));
+    }
+    await tx.delete(comments).where(eq(comments.thread_id, threadId));
+    await tx.delete(clarification_rounds).where(eq(clarification_rounds.thread_id, threadId));
+    await tx.delete(events).where(eq(events.thread_id, threadId));
+    await tx.delete(sessions).where(eq(sessions.thread_id, threadId));
+    await tx.delete(plans).where(eq(plans.thread_id, threadId));
+    await tx.delete(threads).where(eq(threads.id, threadId));
+  });
 }
 
 export async function reopenThread(threadId: string) {

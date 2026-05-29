@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { DeleteThreadButton } from '@/components/dashboard/delete-thread-button';
 import { NewThreadDialog } from '@/components/dashboard/new-thread-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardBody } from '@/components/ui/card';
@@ -48,6 +49,7 @@ export default async function DashboardPage() {
                       <span className="text-xs text-ink-tertiary ml-auto">
                         {new Date(t.updated_at).toLocaleString()}
                       </span>
+                      <DeleteThreadButton threadId={t.id} title={t.title} />
                     </div>
                   </CardBody>
                 </Card>
