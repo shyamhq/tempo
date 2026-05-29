@@ -3,9 +3,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import type { Editor } from '@tiptap/core';
-import { ArrowLeft, GitBranch, Loader2 } from 'lucide-react';
+import { ArrowLeft, GitBranch, Loader2, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { ClarificationModal } from '@/components/thread/clarification-modal';
 import { CommentsRail } from '@/components/thread/comments-rail';
@@ -32,9 +32,34 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const [editor, setEditor] = useState<Editor | null>(null);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
+  const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (planUpdatedAt === null) return;
+    const t = setTimeout(() => setPlanUpdatedAt(null), 3500);
+    return () => clearTimeout(t);
+  }, [planUpdatedAt]);
 
   const view = data ?? initial;
   const markdown = view.plan.body?.markdown ?? '';
+  const planUpdatedAtIso = view.plan.body?.updated_at ?? null;
+  const planUpdatedBy = view.plan.body?.updated_by ?? null;
+  const lastSeenPlanUpdate = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (planUpdatedAtIso === null) {
+      lastSeenPlanUpdate.current = null;
+      return;
+    }
+    if (lastSeenPlanUpdate.current === null) {
+      lastSeenPlanUpdate.current = planUpdatedAtIso;
+      return;
+    }
+    if (planUpdatedAtIso !== lastSeenPlanUpdate.current) {
+      lastSeenPlanUpdate.current = planUpdatedAtIso;
+      if (planUpdatedBy === 'agent') setPlanUpdatedAt(Date.now());
+    }
+  }, [planUpdatedAtIso, planUpdatedBy]);
 
   const onSave = useCallback(
     async (md: string) => {
@@ -101,23 +126,28 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           {view.plan.body === null ? (
             <EmptyPlanState threadId={threadId} />
           ) : (
-            <PlanEditor
-              markdown={markdown}
-              comments={view.comments}
-              showResolved={showResolved}
-              focusedCommentId={focusedCommentId}
-              onSave={onSave}
-              onFocusComment={setFocusedCommentId}
-              onEditorReady={setEditor}
-              readOnly={approved}
-            />
+            <div
+              className={`rounded-md transition-shadow duration-700 ${
+                planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
+              }`}
+            >
+              <PlanEditor
+                markdown={markdown}
+                comments={view.comments}
+                showResolved={showResolved}
+                focusedCommentId={focusedCommentId}
+                onSave={onSave}
+                onFocusComment={setFocusedCommentId}
+                onEditorReady={setEditor}
+                readOnly={approved}
+              />
+            </div>
           )}
         </section>
         <aside>
           <CommentsRail
             threadId={threadId}
             comments={view.comments}
-            archivedComments={view.archived_comments}
             editor={editor}
             showResolved={showResolved}
             onShowResolvedChange={setShowResolved}
@@ -126,6 +156,16 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           />
         </aside>
       </div>
+
+      {planUpdatedAt ? (
+        <div
+          key={planUpdatedAt}
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-accent/40 bg-accent text-on-accent px-4 py-2 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-2 duration-300"
+        >
+          <Sparkles className="h-4 w-4" />
+          Plan updated by Agent
+        </div>
+      ) : null}
 
       {view.pending_round ? <ClarificationModal round={view.pending_round} /> : null}
     </div>

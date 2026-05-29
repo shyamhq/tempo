@@ -52,7 +52,6 @@ export const GetThreadResponse = z.object({
   plan: Plan,
   pending_round: PendingRound.nullable(),
   comments: z.array(Comment),
-  archived_comments: z.array(Comment),
   session_status: SessionStatus,
   // Repo chrome for the Thread header (D5). Drawn from the latest connected
   // session's `attached_repo_*`. Both null when no session has connected yet.

@@ -15,7 +15,6 @@ import {
   EventsLongPollResponse,
   GetPlanResponse,
   OpenRoundResponse,
-  ResolveCommentResponse,
   SetActivityStatusResponse,
   WritePlanResponse,
 } from '@tempo/contracts/http';
@@ -98,10 +97,6 @@ export class ConsoleClient {
       { payload },
       CreateReplyResponse,
     );
-  }
-
-  resolveComment(commentId: CommentId) {
-    return this.send('POST', `/api/comments/${commentId}/resolve`, {}, ResolveCommentResponse);
   }
 
   private async send<T>(

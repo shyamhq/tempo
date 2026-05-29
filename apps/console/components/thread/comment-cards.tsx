@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api-client';
 import { useComposerStore } from '@/lib/stores/composer-store';
+import { MarkdownText } from './markdown-text';
 
 export function NewCommentCard({ threadId }: { threadId: string }) {
   const { plan_quote, plan_context, draft, setDraft, cancel, setLastCreated } = useComposerStore();
@@ -63,12 +64,10 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
 
 export function CommentCard({
   comment,
-  archived = false,
   focused = false,
   onFocus,
 }: {
   comment: Comment;
-  archived?: boolean;
   focused?: boolean;
   onFocus?: () => void;
 }) {
@@ -118,15 +117,12 @@ export function CommentCard({
       className={`rounded-md border bg-surface-1 ${border} p-3 cursor-pointer transition-colors`}
       title={comment.plan_quote ?? undefined}
     >
-      {archived ? (
-        <p className="text-xs text-ink-tertiary mb-2 italic line-clamp-2">“{comment.plan_quote}”</p>
-      ) : null}
       <div className="space-y-2">
         {comment.replies.map((r) => (
           <ReplyRow key={r.id} reply={r} />
         ))}
       </div>
-      {!archived && !resolved ? (
+      {!resolved ? (
         <div className="mt-2">
           <Textarea
             placeholder="Reply…"
@@ -161,7 +157,7 @@ export function CommentCard({
             </Button>
           </div>
         </div>
-      ) : !archived && resolved ? (
+      ) : (
         <div className="mt-2 flex justify-end">
           <Button
             variant="ghost"
@@ -174,7 +170,7 @@ export function CommentCard({
             Unresolve
           </Button>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -200,7 +196,7 @@ function ReplyRow({ reply }: { reply: Reply }) {
         ) : null}
         {isEditDone ? <span className="text-[10px] text-success">edit applied</span> : null}
       </div>
-      <p className="text-xs text-ink whitespace-pre-wrap">{text}</p>
+      <MarkdownText text={text} />
       {isEditProposed && reply.payload.type === 'edit_proposed' ? (
         <div className="mt-2 rounded border border-hairline bg-surface-3 p-2 text-[11px] font-mono text-ink-muted whitespace-pre-wrap">
           {reply.payload.replacement}

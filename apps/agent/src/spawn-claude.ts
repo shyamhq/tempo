@@ -27,7 +27,6 @@ const TEMPO_TOOL_NAMES = [
   'mcp__tempo__tempo_get_clarification_answers',
   'mcp__tempo__tempo_poll',
   'mcp__tempo__tempo_post_reply',
-  'mcp__tempo__tempo_resolve_comment',
   'mcp__tempo__tempo_set_status',
   // ScheduleWakeup powers the polling-loop heartbeat described in the
   // server-rendered initial prompt: the Agent schedules its own re-wake every

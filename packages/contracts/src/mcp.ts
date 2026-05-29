@@ -74,13 +74,6 @@ export const PostReplyOutput = z.object({
   reply_id: ReplyId,
 });
 
-export const ResolveCommentInput = z.object({
-  comment_id: CommentId,
-});
-export const ResolveCommentOutput = z.object({
-  ok: z.literal(true),
-});
-
 export const SetStatusInput = ActivityStatus;
 export const SetStatusOutput = z.object({
   ok: z.literal(true),
@@ -94,7 +87,6 @@ export const McpTool = z.enum([
   'tempo_get_clarification_answers',
   'tempo_poll',
   'tempo_post_reply',
-  'tempo_resolve_comment',
   'tempo_set_status',
 ]);
 export type McpTool = z.infer<typeof McpTool>;

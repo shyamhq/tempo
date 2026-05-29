@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 
 export const workspaces = sqliteTable('workspaces', {
   id: text('id').primaryKey(),
@@ -64,8 +71,7 @@ export const comments = sqliteTable('comments', {
   plan_quote: text('plan_quote').notNull(),
   plan_context: text('plan_context').notNull(),
   anchor_offset_hint: integer('anchor_offset_hint'),
-  resolved_by: text('resolved_by', { enum: ['dev', 'agent'] }),
-  archived_at: text('archived_at'),
+  resolved_by: text('resolved_by', { enum: ['dev'] }),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -102,7 +108,7 @@ export const clarification_rounds = sqliteTable('clarification_rounds', {
 export const events = sqliteTable(
   'events',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull(),
     thread_id: text('thread_id')
       .notNull()
       .references(() => threads.id),
@@ -110,5 +116,8 @@ export const events = sqliteTable(
     payload_json: text('payload_json', { mode: 'json' }).notNull(),
     created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   },
-  (t) => [index('idx_events_thread_id').on(t.thread_id, t.id)],
+  (t) => [
+    primaryKey({ columns: [t.thread_id, t.id] }),
+    index('idx_events_thread_id').on(t.thread_id, t.id),
+  ],
 );

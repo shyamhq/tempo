@@ -30,7 +30,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const thread = await getThread(id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, pending_round, { active, archived }, session_status, repo, activity, last_event_id] =
+  const [plan, pending_round, comments, session_status, repo, activity, last_event_id] =
     await Promise.all([
       getPlan(id),
       getPendingRound(id),
@@ -45,8 +45,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     status: thread.status,
     plan,
     pending_round,
-    comments: active,
-    archived_comments: archived,
+    comments,
     session_status,
     attached_repo_remote: repo.attached_repo_remote,
     attached_repo_path: repo.attached_repo_path,

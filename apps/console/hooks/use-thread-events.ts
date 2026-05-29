@@ -133,7 +133,7 @@ function apply(
         return {
           ...next,
           comments: next.comments.map((c) =>
-            c.id === ev.comment_id ? { ...c, resolved_by: ev.actor } : c,
+            c.id === ev.comment_id ? { ...c, resolved_by: 'dev' } : c,
           ),
         };
       case 'comment_unresolved':
@@ -143,16 +143,6 @@ function apply(
             c.id === ev.comment_id ? { ...c, resolved_by: null } : c,
           ),
         };
-      case 'comment_archived': {
-        const archived = next.comments.find((c) => c.id === ev.comment_id);
-        return {
-          ...next,
-          comments: next.comments.filter((c) => c.id !== ev.comment_id),
-          archived_comments: archived
-            ? [...next.archived_comments, { ...archived, archived_at: ev.created_at }]
-            : next.archived_comments,
-        };
-      }
       case 'activity_pill':
         return { ...next, activity: ev.status };
       case 'session_connected':

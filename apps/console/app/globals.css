@@ -82,9 +82,9 @@ body {
 .plan-editor-dense .ProseMirror :not(pre) > code {
   font-family: var(--font-mono);
   font-size: 13px;
+  font-weight: 400;
   color: #172b4d;
   background: #f4f5f7;
-  border: 1px solid #dfe1e6;
   border-radius: 3px;
   padding: 0.1em 0.35em;
 }
@@ -128,5 +128,39 @@ body {
   border: none;
   padding: 0;
   font-size: inherit;
+  color: inherit;
+}
+
+/* Reply rendering — marked → sanitized HTML. Mirrors the Plan editor's
+   inline-code and fenced-block visuals but matches raw HTML, not ProseMirror. */
+.reply-md :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: #172b4d;
+  background: #f4f5f7;
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+}
+
+.reply-md pre {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.65rem;
+  background: #f4f5f7;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #172b4d;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.reply-md pre > code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
   color: inherit;
 }

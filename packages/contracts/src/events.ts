@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import {
   ActivityStatus,
-  Actor,
   Comment,
   CommentId,
   EventId,
@@ -67,17 +66,10 @@ export const StatusChangedEvent = eventBase.extend({
 export const CommentResolvedEvent = eventBase.extend({
   kind: z.literal('comment_resolved'),
   comment_id: CommentId,
-  actor: Actor,
 });
 
 export const CommentUnresolvedEvent = eventBase.extend({
   kind: z.literal('comment_unresolved'),
-  comment_id: CommentId,
-  actor: Actor,
-});
-
-export const CommentArchivedEvent = eventBase.extend({
-  kind: z.literal('comment_archived'),
   comment_id: CommentId,
 });
 
@@ -111,7 +103,6 @@ export const Event = z.discriminatedUnion('kind', [
   StatusChangedEvent,
   CommentResolvedEvent,
   CommentUnresolvedEvent,
-  CommentArchivedEvent,
   ActivityPillEvent,
   AgentToolUseEvent,
   SessionConnectedEvent,
@@ -130,7 +121,6 @@ export const EventKind = z.enum([
   'status_changed',
   'comment_resolved',
   'comment_unresolved',
-  'comment_archived',
   'activity_pill',
   'agent_tool_use',
   'session_connected',

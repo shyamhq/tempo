@@ -2,7 +2,6 @@ import type { Actor, Plan } from '@tempo/contracts';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { plans, threads } from '../db/schema';
-import { reconcileCommentAnchors } from './comments';
 import { appendEvent } from './event-log';
 import { nowIso, toIso } from './threads';
 
@@ -46,7 +45,6 @@ export async function writePlan(
     .set({ body_markdown: markdown, updated_by: by, updated_at })
     .where(eq(plans.thread_id, threadId));
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
-  await reconcileCommentAnchors(threadId, markdown);
   await appendEvent(threadId, {
     kind: by === 'dev' ? 'plan_edited_by_dev' : 'plan_edited_by_agent',
     updated_at,

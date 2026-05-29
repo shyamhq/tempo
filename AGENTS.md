@@ -4,6 +4,10 @@
 
 Tempo is feature-complete for MVP: Console (Next 16 + Drizzle/libSQL) ships 17 HTTP endpoints, SSE + long-poll, Tiptap editor with `CommentMark`, archive reconciliation, repo chip in the Thread header; Agent CLI registers 9 `tempo_*` MCP tools via the Claude Agent SDK and authenticates against the Console. End-to-end smoke (POST thread → connect token → agent attach → comment-added SSE) ran cleanly on `localhost:3000`. Deploy story is wired (multi-stage Dockerfile + `fly.toml` with `tempo_data` volume, GH Actions CI on push/PR); Dev runs `fly deploy` manually.
 
+### Post-MVP decisions
+
+- **D30 (2026-05-29) — Archive removed; only the Dev resolves Comments.** Auto-archive on anchor loss confused the Dev: when the Agent acted on a Comment by deleting the section, the Comment disappeared into the Archive panel before the Dev could mark it Resolved. The Archive concept is removed entirely (the `archived_at` column, the `comment_archived` event, the Levenshtein fuzzy matcher in `reconcileCommentAnchors`, the Archive rail panel, and the `archived` prop on `CommentCard` all go). Resolve becomes the sole terminal Comment state, and only the Dev can issue it: the `tempo_resolve_comment` MCP tool is removed; `/api/comments/:id/resolve` 403s any non-Dev actor. Supersedes D16 (which had allowed Agent to resolve). When a Comment's anchor text no longer exists in the Plan, the Comment stays in the live rail without an editor highlight and the Dev decides whether to Reply or Resolve.
+
 > **Read this first.** This file is the durable working state for the Tempo build. If you are an AI agent (Claude Code, Cursor, Codex, etc.) or a human teammate picking up this codebase, read this end-to-end before doing anything. It supersedes any conversation context that may have been compacted or lost.
 
 ---
@@ -31,7 +35,7 @@ These are the sources of truth, in priority order. If two disagree, the higher-p
 | Priority | Document | What it covers |
 |---|---|---|
 | 1 | **The plan file** at `/root/.claude/plans/system-reminder-you-re-running-in-recursive-ember.md` | Product requirements (D1–D26), MCP wire shapes, tech stack (T1–T16), communication architecture. The product contract. |
-| 2 | **`CONTEXT.md`** (this repo) | Canonical vocabulary — product names (Agent/Dev/Console/Thread/Session/Plan/Comment/Reply/Clarification Round/Archive) + architecture vocabulary (module/interface/implementation/depth/seam/adapter/leverage/locality). |
+| 2 | **`CONTEXT.md`** (this repo) | Canonical vocabulary — product names (Agent/Dev/Console/Thread/Session/Plan/Comment/Reply/Clarification Round/Handoff card) + architecture vocabulary (module/interface/implementation/depth/seam/adapter/leverage/locality). |
 | 3 | **`apps/console/DESIGN.md`** | Visual language. Generated via `npx getdesign@latest add linear.app --out apps/console/DESIGN.md`. Linear's spec, accent to be tuned to Tempo. |
 | 4 | **`AGENTS.md`** (this file) | Build progress, parallelization plan, working conventions, pickup instructions. |
 
@@ -56,7 +60,7 @@ Both are by Matt Pocock (https://github.com/mattpocock/skills). Their guidance i
 ### 2. prototype/UI
 - URL: https://github.com/mattpocock/skills/blob/main/skills/engineering/prototype/UI.md
 - Raw: https://raw.githubusercontent.com/mattpocock/skills/main/skills/engineering/prototype/UI.md
-- **How we apply it here:** Applied to the **Thread view** in Phase 3 (after Phase 2 ships a working version). The Thread view (Plan + Comments + Pills + Modal + Archive) has multiple legitimate layouts; we ship 3 structurally-different variants under `?variant=A|B|C` on the existing Thread route, with a floating bottom-center switcher (`←`/`→` arrow keys, gated on `NODE_ENV !== 'production'`), let the Dev pick, then delete losers and fold the winner into the real layout. Variants must differ in layout / information hierarchy / primary affordance — not just colour.
+- **How we apply it here:** Applied to the **Thread view** in Phase 3 (after Phase 2 ships a working version). The Thread view (Plan + Comments + Pills + Modal) has multiple legitimate layouts; we ship 3 structurally-different variants under `?variant=A|B|C` on the existing Thread route, with a floating bottom-center switcher (`←`/`→` arrow keys, gated on `NODE_ENV !== 'production'`), let the Dev pick, then delete losers and fold the winner into the real layout. Variants must differ in layout / information hierarchy / primary affordance — not just colour.
 
 ---
 

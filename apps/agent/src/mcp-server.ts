@@ -6,7 +6,6 @@ import {
   GetClarificationAnswersInput,
   PollInput,
   PostReplyInput,
-  ResolveCommentInput,
   WritePlanInput,
 } from '@tempo/contracts/mcp';
 import type { ConsoleClient } from './http-client';
@@ -74,12 +73,6 @@ export async function runStdioMcpServer(args: {
       const reply = await client.postReply(args.comment_id, args.payload);
       return wrap({ reply_id: reply.id });
     },
-  );
-
-  server.registerTool(
-    'tempo_resolve_comment',
-    { description: 'Resolve a Comment.', inputSchema: ResolveCommentInput.shape },
-    async (args) => wrap(await client.resolveComment(args.comment_id)),
   );
 
   server.registerTool(

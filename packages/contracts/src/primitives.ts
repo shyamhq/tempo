@@ -150,8 +150,7 @@ export const Comment = z.object({
   thread_id: ThreadId,
   plan_quote: z.string(),
   plan_context: z.string(),
-  resolved_by: Actor.nullable(),
-  archived_at: IsoTimestamp.nullable(),
+  resolved_by: z.literal('dev').nullable(),
   created_at: IsoTimestamp,
   replies: z.array(Reply),
 });

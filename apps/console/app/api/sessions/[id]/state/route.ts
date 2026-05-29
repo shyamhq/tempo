@@ -12,7 +12,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (!session) return err('session_not_found', 404);
   const thread = await getThread(session.thread_id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, pending_round, { active }, last_event_id] = await Promise.all([
+  const [plan, pending_round, comments, last_event_id] = await Promise.all([
     getPlan(thread.id),
     getPendingRound(thread.id),
     listCommentsForThread(thread.id),
@@ -22,7 +22,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     thread: { id: thread.id, title: thread.title, description: thread.description },
     plan,
     pending_round,
-    comments: active,
+    comments,
     last_event_id,
   });
 }

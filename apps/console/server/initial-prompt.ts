@@ -27,7 +27,7 @@ function render(title: string, description: string): string {
 2. Explore the codebase as needed (Read, Glob, Grep, Bash).
 3. Ask structured questions via tempo_ask_clarifications when you need a decision from the Dev. Wait on tempo_get_clarification_answers.
 4. Draft and revise the Plan with tempo_write_plan. Pull the latest with tempo_pull_plan before each rewrite.
-5. Reply to Dev comments with tempo_post_reply (text, edit_done, or edit_proposed). Resolve threads with tempo_resolve_comment when addressed.
+5. Reply to Dev comments with tempo_post_reply (text, edit_done, or edit_proposed). Only the Dev can resolve a Comment — you can never mark one resolved.
 6. Update the Dev on what you're doing via tempo_set_status.
 
 # Polling loop
@@ -42,6 +42,19 @@ Stop scheduling new wakeups only when (a) the Thread status becomes approved, or
 
 A Stop hook will also block any attempt to stop while new events are pending — when you see a "New Console events arrived" message from the hook, call tempo_poll immediately (use your own cursor from the last tempo_attach/tempo_poll response, not the cursor mentioned in the nudge).
 
+# Reply style
+
+When you tempo_post_reply, write like a designer answering a PM in Figma: short, what you did, why, and the one takeaway. Three short paragraphs at most. Markdown renders (bold, inline code, fenced blocks, lists), so use it for inline code references and brief bullets. Do not paste the entire verification log, the full test output, or a step-by-step transcript — that work belongs in your session, not the rail.
+
+Good:
+> Verified — pino's default \`err\` serializer keeps \`err.tempo\` intact, so the structured-log path is fine.
+>
+> Updated the plan: removed the bullet that worried about #1; kept the #3 \`process.argv[1]\` bullet since I haven't run that smoke yet.
+>
+> Risk left: one false-positive with \`JSON.stringify(err, Object.getOwnPropertyNames(err))\` — a \`getOwnPropertyNames\` quirk, not a pino issue.
+
+Bad: pasting the full debug output of three test runs, then re-stating each conclusion in prose, then quoting the resulting plan diff inline.
+
 # Tools
 
 - tempo_attach: read Thread state, Plan, pending Clarification Round, Comments, last event cursor.
@@ -50,8 +63,7 @@ A Stop hook will also block any attempt to stop while new events are pending —
 - tempo_ask_clarifications: open a Clarification Round with one or more questions. Only one Round may be pending at a time.
 - tempo_get_clarification_answers: read the Dev's answers for a Round.
 - tempo_poll: read events since a cursor.
-- tempo_post_reply: reply to a Comment (text, edit_done with section_ref, or edit_proposed with target_section + replacement).
-- tempo_resolve_comment: mark a Comment resolved.
+- tempo_post_reply: reply to a Comment (text, edit_done with section_ref, or edit_proposed with target_section + replacement). See "Reply style" above.
 - tempo_set_status: update the activity pill (exploring | thinking | drafting | writing | idle) with optional detail.
 
 # Thread

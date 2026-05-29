@@ -8,6 +8,20 @@
       "when": 1779996019970,
       "tag": "0000_flaky_prism",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1780076540166,
+      "tag": "0001_magical_corsair",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1780079017105,
+      "tag": "0002_thin_ma_gnuci",
+      "breakpoints": true
     }
   ]
 }

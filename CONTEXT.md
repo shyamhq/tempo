@@ -34,16 +34,13 @@ The live attachment of one Agent to one Thread. Ephemeral; a Thread outlives man
 The single mutable markdown document the Agent produces and revises. The **deliverable**. One row per Thread; no versioning (D4). Free-edited by both Dev and Agent (D6); last-write-wins; the Agent must `tempo_pull_plan` before each edit.
 
 ### Comment
-A Dev-authored note anchored to a quoted text range in the current Plan. Anchored via a Tiptap `CommentMark` carrying `commentId` (D5, T7). Has a flat list of Replies. Can be resolved by either Dev or Agent (D16); the Dev can un-resolve. Append-only — no edit, no delete (D20).
+A Dev-authored note anchored to a quoted text range in the current Plan. Anchored via a Tiptap `CommentMark` carrying `commentId` (D5, T7). Has a flat list of Replies. Resolved exclusively by the Dev (D30; supersedes D16) — the Agent never marks a Comment resolved. The Dev can un-resolve. Append-only — no edit, no delete (D20). When the Plan changes and a Comment's anchor text no longer exists, the Comment stays in the live rail without an editor highlight; the Dev decides whether to Reply or Resolve.
 
 ### Reply
 A flat-listed follow-up on a Comment. Either Dev or Agent can post. Agent Replies carry one of three payloads (D18): `text`, `edit_done`, or `edit_proposed`. Proposed edits surface inline Approve/Reject buttons; only Approve mutates the Plan (D18). Reject may carry an optional reason text (D23).
 
 ### Clarification Round
 A structured batch of questions the Agent posts to the Dev (D10). Three question types (D14): `single_choice`, `multi_choice`, `open_text`. Choice questions may allow a `Other (specify)` write-in. All questions in a Round are required. At most one Round in `pending` state per Thread (D12); a pending Round blocks Plan and Comments via a modal (D13). Answered atomically.
-
-### Archive
-The destination for Comments whose anchor was deleted or fully overwritten (D4, D5). When the Tiptap `CommentMark` is removed by an edit, the server flips `comments.archived_at` on the next reconciliation pass; the Console moves the Comment from the live rail to the Archive panel below. Read-only — the conversation is preserved but no longer interactive unless re-anchored (re-anchoring is post-MVP).
 
 ### Handoff card
 The post-Approve UI element: a card containing a Copy Plan button + a metadata header (Thread title + Thread URL) prepended to the copied markdown (D22). The Dev pastes the result into a fresh Claude Code session to begin execution. Tempo does not re-enter the picture after handoff (D3).

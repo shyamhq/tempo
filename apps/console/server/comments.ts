@@ -1,10 +1,10 @@
-import type { Actor, Comment, Reply, ReplyPayload } from '@tempo/contracts';
-import { and, asc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import type { Comment, Reply, ReplyPayload } from '@tempo/contracts';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { comments, replies } from '../db/schema';
 import { appendEvent } from './event-log';
 import { newCommentId } from './ids';
-import { nowIso, toIso } from './threads';
+import { toIso } from './threads';
 
 export async function createComment(
   threadId: string,
@@ -29,15 +29,13 @@ async function loadComment(commentId: string): Promise<Comment> {
   return shapeComment(row, replyRows);
 }
 
-export async function listCommentsForThread(
-  threadId: string,
-): Promise<{ active: Comment[]; archived: Comment[] }> {
+export async function listCommentsForThread(threadId: string): Promise<Comment[]> {
   const rows = await db
     .select()
     .from(comments)
     .where(eq(comments.thread_id, threadId))
     .orderBy(asc(comments.created_at), asc(comments.id));
-  if (rows.length === 0) return { active: [], archived: [] };
+  if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const replyRows = await db
     .select()
@@ -50,123 +48,28 @@ export async function listCommentsForThread(
     arr.push(r);
     grouped.set(r.comment_id, arr);
   }
-  const active: Comment[] = [];
-  const archived: Comment[] = [];
-  for (const row of rows) {
-    const shaped = shapeComment(row, grouped.get(row.id) ?? []);
-    if (row.archived_at) archived.push(shaped);
-    else active.push(shaped);
-  }
-  return { active, archived };
+  return rows.map((row) => shapeComment(row, grouped.get(row.id) ?? []));
 }
 
-export async function resolveComment(commentId: string, by: Actor): Promise<void> {
-  const [row] = await db
-    .select({ thread_id: comments.thread_id })
-    .from(comments)
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!row) throw new Error('comment_not_found');
-  await db.update(comments).set({ resolved_by: by }).where(eq(comments.id, commentId));
-  await appendEvent(row.thread_id, {
-    kind: 'comment_resolved',
-    comment_id: commentId,
-    actor: by,
-  });
-}
+export const resolveComment = (commentId: string) =>
+  setResolvedBy(commentId, 'dev', 'comment_resolved');
 
-export async function unresolveComment(commentId: string, by: Actor): Promise<void> {
-  const [row] = await db
-    .select({ thread_id: comments.thread_id })
-    .from(comments)
-    .where(eq(comments.id, commentId))
-    .limit(1);
-  if (!row) throw new Error('comment_not_found');
-  await db.update(comments).set({ resolved_by: null }).where(eq(comments.id, commentId));
-  await appendEvent(row.thread_id, {
-    kind: 'comment_unresolved',
-    comment_id: commentId,
-    actor: by,
-  });
-}
+export const unresolveComment = (commentId: string) =>
+  setResolvedBy(commentId, null, 'comment_unresolved');
 
-// Fuzzy-match plan_quote+plan_context against the new plan body. If neither
-// the quote nor a Levenshtein-near variant is locatable, archive the comment.
-// Called by writePlan after every plan update.
-export async function reconcileCommentAnchors(
-  threadId: string,
-  planMarkdown: string,
+async function setResolvedBy(
+  commentId: string,
+  resolved_by: 'dev' | null,
+  eventKind: 'comment_resolved' | 'comment_unresolved',
 ): Promise<void> {
-  const rows = await db
-    .select()
+  const [row] = await db
+    .select({ thread_id: comments.thread_id })
     .from(comments)
-    .where(
-      and(
-        eq(comments.thread_id, threadId),
-        isNull(comments.archived_at),
-        isNotNull(comments.plan_quote),
-      ),
-    );
-  const archivedAt = nowIso();
-  for (const c of rows) {
-    if (matches(planMarkdown, c.plan_quote, c.plan_context)) continue;
-    await db.update(comments).set({ archived_at: archivedAt }).where(eq(comments.id, c.id));
-    await appendEvent(threadId, { kind: 'comment_archived', comment_id: c.id });
-  }
-}
-
-function matches(haystack: string, quote: string, context: string): boolean {
-  // plan_quote is plain text captured from the rendered editor; haystack is
-  // markdown source. Normalize both so inline markers (** _ ` ~) and block
-  // separators (\n\n vs \n) don't cause a quote-on-existing-text to be archived.
-  const hay = normalizeForMatch(haystack);
-  const q = normalizeForMatch(quote);
-  if (q.length === 0) return true;
-  if (hay.includes(q)) return true;
-  const ctx = normalizeForMatch(context);
-  if (ctx && hay.includes(ctx)) return true;
-  // Fallback: Levenshtein over a window around best partial overlap. Cheap heuristic:
-  // accept if the closest substring of length |quote| has distance <= 15% of |quote|.
-  const tolerance = Math.max(2, Math.floor(q.length * 0.15));
-  return findApprox(hay, q, tolerance);
-}
-
-function normalizeForMatch(s: string): string {
-  return s
-    .replace(/[*_`~]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function findApprox(haystack: string, needle: string, tolerance: number): boolean {
-  if (needle.length === 0) return true;
-  const step = Math.max(1, Math.floor(needle.length / 4));
-  for (let i = 0; i + needle.length <= haystack.length; i += step) {
-    const window = haystack.slice(i, i + needle.length);
-    if (levenshtein(window, needle, tolerance) <= tolerance) return true;
-  }
-  return false;
-}
-
-function levenshtein(a: string, b: string, ceiling: number): number {
-  const m = a.length;
-  const n = b.length;
-  if (Math.abs(m - n) > ceiling) return ceiling + 1;
-  let prev = new Array<number>(n + 1);
-  let curr = new Array<number>(n + 1);
-  for (let j = 0; j <= n; j++) prev[j] = j;
-  for (let i = 1; i <= m; i++) {
-    curr[0] = i;
-    let rowMin = curr[0]!;
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(prev[j]! + 1, curr[j - 1]! + 1, prev[j - 1]! + cost);
-      if (curr[j]! < rowMin) rowMin = curr[j]!;
-    }
-    if (rowMin > ceiling) return ceiling + 1;
-    [prev, curr] = [curr, prev];
-  }
-  return prev[n]!;
+    .where(eq(comments.id, commentId))
+    .limit(1);
+  if (!row) throw new Error('comment_not_found');
+  await db.update(comments).set({ resolved_by }).where(eq(comments.id, commentId));
+  await appendEvent(row.thread_id, { kind: eventKind, comment_id: commentId });
 }
 
 function shapeComment(
@@ -179,7 +82,6 @@ function shapeComment(
     plan_quote: row.plan_quote,
     plan_context: row.plan_context,
     resolved_by: row.resolved_by,
-    archived_at: row.archived_at ? toIso(row.archived_at) : null,
     created_at: toIso(row.created_at),
     replies: replyRows.map(shapeReply),
   };
