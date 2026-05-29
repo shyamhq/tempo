@@ -116,12 +116,26 @@ export async function reconcileCommentAnchors(
 }
 
 function matches(haystack: string, quote: string, context: string): boolean {
-  if (haystack.includes(quote)) return true;
-  if (context && haystack.includes(context)) return true;
+  // plan_quote is plain text captured from the rendered editor; haystack is
+  // markdown source. Normalize both so inline markers (** _ ` ~) and block
+  // separators (\n\n vs \n) don't cause a quote-on-existing-text to be archived.
+  const hay = normalizeForMatch(haystack);
+  const q = normalizeForMatch(quote);
+  if (q.length === 0) return true;
+  if (hay.includes(q)) return true;
+  const ctx = normalizeForMatch(context);
+  if (ctx && hay.includes(ctx)) return true;
   // Fallback: Levenshtein over a window around best partial overlap. Cheap heuristic:
   // accept if the closest substring of length |quote| has distance <= 15% of |quote|.
-  const tolerance = Math.max(2, Math.floor(quote.length * 0.15));
-  return findApprox(haystack, quote, tolerance);
+  const tolerance = Math.max(2, Math.floor(q.length * 0.15));
+  return findApprox(hay, q, tolerance);
+}
+
+function normalizeForMatch(s: string): string {
+  return s
+    .replace(/[*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function findApprox(haystack: string, needle: string, tolerance: number): boolean {

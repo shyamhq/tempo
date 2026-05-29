@@ -59,8 +59,8 @@ export function CommentsCanvas({
   );
 
   useEffect(() => {
-    if (!focusedCommentId) return;
-    const onClick = (e: MouseEvent) => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (!focusedCommentId) return;
       const target = e.target as HTMLElement | null;
       if (!target) return;
       if (target.closest('[data-comment-card]')) return;
@@ -68,12 +68,12 @@ export function CommentsCanvas({
       onFocusChange(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onFocusChange(null);
+      if (e.key === 'Escape' && focusedCommentId) onFocusChange(null);
     };
-    document.addEventListener('mousedown', onClick);
+    document.addEventListener('pointerdown', onPointerDown, true);
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('keydown', onKey);
     };
   }, [focusedCommentId, onFocusChange]);

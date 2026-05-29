@@ -40,7 +40,7 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
   };
 
   return (
-    <div className="rounded-md border border-amber-500/50 bg-surface-2 p-3 shadow-md">
+    <div className="rounded-md border border-highlight/60 bg-surface-2 p-3 shadow-md">
       <Textarea
         ref={textareaRef}
         placeholder="Comment…"
@@ -74,13 +74,6 @@ export function CommentCard({
 }) {
   const [replyDraft, setReplyDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const replyRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (focused && !comment.resolved_by && !archived) {
-      replyRef.current?.focus();
-    }
-  }, [focused, comment.resolved_by, archived]);
 
   const sendReply = async () => {
     if (!replyDraft.trim()) return;
@@ -108,9 +101,7 @@ export function CommentCard({
   };
 
   const resolved = comment.resolved_by !== null;
-  const bg = resolved ? 'bg-surface-1/50 opacity-70' : 'bg-surface-1';
-  const border = focused ? 'border-accent' : 'border-hairline';
-  const shadow = focused ? 'shadow-lg' : '';
+  const border = focused ? 'border-2 border-accent' : 'border-hairline';
 
   return (
     <div
@@ -124,7 +115,7 @@ export function CommentCard({
       }}
       role={onFocus ? 'button' : undefined}
       tabIndex={onFocus ? 0 : undefined}
-      className={`rounded-md border ${border} ${bg} ${shadow} p-3 cursor-pointer transition-shadow`}
+      className={`rounded-md border bg-surface-1 ${border} p-3 cursor-pointer transition-colors`}
       title={comment.plan_quote ?? undefined}
     >
       {archived ? (
@@ -138,7 +129,6 @@ export function CommentCard({
       {!archived && !resolved ? (
         <div className="mt-2">
           <Textarea
-            ref={replyRef}
             placeholder="Reply…"
             value={replyDraft}
             onChange={(e) => setReplyDraft(e.target.value)}

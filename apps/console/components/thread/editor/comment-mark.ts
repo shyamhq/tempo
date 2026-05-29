@@ -1,12 +1,30 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
 
-// CommentMark — a ProseMirror Mark that anchors a Comment to a span of
-// Plan text. Has two states:
-//   - pending: true  → the Dev has opened the composer; mark renders amber,
-//     carries no commentId yet. data-pending="true" lets the anchor-positions
-//     hook find it for the composer card's y.
-//   - pending: false → saved comment; mark renders accent-yellow, carries
-//     data-comment-id, click is consumed by editor.handleClick → focus.
+export type CommentMarkAttrs = {
+  focused?: boolean;
+  resolved?: boolean;
+};
+
+function resolveClassName({
+  pending,
+  focused,
+  resolved,
+}: {
+  pending: boolean;
+  focused: boolean;
+  resolved: boolean;
+}): string {
+  if (pending) return 'bg-highlight border-b-2 border-accent rounded-sm';
+  if (focused && resolved)
+    return 'bg-comment-resolved-focus border-b-2 border-accent cursor-pointer rounded-sm shadow-comment-focus';
+  if (focused)
+    return 'bg-comment-focus border-b-2 border-accent cursor-pointer rounded-sm shadow-comment-focus';
+  if (resolved) return 'bg-comment-resolved border-b border-accent cursor-pointer rounded-sm';
+  return 'bg-comment border-b-2 border-accent cursor-pointer rounded-sm';
+}
+
+// CommentMark — anchors Comment text in the Plan.
+// Active comments are always highlighted; resolved ones only when "Show resolved" is on.
 export const CommentMark = Mark.create({
   name: 'comment',
   inclusive: false,
@@ -24,6 +42,18 @@ export const CommentMark = Mark.create({
         parseHTML: (el) => el.getAttribute('data-pending') === 'true',
         renderHTML: (attrs) => (attrs.pending ? { 'data-pending': 'true' } : {}),
       },
+      focused: {
+        default: false,
+        parseHTML: (el) => el.getAttribute('data-focused') === 'true',
+        renderHTML: (attrs) =>
+          attrs.focused && !attrs.pending ? { 'data-focused': 'true' } : {},
+      },
+      resolved: {
+        default: false,
+        parseHTML: (el) => el.getAttribute('data-resolved') === 'true',
+        renderHTML: (attrs) =>
+          attrs.resolved && !attrs.pending ? { 'data-resolved': 'true' } : {},
+      },
     };
   },
 
@@ -33,22 +63,34 @@ export const CommentMark = Mark.create({
 
   renderHTML({ HTMLAttributes }) {
     const pending = HTMLAttributes['data-pending'] === 'true';
-    const className = pending
-      ? 'bg-amber-500/25 border-b border-amber-500 rounded-sm'
-      : 'bg-accent/15 border-b border-accent/50 cursor-pointer rounded-sm';
+    const focused = HTMLAttributes['data-focused'] === 'true';
+    const resolved = HTMLAttributes['data-resolved'] === 'true';
+
+    const className = resolveClassName({ pending, focused, resolved });
+
     return ['span', mergeAttributes(HTMLAttributes, { class: className }), 0];
   },
 
   addCommands() {
     return {
       setCommentMark:
-        (commentId: string) =>
-        ({ commands }: { commands: { setMark: (n: string, attrs: object) => boolean } }) =>
-          commands.setMark(this.name, { commentId, pending: false }),
+        (commentId: string, attrs: CommentMarkAttrs = {}) =>
+        ({ commands }: { commands: { setMark: (n: string, a: object) => boolean } }) =>
+          commands.setMark(this.name, {
+            commentId,
+            pending: false,
+            focused: attrs.focused ?? false,
+            resolved: attrs.resolved ?? false,
+          }),
       setPendingCommentMark:
         () =>
-        ({ commands }: { commands: { setMark: (n: string, attrs: object) => boolean } }) =>
-          commands.setMark(this.name, { commentId: null, pending: true }),
+        ({ commands }: { commands: { setMark: (n: string, a: object) => boolean } }) =>
+          commands.setMark(this.name, {
+            commentId: null,
+            pending: true,
+            focused: false,
+            resolved: false,
+          }),
       unsetCommentMark:
         () =>
         ({ commands }: { commands: { unsetMark: (n: string) => boolean } }) =>
@@ -60,7 +102,7 @@ export const CommentMark = Mark.create({
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     comment: {
-      setCommentMark: (commentId: string) => ReturnType;
+      setCommentMark: (commentId: string, attrs?: CommentMarkAttrs) => ReturnType;
       setPendingCommentMark: () => ReturnType;
       unsetCommentMark: () => ReturnType;
     };

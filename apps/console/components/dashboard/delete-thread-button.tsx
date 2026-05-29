@@ -34,7 +34,7 @@ export function DeleteThreadButton({ threadId, title }: { threadId: string; titl
       onClick={onClick}
       disabled={busy}
       aria-label={`Delete ${title}`}
-      className="text-ink-tertiary hover:text-red-500 transition-colors disabled:opacity-40"
+      className="text-ink-tertiary hover:text-danger transition-colors disabled:opacity-40"
     >
       <Trash2 className="h-4 w-4" />
     </button>

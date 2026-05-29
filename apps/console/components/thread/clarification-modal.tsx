@@ -67,7 +67,7 @@ export function ClarificationModal({ round }: { round: PendingRound }) {
             />
           ))}
         </div>
-        {error ? <p className="text-xs text-red-400 mt-3">{error}</p> : null}
+        {error ? <p className="text-xs text-danger mt-3">{error}</p> : null}
         <div className="mt-5 flex justify-end">
           <Button variant="primary" disabled={!ready || submitting} onClick={submit}>
             {submitting ? 'Submitting…' : 'Submit answers'}

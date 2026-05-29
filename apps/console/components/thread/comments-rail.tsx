@@ -12,6 +12,8 @@ export function CommentsRail({
   comments,
   archivedComments,
   editor,
+  showResolved,
+  onShowResolvedChange,
   focusedCommentId,
   onFocusChange,
 }: {
@@ -19,10 +21,11 @@ export function CommentsRail({
   comments: Comment[];
   archivedComments: Comment[];
   editor: Editor | null;
+  showResolved: boolean;
+  onShowResolvedChange: (show: boolean) => void;
   focusedCommentId: string | null;
   onFocusChange: (id: string | null) => void;
 }) {
-  const [showResolved, setShowResolved] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
 
   const visible = comments.filter((c) => showResolved || c.resolved_by === null);
@@ -36,7 +39,7 @@ export function CommentsRail({
             <input
               type="checkbox"
               checked={showResolved}
-              onChange={(e) => setShowResolved(e.target.checked)}
+              onChange={(e) => onShowResolvedChange(e.target.checked)}
               className="accent-accent"
             />
             Show resolved

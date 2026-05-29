@@ -31,6 +31,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const [editor, setEditor] = useState<Editor | null>(null);
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
+  const [showResolved, setShowResolved] = useState(false);
 
   const view = data ?? initial;
   const markdown = view.plan.body?.markdown ?? '';
@@ -103,6 +104,8 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             <PlanEditor
               markdown={markdown}
               comments={view.comments}
+              showResolved={showResolved}
+              focusedCommentId={focusedCommentId}
               onSave={onSave}
               onFocusComment={setFocusedCommentId}
               onEditorReady={setEditor}
@@ -116,6 +119,8 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             comments={view.comments}
             archivedComments={view.archived_comments}
             editor={editor}
+            showResolved={showResolved}
+            onShowResolvedChange={setShowResolved}
             focusedCommentId={focusedCommentId}
             onFocusChange={setFocusedCommentId}
           />

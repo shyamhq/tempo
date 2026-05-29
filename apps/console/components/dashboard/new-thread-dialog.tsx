@@ -136,7 +136,7 @@ export function NewThreadDialog() {
                   rows={4}
                 />
               </label>
-              {error ? <p className="text-xs text-red-400">{error}</p> : null}
+              {error ? <p className="text-xs text-danger">{error}</p> : null}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => onOpenChange(false)}>
