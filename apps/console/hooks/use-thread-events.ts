@@ -8,6 +8,9 @@ import type { z } from 'zod';
 
 type ThreadView = z.infer<typeof GetThreadResponse>;
 
+export type ToolFeedEntry = { id: string; tool: string; summary: string };
+export const toolFeedKey = (threadId: string) => ['thread', threadId, 'tool-feed'] as const;
+
 // SSE consumer for a single Thread. Mutates the cached Thread view via
 // setQueryData so a single network stream feeds every Plan/Comment/Modal
 // subscriber. Reconnects automatically (the browser's EventSource handles
@@ -53,6 +56,9 @@ export function useThreadEvents(threadId: string, initialCursor: string) {
     return () => {
       stopped = true;
       es?.close();
+      // Drop the tool-feed entry so a remount or thread-switch doesn't flash
+      // the previous Agent run's last tool call before fresh events arrive.
+      qc.removeQueries({ queryKey: toolFeedKey(threadId), exact: true });
     };
   }, [threadId, qc]);
 }
@@ -62,6 +68,12 @@ function apply(
   threadId: string,
   ev: z.infer<typeof Event>,
 ): void {
+  if (ev.kind === 'agent_tool_use') {
+    // Replace, not accumulate — UI shows only the latest tick.
+    const entry: ToolFeedEntry = { id: ev.id, tool: ev.tool, summary: ev.summary };
+    qc.setQueryData<ToolFeedEntry | null>(toolFeedKey(threadId), entry);
+    return;
+  }
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;

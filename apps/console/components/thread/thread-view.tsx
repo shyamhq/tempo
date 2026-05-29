@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import type { Editor } from '@tiptap/core';
-import { ArrowLeft, GitBranch } from 'lucide-react';
+import { ArrowLeft, GitBranch, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useState } from 'react';
 import type { z } from 'zod';
@@ -13,7 +13,7 @@ import { PlanEditor } from '@/components/thread/editor/editor';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { ActivityPill, SessionPill } from '@/components/thread/pills';
 import { Button } from '@/components/ui/button';
-import { useThreadEvents } from '@/hooks/use-thread-events';
+import { type ToolFeedEntry, toolFeedKey, useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
 
 type View = z.infer<typeof GetThreadResponse>;
@@ -98,9 +98,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         <section>
           {approved ? <HandoffBanner planMarkdown={markdown} /> : null}
           {view.plan.body === null ? (
-            <p className="text-sm text-ink-subtle border border-dashed border-hairline rounded-md p-6 text-center">
-              The Agent hasn't drafted a Plan yet. When it does, edits appear here live.
-            </p>
+            <EmptyPlanState threadId={threadId} />
           ) : (
             <PlanEditor
               markdown={markdown}
@@ -124,6 +122,33 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       </div>
 
       {view.pending_round ? <ClarificationModal round={view.pending_round} /> : null}
+    </div>
+  );
+}
+
+function EmptyPlanState({ threadId }: { threadId: string }) {
+  // Cache-only subscription: SSE writes the entry via setQueryData; this query
+  // never fetches. `enabled: false` makes that explicit so a future staleTime
+  // change can't silently clear the feed.
+  const { data: latest } = useQuery<ToolFeedEntry | null>({
+    queryKey: toolFeedKey(threadId),
+    queryFn: () => null,
+    initialData: null,
+    staleTime: Infinity,
+    enabled: false,
+  });
+  return (
+    <div className="border border-dashed border-hairline rounded-md p-6 text-center">
+      <p className="text-sm text-ink-subtle">
+        The Agent hasn't drafted a Plan yet. When it does, edits appear here live.
+      </p>
+      {latest ? (
+        <p className="mt-3 text-sm text-ink-subtle flex gap-2 items-center justify-center">
+          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+          <span className="text-ink font-medium shrink-0">{latest.tool}</span>
+          {latest.summary ? <span className="truncate max-w-[28rem]">{latest.summary}</span> : null}
+        </p>
+      ) : null}
     </div>
   );
 }

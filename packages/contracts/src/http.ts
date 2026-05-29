@@ -85,6 +85,14 @@ export { AttachOutput as GetSessionStateResponse } from './mcp';
 export const SetActivityStatusRequest = ActivityStatus;
 export const SetActivityStatusResponse = z.object({ ok: z.literal(true) });
 
+// POST /api/sessions/:id/tool-use
+// Recorded by the Agent's Claude Code PreToolUse hook (fire-and-forget).
+export const RecordToolUseRequest = z.object({
+  tool: z.string().min(1).max(64),
+  summary: z.string().max(200),
+});
+export const RecordToolUseResponse = z.object({ ok: z.literal(true) });
+
 // GET /api/threads/:id/plan
 export const GetPlanResponse = Plan;
 
@@ -150,6 +158,9 @@ export const ApproveThreadResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/threads/:id/reopen
 export const ReopenThreadResponse = z.object({ ok: z.literal(true) });
+
+// DELETE /api/threads/:id
+export const DeleteThreadResponse = z.object({ ok: z.literal(true) });
 
 // GET /api/threads/:id/events  — long-poll OR SSE
 // Query: ?cursor=evt_…&wait=30s  (wait omitted = SSE stream)

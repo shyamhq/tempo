@@ -1,11 +1,10 @@
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ConnectToken } from '@tempo/contracts';
-import { runClaudeSession } from './claude-driver';
 import { env } from './env';
 import { ConsoleClient } from './http-client';
 import { logger } from './logger';
-import { buildMcpServer } from './mcp-server';
+import { spawnInteractiveClaude } from './spawn-claude';
 
 const execAsync = promisify(exec);
 
@@ -24,9 +23,14 @@ export async function connect(token: ConnectToken): Promise<void> {
   const initialPrompt = await client.getInitialPrompt(session.session_id);
   logger.debug({ chars: initialPrompt.length }, 'fetched initial prompt');
 
-  const mcp = buildMcpServer(client, session.session_id, session.thread_id);
-  process.stdout.write('agent starting...\n\n');
-  await runClaudeSession(initialPrompt, mcp);
+  process.stdout.write('launching claude with tempo tools...\n\n');
+  const exitCode = await spawnInteractiveClaude({
+    initialPrompt,
+    sessionId: session.session_id,
+    threadId: session.thread_id,
+    token,
+  });
+  process.exit(exitCode);
 }
 
 async function collectRepoMetadata(): Promise<{

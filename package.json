@@ -2,7 +2,10 @@
   "name": "tempo",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "packageManager": "bun@1.3.11",
   "scripts": {
     "dev": "turbo run dev",

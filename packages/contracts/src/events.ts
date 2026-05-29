@@ -86,6 +86,12 @@ export const ActivityPillEvent = eventBase.extend({
   status: ActivityStatus,
 });
 
+export const AgentToolUseEvent = eventBase.extend({
+  kind: z.literal('agent_tool_use'),
+  tool: z.string().max(64),
+  summary: z.string().max(200),
+});
+
 export const SessionConnectedEvent = eventBase.extend({
   kind: z.literal('session_connected'),
 });
@@ -107,6 +113,7 @@ export const Event = z.discriminatedUnion('kind', [
   CommentUnresolvedEvent,
   CommentArchivedEvent,
   ActivityPillEvent,
+  AgentToolUseEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
 ]);
@@ -125,6 +132,7 @@ export const EventKind = z.enum([
   'comment_unresolved',
   'comment_archived',
   'activity_pill',
+  'agent_tool_use',
   'session_connected',
   'session_disconnected',
 ]);
