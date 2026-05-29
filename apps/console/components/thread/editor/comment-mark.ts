@@ -1,8 +1,12 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
 
 // CommentMark — a ProseMirror Mark that anchors a Comment to a span of
-// Plan text. The mark carries the Comment id; clicking it dispatches a
-// CustomEvent on window so the Comments rail can scroll/focus.
+// Plan text. Has two states:
+//   - pending: true  → the Dev has opened the composer; mark renders amber,
+//     carries no commentId yet. data-pending="true" lets the anchor-positions
+//     hook find it for the composer card's y.
+//   - pending: false → saved comment; mark renders accent-yellow, carries
+//     data-comment-id, click is consumed by editor.handleClick → focus.
 export const CommentMark = Mark.create({
   name: 'comment',
   inclusive: false,
@@ -15,6 +19,11 @@ export const CommentMark = Mark.create({
         parseHTML: (el) => el.getAttribute('data-comment-id'),
         renderHTML: (attrs) => (attrs.commentId ? { 'data-comment-id': attrs.commentId } : {}),
       },
+      pending: {
+        default: false,
+        parseHTML: (el) => el.getAttribute('data-pending') === 'true',
+        renderHTML: (attrs) => (attrs.pending ? { 'data-pending': 'true' } : {}),
+      },
     };
   },
 
@@ -23,13 +32,11 @@ export const CommentMark = Mark.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return [
-      'span',
-      mergeAttributes(HTMLAttributes, {
-        class: 'bg-accent/15 border-b border-accent/50 cursor-pointer rounded-sm',
-      }),
-      0,
-    ];
+    const pending = HTMLAttributes['data-pending'] === 'true';
+    const className = pending
+      ? 'bg-amber-500/25 border-b border-amber-500 rounded-sm'
+      : 'bg-accent/15 border-b border-accent/50 cursor-pointer rounded-sm';
+    return ['span', mergeAttributes(HTMLAttributes, { class: className }), 0];
   },
 
   addCommands() {
@@ -37,7 +44,11 @@ export const CommentMark = Mark.create({
       setCommentMark:
         (commentId: string) =>
         ({ commands }: { commands: { setMark: (n: string, attrs: object) => boolean } }) =>
-          commands.setMark(this.name, { commentId }),
+          commands.setMark(this.name, { commentId, pending: false }),
+      setPendingCommentMark:
+        () =>
+        ({ commands }: { commands: { setMark: (n: string, attrs: object) => boolean } }) =>
+          commands.setMark(this.name, { commentId: null, pending: true }),
       unsetCommentMark:
         () =>
         ({ commands }: { commands: { unsetMark: (n: string) => boolean } }) =>
@@ -50,6 +61,7 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     comment: {
       setCommentMark: (commentId: string) => ReturnType;
+      setPendingCommentMark: () => ReturnType;
       unsetCommentMark: () => ReturnType;
     };
   }

@@ -1,7 +1,10 @@
 'use client';
 
+import type { Editor } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
+import { MessageSquarePlus } from 'lucide-react';
 import { useCallback, useEffect, useRef } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { useComposerStore } from '@/lib/stores/composer-store';
@@ -13,18 +16,21 @@ import { CommentMark } from './comment-mark';
 export function PlanEditor({
   markdown,
   onSave,
-  onJumpToComment,
+  onFocusComment,
+  onEditorReady,
   readOnly = false,
 }: {
   markdown: string;
   onSave: (markdown: string) => void;
-  onJumpToComment?: (commentId: string) => void;
+  onFocusComment?: (commentId: string | null) => void;
+  onEditorReady?: (editor: Editor | null) => void;
   readOnly?: boolean;
 }) {
   const begin = useComposerStore((s) => s.begin);
+  const composerOpen = useComposerStore((s) => s.open);
   const lastCreatedCommentId = useComposerStore((s) => s.lastCreatedCommentId);
   const composerRange = useComposerStore((s) => s.range);
-  const clearLastCreated = useComposerStore((s) => s.setLastCreated);
+  const setLastCreated = useComposerStore((s) => s.setLastCreated);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(markdown);
 
@@ -46,8 +52,8 @@ export function PlanEditor({
       handleClick: (_view, _pos, event) => {
         const target = event.target as HTMLElement | null;
         const id = target?.closest('[data-comment-id]')?.getAttribute('data-comment-id');
-        if (id && onJumpToComment) {
-          onJumpToComment(id);
+        if (id && onFocusComment) {
+          onFocusComment(id);
           return true;
         }
         return false;
@@ -67,6 +73,10 @@ export function PlanEditor({
     immediatelyRender: false,
   });
 
+  useEffect(() => {
+    onEditorReady?.(editor);
+  }, [editor, onEditorReady]);
+
   // External markdown changes (e.g. plan_edited_by_agent → refetch) — re-parse.
   useEffect(() => {
     if (!editor) return;
@@ -84,38 +94,58 @@ export function PlanEditor({
     const ctxFrom = Math.max(0, from - 60);
     const ctxTo = Math.min(editor.state.doc.content.size, to + 60);
     const context = editor.state.doc.textBetween(ctxFrom, ctxTo, '\n');
-    begin(quote, context, { from, to });
-  }, [editor, begin]);
-
-  // After the Comment row is created (composer-store records its id), wrap
-  // the captured range with `CommentMark` so the highlight appears without
-  // waiting for a server refetch.
-  useEffect(() => {
-    if (!editor || !lastCreatedCommentId || !composerRange) return;
-    const { from, to } = composerRange;
-    if (from >= to) return;
     editor
       .chain()
       .setTextSelection({ from, to })
-      .setCommentMark(lastCreatedCommentId)
+      .setPendingCommentMark()
       .setTextSelection(to)
       .run();
-    clearLastCreated(null);
+    begin(quote, context, { from, to });
+  }, [editor, begin]);
+
+  // Resolve the pending mark once the composer closes — promote to a saved
+  // mark if a Comment was created, strip otherwise.
+  useEffect(() => {
+    if (!editor || !composerRange || composerOpen) return;
+    const { from, to } = composerRange;
+    if (from >= to) return;
+    const chain = editor.chain().setTextSelection({ from, to });
+    if (lastCreatedCommentId) {
+      chain.setCommentMark(lastCreatedCommentId).setTextSelection(to).run();
+      setLastCreated(null);
+    } else {
+      chain.unsetCommentMark().setTextSelection(to).run();
+    }
     useComposerStore.setState({ range: null });
-  }, [editor, lastCreatedCommentId, composerRange, clearLastCreated]);
+  }, [editor, composerOpen, lastCreatedCommentId, composerRange, setLastCreated]);
 
   return (
     <div>
-      {!readOnly ? (
-        <div className="sticky top-0 z-10 -mx-2 mb-2 flex items-center gap-2 bg-canvas/90 backdrop-blur px-2 py-1 border-b border-hairline">
+      {editor ? (
+        <BubbleMenu
+          editor={editor}
+          shouldShow={({ editor, from, to }) => {
+            if (!editor.isEditable) return false;
+            if (from === to) return false;
+            if (composerOpen) return false;
+            const text = editor.state.doc.textBetween(from, to, '\n');
+            return text.trim().length > 0;
+          }}
+        >
           <button
             type="button"
+            onMouseDown={(e) => {
+              // Prevent the selection from collapsing before startComment reads it.
+              e.preventDefault();
+            }}
             onClick={startComment}
-            className="text-xs text-ink-subtle hover:text-ink h-6 px-2 rounded border border-hairline hover:border-hairline-strong"
+            className="flex items-center gap-1.5 rounded-md border border-hairline bg-surface-1 px-2 py-1 text-xs text-ink-subtle shadow-md hover:text-ink hover:border-hairline-strong"
+            aria-label="Comment on selection"
           >
-            Comment on selection
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+            Comment
           </button>
-        </div>
+        </BubbleMenu>
       ) : null}
       <EditorContent editor={editor} />
     </div>

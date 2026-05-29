@@ -2,9 +2,10 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetThreadResponse } from '@tempo/contracts/http';
+import type { Editor } from '@tiptap/core';
 import { ArrowLeft, GitBranch } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import type { z } from 'zod';
 import { ClarificationModal } from '@/components/thread/clarification-modal';
 import { CommentsRail } from '@/components/thread/comments-rail';
@@ -27,6 +28,9 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   });
 
   useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id);
+
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
 
   const view = data ?? initial;
   const markdown = view.plan.body?.markdown ?? '';
@@ -54,15 +58,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     },
     [threadId, qc],
   );
-
-  const onJumpToComment = useCallback((commentId: string) => {
-    const el = document.querySelector(`[data-comment-id="${commentId}"]`);
-    if (el && el instanceof HTMLElement) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('ring-1', 'ring-accent');
-      setTimeout(() => el.classList.remove('ring-1', 'ring-accent'), 1200);
-    }
-  }, []);
 
   const approve = async () => {
     await api.approveThread(threadId);
@@ -110,7 +105,8 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             <PlanEditor
               markdown={markdown}
               onSave={onSave}
-              onJumpToComment={onJumpToComment}
+              onFocusComment={setFocusedCommentId}
+              onEditorReady={setEditor}
               readOnly={approved}
             />
           )}
@@ -120,6 +116,9 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             threadId={threadId}
             comments={view.comments}
             archivedComments={view.archived_comments}
+            editor={editor}
+            focusedCommentId={focusedCommentId}
+            onFocusChange={setFocusedCommentId}
           />
         </aside>
       </div>
