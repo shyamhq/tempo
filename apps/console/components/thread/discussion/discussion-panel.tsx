@@ -1,8 +1,9 @@
 'use client';
 
 import type { DiscussionMessage, PendingRound, SessionStatus } from '@tempo/contracts';
-import { Sparkles, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { Loader2, Sparkles, X } from 'lucide-react';
+import { useEffect, type ReactNode } from 'react';
+import { useLatestToolFeed } from '@/hooks/use-thread-events';
 import { MessageComposer } from './message-composer';
 import { MessageList } from './message-list';
 import { RoundCard } from './round-card';
@@ -24,6 +25,7 @@ export function DiscussionPanel({
   onClose: () => void;
   onOpened: () => void;
 }) {
+  const toolFeed = useLatestToolFeed(threadId);
   // Stamp "seen" whenever the panel renders open. Parent guarantees this
   // component only mounts while `open` — so a mount equals an open event.
   useEffect(() => {
@@ -49,17 +51,36 @@ export function DiscussionPanel({
     composerReason = 'Answer the Round above to continue.';
   }
 
+  const lastMessage = messages[messages.length - 1];
+  const showThinking =
+    !approved &&
+    !pendingRound &&
+    sessionStatus === 'connected' &&
+    lastMessage?.author === 'dev';
+
+  let endSlot: ReactNode = null;
+  if (pendingRound) {
+    endSlot = <RoundCard round={pendingRound} />;
+  } else if (showThinking) {
+    // `||` rather than `??` — a zero-length tool name should fall through.
+    const label = toolFeed?.tool || 'Working';
+    const detail = toolFeed?.summary || null;
+    endSlot = (
+      <div className="flex items-center gap-2 text-[13px] text-ink-subtle">
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        <span className="font-medium text-ink shrink-0">{label}</span>
+        {detail ? <span className="truncate">— {detail}</span> : null}
+      </div>
+    );
+  }
+
   return (
     <aside
       aria-label="Discussion"
       className="flex flex-col h-full min-h-0 bg-canvas border-r border-hairline overflow-hidden"
     >
       <PanelHeader sessionStatus={sessionStatus} canClose={!pendingRound} onClose={onClose} />
-      <MessageList
-        messages={messages}
-        endSlot={pendingRound ? <RoundCard round={pendingRound} /> : null}
-        emptyState={<EmptyState />}
-      />
+      <MessageList messages={messages} endSlot={endSlot} emptyState={<EmptyState />} />
       <MessageComposer
         threadId={threadId}
         disabled={composerDisabled}

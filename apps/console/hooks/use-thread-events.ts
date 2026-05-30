@@ -1,6 +1,6 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Event, EventKind } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { useEffect, useRef } from 'react';
@@ -10,6 +10,20 @@ type ThreadView = z.infer<typeof GetThreadResponse>;
 
 export type ToolFeedEntry = { id: string; tool: string; summary: string };
 export const toolFeedKey = (threadId: string) => ['thread', threadId, 'tool-feed'] as const;
+
+// Cache-only read of the latest tool-use entry. SSE writes the value via
+// `setQueryData`; this hook never fetches. `enabled: false` makes that explicit
+// so a future staleTime change can't silently clear the feed.
+export function useLatestToolFeed(threadId: string): ToolFeedEntry | null {
+  const { data } = useQuery<ToolFeedEntry | null>({
+    queryKey: toolFeedKey(threadId),
+    queryFn: () => null,
+    initialData: null,
+    staleTime: Infinity,
+    enabled: false,
+  });
+  return data;
+}
 
 // SSE consumer for a single Thread. Mutates the cached Thread view via
 // setQueryData so a single network stream feeds every Plan/Comment/Modal
@@ -87,6 +101,11 @@ function apply(
     qc.setQueryData<ToolFeedEntry | null>(toolFeedKey(threadId), entry);
     return;
   }
+  if (ev.kind === 'discussion_message_posted' && ev.message.author === 'dev') {
+    // Fresh Agent turn — drop the previous turn's tool tick so the indicator
+    // doesn't render stale "Reading X" / "idle" labels before the Agent moves.
+    qc.setQueryData<ToolFeedEntry | null>(toolFeedKey(threadId), null);
+  }
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;
@@ -158,8 +177,6 @@ function apply(
             c.id === ev.comment_id ? { ...c, resolved_by: null } : c,
           ),
         };
-      case 'activity_pill':
-        return { ...next, activity: ev.status };
       case 'session_connected':
         return { ...next, session_status: 'connected' };
       case 'session_disconnected':

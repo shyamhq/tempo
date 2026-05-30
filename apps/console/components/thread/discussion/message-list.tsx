@@ -16,23 +16,33 @@ export function MessageList({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastCountRef = useRef(messages.length);
+  // Tracks bottom-proximity captured on the user's last scroll. Must be sampled
+  // before a new message lands — measuring after-the-fact uses the already-grown
+  // scrollHeight and a tall message would push the threshold past any tolerance.
+  const wasNearBottomRef = useRef(true);
 
   useLayoutEffect(() => {
-    // Snap to bottom on first mount. Load-bearing: the post-mount effect below
-    // only auto-scrolls when the user is already within 80px of the bottom, so
-    // opening a panel with prior messages would otherwise show the oldest first.
+    // Snap to bottom on mount so a panel opening with prior messages shows the
+    // newest first. `wasNearBottomRef` defaults to true so subsequent arrivals
+    // also auto-scroll until the user manually scrolls up.
     scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
   }, []);
 
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
+    const onScroll = () => {
+      wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
     const prevCount = lastCountRef.current;
     lastCountRef.current = messages.length;
     if (messages.length <= prevCount) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    // Only auto-scroll if the user was already near the bottom (80px tolerance).
-    if (distanceFromBottom < 80) {
+    if (wasNearBottomRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages.length]);

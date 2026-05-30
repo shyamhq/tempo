@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { ActivityStatus, type SessionId, type ThreadId } from '@tempo/contracts';
+import type { SessionId, ThreadId } from '@tempo/contracts';
 import {
   AskClarificationsInput,
   GetClarificationAnswersInput,
@@ -87,15 +87,6 @@ export async function runStdioMcpServer(args: {
       const message = await client.postDiscussionMessage(threadId, args.text);
       return wrap({ message_id: message.id });
     },
-  );
-
-  server.registerTool(
-    'tempo_set_status',
-    {
-      description: 'Report Agent activity (exploring/thinking/drafting/writing/idle).',
-      inputSchema: ActivityStatus.shape,
-    },
-    async (args) => wrap(await client.setActivityStatus(sessionId, args)),
   );
 
   const transport = new StdioServerTransport();

@@ -12,9 +12,9 @@ import { DiscussionButton } from '@/components/thread/discussion/discussion-butt
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanEditor } from '@/components/thread/editor/editor';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
-import { ActivityPill, SessionPill } from '@/components/thread/pills';
+import { SessionPill } from '@/components/thread/pills';
 import { Button } from '@/components/ui/button';
-import { type ToolFeedEntry, toolFeedKey, useThreadEvents } from '@/hooks/use-thread-events';
+import { useLatestToolFeed, useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
 
 type View = z.infer<typeof GetThreadResponse>;
@@ -137,7 +137,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             <h1 className="font-display text-sm font-semibold truncate">{view.thread.title}</h1>
           </div>
           <SessionPill status={view.session_status} />
-          <ActivityPill activity={view.activity} />
           <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
           {approved ? (
@@ -227,16 +226,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 }
 
 function EmptyPlanState({ threadId }: { threadId: string }) {
-  // Cache-only subscription: SSE writes the entry via setQueryData; this query
-  // never fetches. `enabled: false` makes that explicit so a future staleTime
-  // change can't silently clear the feed.
-  const { data: latest } = useQuery<ToolFeedEntry | null>({
-    queryKey: toolFeedKey(threadId),
-    queryFn: () => null,
-    initialData: null,
-    staleTime: Infinity,
-    enabled: false,
-  });
+  const latest = useLatestToolFeed(threadId);
   return (
     <div className="border border-dashed border-hairline rounded-md p-6 text-center">
       <p className="text-sm text-ink-subtle">

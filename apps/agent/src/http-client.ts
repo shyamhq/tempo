@@ -1,5 +1,4 @@
 import type {
-  ActivityStatus,
   CommentId,
   ConnectToken,
   EventId,
@@ -16,7 +15,6 @@ import {
   EventsLongPollResponse,
   GetPlanResponse,
   OpenRoundResponse,
-  SetActivityStatusResponse,
   WritePlanResponse,
 } from '@tempo/contracts/http';
 import { AttachOutput, GetClarificationAnswersOutput } from '@tempo/contracts/mcp';
@@ -45,15 +43,6 @@ export class ConsoleClient {
 
   getSessionState(sessionId: SessionId) {
     return this.send('GET', `/api/sessions/${sessionId}/state`, null, AttachOutput);
-  }
-
-  setActivityStatus(sessionId: SessionId, status: ActivityStatus) {
-    return this.send(
-      'POST',
-      `/api/sessions/${sessionId}/status`,
-      status,
-      SetActivityStatusResponse,
-    );
   }
 
   getPlan(threadId: ThreadId) {

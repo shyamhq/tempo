@@ -27,24 +27,16 @@ export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 
 export const ThreadStatus = z.enum(['unapproved', 'approved']);
 export const SessionStatus = z.enum(['pending', 'connected', 'disconnected']);
-export const ActivityLabel = z.enum(['exploring', 'thinking', 'drafting', 'writing', 'idle']);
 export const Actor = z.enum(['dev', 'agent']);
 export const RoundStatus = z.enum(['pending', 'answered']);
 
 export type ThreadStatus = z.infer<typeof ThreadStatus>;
 export type SessionStatus = z.infer<typeof SessionStatus>;
-export type ActivityLabel = z.infer<typeof ActivityLabel>;
 export type Actor = z.infer<typeof Actor>;
 export type RoundStatus = z.infer<typeof RoundStatus>;
 
 export const IsoTimestamp = z.iso.datetime();
 export type IsoTimestamp = z.infer<typeof IsoTimestamp>;
-
-export const ActivityStatus = z.object({
-  label: ActivityLabel,
-  detail: z.string().max(200).optional(),
-});
-export type ActivityStatus = z.infer<typeof ActivityStatus>;
 
 export const PlanBody = z.object({
   markdown: z.string(),

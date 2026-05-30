@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { Event } from './events';
 import {
-  ActivityStatus,
   Answer,
   Comment,
   CommentId,
@@ -86,11 +85,6 @@ export const PostDiscussionMessageOutput = z.object({
   message_id: MessageId,
 });
 
-export const SetStatusInput = ActivityStatus;
-export const SetStatusOutput = z.object({
-  ok: z.literal(true),
-});
-
 export const McpTool = z.enum([
   'tempo_attach',
   'tempo_pull_plan',
@@ -100,7 +94,6 @@ export const McpTool = z.enum([
   'tempo_poll',
   'tempo_post_reply',
   'tempo_post_discussion_message',
-  'tempo_set_status',
 ]);
 export type McpTool = z.infer<typeof McpTool>;
 

@@ -1,13 +1,11 @@
 import { z } from 'zod';
 import {
-  ActivityStatus,
   Comment,
   CommentId,
   DiscussionMessage,
   EventId,
   IsoTimestamp,
   PendingRound,
-  Plan,
   ProposalStatus,
   Reply,
   ReplyId,
@@ -74,11 +72,6 @@ export const CommentUnresolvedEvent = eventBase.extend({
   comment_id: CommentId,
 });
 
-export const ActivityPillEvent = eventBase.extend({
-  kind: z.literal('activity_pill'),
-  status: ActivityStatus,
-});
-
 export const AgentToolUseEvent = eventBase.extend({
   kind: z.literal('agent_tool_use'),
   tool: z.string().max(64),
@@ -109,7 +102,6 @@ export const Event = z.discriminatedUnion('kind', [
   StatusChangedEvent,
   CommentResolvedEvent,
   CommentUnresolvedEvent,
-  ActivityPillEvent,
   AgentToolUseEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
@@ -128,7 +120,6 @@ export const EventKind = z.enum([
   'status_changed',
   'comment_resolved',
   'comment_unresolved',
-  'activity_pill',
   'agent_tool_use',
   'session_connected',
   'session_disconnected',

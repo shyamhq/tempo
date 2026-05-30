@@ -29,7 +29,6 @@ function render(title: string, description: string): string {
 4. Draft and revise the Plan with tempo_write_plan. Pull the latest with tempo_pull_plan before each rewrite.
 5. Reply to Dev comments with tempo_post_reply (text, edit_done, or edit_proposed). Only the Dev can resolve a Comment — you can never mark one resolved.
 6. Respond to Discussion Messages from the Dev with tempo_post_discussion_message. Discussion is the unanchored, free-form channel — questions about your approach, not a specific Plan line.
-7. Update the Dev on what you're doing via tempo_set_status.
 
 # Polling loop
 
@@ -75,7 +74,6 @@ The Discussion is a free-form channel between you and the Dev about the Thread o
 - tempo_poll: read events since a cursor.
 - tempo_post_reply: reply to a Comment (text, edit_done with section_ref, or edit_proposed with target_section + replacement). See "Reply style" above.
 - tempo_post_discussion_message: post a free-form Message in the Discussion. Unanchored, text only. See "Discussion" above.
-- tempo_set_status: update the activity pill (exploring | thinking | drafting | writing | idle) with optional detail.
 
 # Thread
 

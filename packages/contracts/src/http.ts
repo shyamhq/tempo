@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { Event } from './events';
 import {
-  ActivityStatus,
   Answer,
   Comment,
   CommentId,
@@ -61,7 +60,6 @@ export const GetThreadResponse = z.object({
   // session's `attached_repo_*`. Both null when no session has connected yet.
   attached_repo_remote: z.string().nullable(),
   attached_repo_path: z.string().nullable(),
-  activity: ActivityStatus.nullable(),
   last_event_id: EventId,
 });
 
@@ -83,10 +81,6 @@ export const CreateSessionResponse = z.object({
 // GET /api/sessions/:id/state
 // Same shape as MCP attach output, but server-rendered.
 export { AttachOutput as GetSessionStateResponse } from './mcp';
-
-// POST /api/sessions/:id/status
-export const SetActivityStatusRequest = ActivityStatus;
-export const SetActivityStatusResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/sessions/:id/tool-use
 // Recorded by the Agent's Claude Code PreToolUse hook (fire-and-forget).

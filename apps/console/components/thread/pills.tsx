@@ -1,6 +1,6 @@
 'use client';
 
-import type { ActivityStatus, SessionStatus } from '@tempo/contracts';
+import type { SessionStatus } from '@tempo/contracts';
 import { Badge } from '@/components/ui/badge';
 
 export function SessionPill({ status }: { status: SessionStatus }) {
@@ -15,18 +15,6 @@ export function SessionPill({ status }: { status: SessionStatus }) {
     <Badge tone={tone}>
       <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       Session {status}
-    </Badge>
-  );
-}
-
-export function ActivityPill({ activity }: { activity: ActivityStatus | null }) {
-  if (!activity) return null;
-  return (
-    <Badge tone="neutral">
-      <span className="text-ink-subtle">{activity.label}</span>
-      {activity.detail ? (
-        <span className="text-ink-tertiary truncate max-w-[20rem]">— {activity.detail}</span>
-      ) : null}
     </Badge>
   );
 }
