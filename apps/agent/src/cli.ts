@@ -16,6 +16,7 @@ import { runHookRelay } from './hook-relay';
 import { ConsoleClient } from './http-client';
 import { logger } from './logger';
 import { runStdioMcpServer } from './mcp-server';
+import { runPostToolBatchHook } from './post-tool-batch-hook';
 import { runStopHook } from './stop-hook';
 
 async function main(): Promise<void> {
@@ -33,6 +34,11 @@ async function main(): Promise<void> {
 
   if (command === 'stop-hook') {
     await runStopHook();
+    return;
+  }
+
+  if (command === 'post-tool-batch-hook') {
+    await runPostToolBatchHook();
     return;
   }
 

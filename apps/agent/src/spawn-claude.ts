@@ -74,26 +74,38 @@ function hookSettingsJson(): string {
   // above the 25s long-poll wait so the hook returns its JSON before Claude
   // kills it.
   //
-  // Both inlined via `--settings` (Claude accepts file path or JSON string)
+  // PostToolBatch hook (A/B, gated by TEMPO_MIDTURN_HOOK=1): re-invokes as
+  // `post-tool-batch-hook`, which polls with wait=0 and emits
+  // `additionalContext` so new Comments land mid-turn. Default off —
+  // turning it off restores today's Stop-hook-only behavior exactly.
+  //
+  // All inlined via `--settings` (Claude accepts file path or JSON string)
   // so there's nothing to clean up. Matcher "*" covers every tool name.
   const command = (sub: string) =>
     `${shellEscape(process.execPath)} ${shellEscape(CLI_PATH)} ${sub}`;
-  return JSON.stringify({
-    hooks: {
-      PreToolUse: [
-        {
-          matcher: '*',
-          hooks: [{ type: 'command', command: command('hook-relay'), timeout: 2 }],
-        },
-      ],
-      Stop: [
-        {
-          matcher: '*',
-          hooks: [{ type: 'command', command: command('stop-hook'), timeout: 30 }],
-        },
-      ],
-    },
-  });
+  const hooks: Record<string, unknown> = {
+    PreToolUse: [
+      {
+        matcher: '*',
+        hooks: [{ type: 'command', command: command('hook-relay'), timeout: 2 }],
+      },
+    ],
+    Stop: [
+      {
+        matcher: '*',
+        hooks: [{ type: 'command', command: command('stop-hook'), timeout: 30 }],
+      },
+    ],
+  };
+  if (process.env.TEMPO_MIDTURN_HOOK === '1') {
+    hooks.PostToolBatch = [
+      {
+        matcher: '*',
+        hooks: [{ type: 'command', command: command('post-tool-batch-hook'), timeout: 2 }],
+      },
+    ];
+  }
+  return JSON.stringify({ hooks });
 }
 
 function shellEscape(s: string): string {
