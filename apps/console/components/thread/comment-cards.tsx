@@ -65,10 +65,12 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
 export function CommentCard({
   comment,
   focused = false,
+  orphan = false,
   onFocus,
 }: {
   comment: Comment;
   focused?: boolean;
+  orphan?: boolean;
   onFocus?: () => void;
 }) {
   const [replyDraft, setReplyDraft] = useState('');
@@ -128,7 +130,7 @@ export function CommentCard({
   };
 
   const resolved = comment.resolved_by !== null;
-  const border = focused ? 'border-2 border-accent' : 'border-hairline';
+  const border = `${focused ? 'border-2 border-accent' : 'border-hairline'}${orphan ? ' border-dashed' : ''}`;
   const firstReply = comment.replies[0];
   const extraReplyCount = Math.max(0, comment.replies.length - 1);
   const showMoreVisible = !effectivelyExpanded && (firstReplyOverflows || extraReplyCount > 0);
@@ -148,6 +150,11 @@ export function CommentCard({
       className={`rounded-md border bg-surface-1 ${border} p-3 cursor-pointer transition-colors`}
       title={comment.plan_quote ?? undefined}
     >
+      {orphan ? (
+        <p className="mb-2 text-[10px] uppercase tracking-wider text-ink-tertiary">
+          No matching Plan text
+        </p>
+      ) : null}
       {effectivelyExpanded ? (
         <div className="space-y-2">
           {comment.replies.map((r) => (

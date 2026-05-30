@@ -8,6 +8,8 @@ import { useComposerStore } from '@/lib/stores/composer-store';
 import { CommentCard, NewCommentCard } from './comment-cards';
 
 const CARD_GAP = 12;
+const ORPHAN_SECTION_GAP = 40;
+const DIVIDER_HEIGHT = 16;
 const PENDING_KEY = '__pending';
 
 // Absolute-positioning canvas: places each comment card at its anchor's y in
@@ -45,18 +47,17 @@ export function CommentsCanvas({
     });
   }, []);
 
-  const layout = useMemo(
-    () =>
-      computeLayout({
-        comments,
-        positions,
-        pendingY,
-        composerOpen,
-        heights,
-        focusedId: focusedCommentId,
-      }),
-    [comments, positions, pendingY, composerOpen, focusedCommentId, heights],
-  );
+  const layout = useMemo(() => {
+    const base = computeLayout({
+      comments,
+      positions,
+      pendingY,
+      composerOpen,
+      heights,
+      focusedId: focusedCommentId,
+    });
+    return placeOrphans(base, comments, positions, heights);
+  }, [comments, positions, pendingY, composerOpen, focusedCommentId, heights]);
 
   const canvasHeight = useMemo(() => {
     let maxBottom = 0;
@@ -112,6 +113,17 @@ export function CommentsCanvas({
         </PositionedCard>
       ) : null}
 
+      {layout.orphanDivider !== null ? (
+        <div
+          className="absolute left-0 right-0 flex items-center gap-2 text-[10px] uppercase tracking-wider text-ink-tertiary"
+          style={{ top: `${layout.orphanDivider}px`, height: `${DIVIDER_HEIGHT}px` }}
+        >
+          <span className="h-px flex-1 bg-hairline" />
+          <span>Unanchored</span>
+          <span className="h-px flex-1 bg-hairline" />
+        </div>
+      ) : null}
+
       {comments.map((c) => {
         const place = layout.placements.get(c.id);
         if (place === undefined) return null;
@@ -126,6 +138,7 @@ export function CommentsCanvas({
             <CommentCard
               comment={c}
               focused={focusedCommentId === c.id}
+              orphan={layout.orphanIds.has(c.id)}
               onFocus={() => onFocusChange(c.id)}
             />
           </PositionedCard>
@@ -179,8 +192,11 @@ function PositionedCard({
   );
 }
 
-type LayoutResult = {
-  placements: Map<string, number>;
+type AnchoredLayout = { placements: Map<string, number> };
+
+type LayoutResult = AnchoredLayout & {
+  orphanIds: Set<string>;
+  orphanDivider: number | null;
 };
 
 function computeLayout({
@@ -197,7 +213,7 @@ function computeLayout({
   composerOpen: boolean;
   heights: Map<string, number>;
   focusedId: string | null;
-}): LayoutResult {
+}): AnchoredLayout {
   const entries: { id: string; anchorY: number; height: number }[] = [];
 
   for (const c of comments) {
@@ -247,4 +263,36 @@ function computeLayout({
   }
 
   return { placements };
+}
+
+function placeOrphans(
+  base: AnchoredLayout,
+  comments: Comment[],
+  positions: Map<string, number>,
+  heights: Map<string, number>,
+): LayoutResult {
+  const orphans = comments.filter((c) => !positions.has(c.id));
+  if (orphans.length === 0) {
+    return { ...base, orphanIds: new Set(), orphanDivider: null };
+  }
+
+  let maxBottom = 0;
+  for (const [id, y] of base.placements) {
+    const h = heights.get(id) ?? 0;
+    if (y + h > maxBottom) maxBottom = y + h;
+  }
+
+  const placements = new Map(base.placements);
+  const orphanIds = new Set<string>();
+  // No anchored cards → no divider, orphans stack from the top.
+  const hasAnchored = base.placements.size > 0;
+  const orphanStart = hasAnchored ? maxBottom + ORPHAN_SECTION_GAP : 0;
+  const orphanDivider = hasAnchored ? orphanStart - DIVIDER_HEIGHT : null;
+  let cursor = orphanStart;
+  for (const c of orphans) {
+    placements.set(c.id, cursor);
+    orphanIds.add(c.id);
+    cursor += (heights.get(c.id) ?? 0) + CARD_GAP;
+  }
+  return { placements, orphanIds, orphanDivider };
 }
