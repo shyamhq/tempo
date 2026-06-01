@@ -1,5 +1,6 @@
 import type { ThreadSummary } from '@tempo/contracts';
 import { desc, eq, inArray } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 import { db } from '../db';
 import { defaultWorkspaceId } from '../db/ids';
 import {
@@ -13,14 +14,14 @@ import {
   threads,
 } from '../db/schema';
 import { newPlanId, newThreadId } from './ids';
-import { mintConnectToken } from './tokens';
 
 export async function createThread(
   workspaceId: string,
   title: string,
   description: string,
 ): Promise<{ thread: ThreadSummary; connect_token: string }> {
-  const { token, hash } = mintConnectToken();
+  // 24 random bytes = 32 url-safe base64 chars (no padding).
+  const token = `tmp_${randomBytes(24).toString('base64url')}`;
   const id = newThreadId();
   await db.transaction(async (tx) => {
     await tx.insert(threads).values({
@@ -28,11 +29,21 @@ export async function createThread(
       workspace_id: workspaceId,
       title,
       description,
-      connect_token_hash: hash,
+      connect_token: token,
     });
     await tx.insert(plans).values({ id: newPlanId(), thread_id: id });
   });
   return { thread: { id, title, description }, connect_token: token };
+}
+
+export async function getConnectToken(threadId: string): Promise<{ connect_token: string }> {
+  const [row] = await db
+    .select({ connect_token: threads.connect_token })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+  if (!row) throw new Error('thread_not_found');
+  return { connect_token: row.connect_token };
 }
 
 export async function listThreads(workspaceId: string = defaultWorkspaceId) {

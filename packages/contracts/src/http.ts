@@ -31,7 +31,13 @@ export const CreateThreadRequest = z.object({
 });
 export const CreateThreadResponse = z.object({
   thread: ThreadSummary,
-  connect_token: ConnectToken, // plaintext, shown once
+  connect_token: ConnectToken,
+});
+
+// GET /api/threads/:id/connect-token — Dev-only, returns the Thread's
+// stable connect token for re-display ("Connect" button on the Thread page).
+export const GetConnectTokenResponse = z.object({
+  connect_token: ConnectToken,
 });
 
 // GET /api/threads

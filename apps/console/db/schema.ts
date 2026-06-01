@@ -24,7 +24,7 @@ export const threads = sqliteTable('threads', {
   status: text('status', { enum: ['unapproved', 'approved'] })
     .notNull()
     .default('unapproved'),
-  connect_token_hash: text('connect_token_hash').notNull(),
+  connect_token: text('connect_token').notNull(),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updated_at: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });

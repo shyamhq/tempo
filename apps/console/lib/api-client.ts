@@ -13,6 +13,7 @@ import {
   type DecideProposalRequest,
   DecideProposalResponse,
   DeleteThreadResponse,
+  GetConnectTokenResponse,
   GetThreadResponse,
   ListThreadsResponse,
   type OpenRoundRequest,
@@ -79,6 +80,9 @@ export const api = {
     request('POST', '/api/threads', input, CreateThreadResponse),
 
   getThread: (id: string) => request('GET', `/api/threads/${id}`, undefined, GetThreadResponse),
+
+  getConnectToken: (threadId: string) =>
+    request('GET', `/api/threads/${threadId}/connect-token`, undefined, GetConnectTokenResponse),
 
   writePlan: (threadId: string, input: z.infer<typeof WritePlanRequest>) =>
     request('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),

@@ -4,7 +4,6 @@ import { sessions, threads } from '../db/schema';
 import { appendEvent } from './event-log';
 import { newSessionId } from './ids';
 import { nowIso } from './threads';
-import { hashConnectToken } from './tokens';
 
 export type CreateSessionResult =
   | { ok: true; session_id: string; thread_id: string }
@@ -14,11 +13,10 @@ export async function createSessionFromToken(
   token: string,
   attached: { repo_remote?: string | null; repo_path?: string | null },
 ): Promise<CreateSessionResult> {
-  const hash = hashConnectToken(token);
   const [thread] = await db
     .select({ id: threads.id })
     .from(threads)
-    .where(eq(threads.connect_token_hash, hash))
+    .where(eq(threads.connect_token, token))
     .limit(1);
   if (!thread) return { ok: false, error: 'invalid_token' };
 

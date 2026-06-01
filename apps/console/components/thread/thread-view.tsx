@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { z } from 'zod';
 import { CommentsRail } from '@/components/thread/comments-rail';
+import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanEditor } from '@/components/thread/editor/editor';
@@ -139,6 +140,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           <SessionPill status={view.session_status} />
           <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
+          <ConnectButton threadId={threadId} />
           {approved ? (
             <Button variant="ghost" onClick={reopen}>
               Reopen

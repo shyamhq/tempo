@@ -78,7 +78,8 @@ export function NewThreadDialog() {
           <>
             <DialogTitle>Thread created</DialogTitle>
             <DialogDescription>
-              Run this in your repo to connect the Agent. The token is shown once.
+              Run this in your repo to connect the Agent. You can grab this command again from the
+              Connect button on the Thread page.
             </DialogDescription>
             <div className="mt-4 rounded-md border border-hairline bg-surface-2 p-3 font-mono text-xs text-ink break-all flex items-start gap-2">
               <span className="flex-1">{connectCmd}</span>
