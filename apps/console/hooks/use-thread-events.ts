@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { AgentTodo } from '@tempo/contracts';
 import { Event, EventKind } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { useEffect, useRef } from 'react';
@@ -8,21 +9,31 @@ import type { z } from 'zod';
 
 type ThreadView = z.infer<typeof GetThreadResponse>;
 
-export type ToolFeedEntry = { id: string; tool: string; summary: string };
-export const toolFeedKey = (threadId: string) => ['thread', threadId, 'tool-feed'] as const;
+export type ToolCallEntry = { id: string; tool: string; summary: string };
+export type LiveActivity = {
+  todos: AgentTodo[] | null;
+  toolCalls: ToolCallEntry[];
+};
 
-// Cache-only read of the latest tool-use entry. SSE writes the value via
-// `setQueryData`; this hook never fetches. `enabled: false` makes that explicit
-// so a future staleTime change can't silently clear the feed.
-export function useLatestToolFeed(threadId: string): ToolFeedEntry | null {
-  const { data } = useQuery<ToolFeedEntry | null>({
-    queryKey: toolFeedKey(threadId),
-    queryFn: () => null,
-    initialData: null,
+// Tool stream cap — keeps the in-memory list bounded if Claude bursts hundreds
+// of tool calls between Dev messages.
+const TOOL_CALLS_MAX = 100;
+const EMPTY_ACTIVITY: LiveActivity = { todos: null, toolCalls: [] };
+
+export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
+
+// Cache-only read of the current "Agent activity" group: latest TodoWrite plus
+// the tool calls accumulated since the most recent Dev Discussion Message.
+// SSE writes the value via `setQueryData`; this hook never fetches.
+export function useLiveActivityGroup(threadId: string): LiveActivity {
+  const { data } = useQuery<LiveActivity>({
+    queryKey: liveActivityKey(threadId),
+    queryFn: () => EMPTY_ACTIVITY,
+    initialData: EMPTY_ACTIVITY,
     staleTime: Infinity,
     enabled: false,
   });
-  return data;
+  return data ?? EMPTY_ACTIVITY;
 }
 
 // SSE consumer for a single Thread. Mutates the cached Thread view via
@@ -83,9 +94,10 @@ export function useThreadEvents(
     return () => {
       stopped = true;
       es?.close();
-      // Drop the tool-feed entry so a remount or thread-switch doesn't flash
-      // the previous Agent run's last tool call before fresh events arrive.
-      qc.removeQueries({ queryKey: toolFeedKey(threadId), exact: true });
+      // Drop the live activity entry so a remount or thread-switch doesn't
+      // flash the previous Agent run's last todos or tool calls before fresh
+      // events arrive.
+      qc.removeQueries({ queryKey: liveActivityKey(threadId), exact: true });
     };
   }, [threadId, qc]);
 }
@@ -95,17 +107,8 @@ function apply(
   threadId: string,
   ev: z.infer<typeof Event>,
 ): void {
-  if (ev.kind === 'agent_tool_use') {
-    // Replace, not accumulate — UI shows only the latest tick.
-    const entry: ToolFeedEntry = { id: ev.id, tool: ev.tool, summary: ev.summary };
-    qc.setQueryData<ToolFeedEntry | null>(toolFeedKey(threadId), entry);
-    return;
-  }
-  if (ev.kind === 'discussion_message_posted' && ev.message.author === 'dev') {
-    // Fresh Agent turn — drop the previous turn's tool tick so the indicator
-    // doesn't render stale "Reading X" / "idle" labels before the Agent moves.
-    qc.setQueryData<ToolFeedEntry | null>(toolFeedKey(threadId), null);
-  }
+  applyLiveActivity(qc, threadId, ev);
+
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;
@@ -193,5 +196,37 @@ function apply(
   // text (D6: last-write-wins, Console is authoritative).
   if (ev.kind === 'plan_edited_by_agent' || ev.kind === 'plan_edited_by_dev') {
     qc.invalidateQueries({ queryKey: ['thread', threadId] });
+  }
+}
+
+function applyLiveActivity(
+  qc: ReturnType<typeof useQueryClient>,
+  threadId: string,
+  ev: z.infer<typeof Event>,
+): void {
+  switch (ev.kind) {
+    case 'agent_tool_use':
+      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
+        const base = prev ?? EMPTY_ACTIVITY;
+        const entry: ToolCallEntry = { id: ev.id, tool: ev.tool, summary: ev.summary };
+        return { ...base, toolCalls: [entry, ...base.toolCalls].slice(0, TOOL_CALLS_MAX) };
+      });
+      return;
+    case 'agent_todos_updated':
+      // Empty array means Claude cleared its list — normalize to `null` so the
+      // type's "no todos" branch is the single source of truth for the UI.
+      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
+        ...(prev ?? EMPTY_ACTIVITY),
+        todos: ev.todos.length > 0 ? ev.todos : null,
+      }));
+      return;
+    case 'discussion_message_posted':
+      // Dev message starts a fresh Agent turn — drop the previous turn's todos
+      // and tool stream so the activity group doesn't render stale state above
+      // the new message.
+      if (ev.message.author === 'dev') {
+        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), EMPTY_ACTIVITY);
+      }
+      return;
   }
 }

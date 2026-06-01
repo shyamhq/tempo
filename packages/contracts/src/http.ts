@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Event } from './events';
+import { AgentTodo, Event } from './events';
 import {
   Comment,
   ConnectToken,
@@ -84,6 +84,14 @@ export const RecordToolUseRequest = z.object({
   summary: z.string().max(200),
 });
 export const RecordToolUseResponse = z.object({ ok: z.literal(true) });
+
+// POST /api/sessions/:id/todos-updated
+// Recorded by the Agent's Claude Code PreToolUse hook when tool_name=TodoWrite
+// (fire-and-forget). Carries the full todo list — each call rewrites the slate.
+export const RecordTodosUpdatedRequest = z.object({
+  todos: z.array(AgentTodo).max(50),
+});
+export const RecordTodosUpdatedResponse = z.object({ ok: z.literal(true) });
 
 // GET /api/threads/:id/plan
 export const GetPlanResponse = Plan;

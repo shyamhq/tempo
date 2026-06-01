@@ -66,6 +66,18 @@ export const AgentToolUseEvent = eventBase.extend({
   summary: z.string().max(200),
 });
 
+export const AgentTodo = z.object({
+  content: z.string().max(500),
+  status: z.enum(['pending', 'in_progress', 'completed']),
+  activeForm: z.string().max(500).optional(),
+});
+export type AgentTodo = z.infer<typeof AgentTodo>;
+
+export const AgentTodosUpdatedEvent = eventBase.extend({
+  kind: z.literal('agent_todos_updated'),
+  todos: z.array(AgentTodo).max(50),
+});
+
 export const SessionConnectedEvent = eventBase.extend({
   kind: z.literal('session_connected'),
 });
@@ -89,6 +101,7 @@ export const Event = z.discriminatedUnion('kind', [
   CommentResolvedEvent,
   CommentUnresolvedEvent,
   AgentToolUseEvent,
+  AgentTodosUpdatedEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
   DiscussionMessagePostedEvent,
@@ -105,6 +118,7 @@ export const EventKind = z.enum([
   'comment_resolved',
   'comment_unresolved',
   'agent_tool_use',
+  'agent_todos_updated',
   'session_connected',
   'session_disconnected',
   'discussion_message_posted',

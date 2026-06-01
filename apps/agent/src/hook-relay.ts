@@ -1,6 +1,8 @@
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { URL } from 'node:url';
+import { AgentTodo } from '@tempo/contracts';
+import { z } from 'zod';
 
 // PreToolUse hook entry point.
 //
@@ -31,14 +33,35 @@ export async function runHookRelay(): Promise<void> {
 
   const payload = await readJsonStdin();
   const tool = typeof payload?.tool_name === 'string' ? payload.tool_name : 'unknown';
-  const summary = summarizeToolInput(payload?.tool_input);
 
+  // TodoWrite carries the agent's whole checklist on every call; we surface it
+  // as a structured `agent_todos_updated` event instead of an opaque tool-use
+  // line. Invalid payloads fall through to the generic path so the UI still
+  // gets *something* and the event isn't lost.
+  if (tool === 'TodoWrite') {
+    const todos = parseTodos(payload?.tool_input);
+    if (todos) {
+      fireAndForget(consoleUrl, `/api/sessions/${sessionId}/todos-updated`, token, { todos });
+      return;
+    }
+  }
+
+  const summary = summarizeToolInput(payload?.tool_input);
   // Fire-and-forget: schedule the request, don't await it. The parent process
   // will keep the event loop alive long enough for the request to flush
   // because we end the request body inline before returning. On localhost this
   // is sub-10ms; over the internet we accept the risk of losing an event if
   // the process exits before the socket flushes.
-  postToolUse(consoleUrl, sessionId, token, tool, summary);
+  fireAndForget(consoleUrl, `/api/sessions/${sessionId}/tool-use`, token, { tool, summary });
+}
+
+const TodosPayload = z.array(AgentTodo).max(50);
+
+function parseTodos(input: unknown): z.infer<typeof TodosPayload> | null {
+  if (!input || typeof input !== 'object') return null;
+  const todos = (input as Record<string, unknown>).todos;
+  const parsed = TodosPayload.safeParse(todos);
+  return parsed.success ? parsed.data : null;
 }
 
 async function readJsonStdin(): Promise<HookPayload | null> {
@@ -82,20 +105,19 @@ function clip(s: string, max: number): string {
   return `${s.slice(0, max - 1)}…`;
 }
 
-function postToolUse(
+function fireAndForget(
   consoleUrl: string,
-  sessionId: string,
+  pathname: string,
   token: string,
-  tool: string,
-  summary: string,
+  payload: unknown,
 ): void {
   let url: URL;
   try {
-    url = new URL(`/api/sessions/${sessionId}/tool-use`, consoleUrl);
+    url = new URL(pathname, consoleUrl);
   } catch {
     return;
   }
-  const body = JSON.stringify({ tool, summary });
+  const body = JSON.stringify(payload);
   const lib = url.protocol === 'https:' ? httpsRequest : httpRequest;
   const req = lib(
     {

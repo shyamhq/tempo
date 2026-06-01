@@ -78,6 +78,11 @@ export function spawnTerminal(args: {
           TEMPO_SESSION_ID: args.sessionId,
           TEMPO_THREAD_ID: args.threadId,
           TEMPO_CONSOLE_URL: env.TEMPO_CONSOLE_URL,
+          // Keep Claude on TodoWrite. As of CLI v2.1.142+ the default is the
+          // Task tools (TaskCreate/TaskUpdate/TaskGet/TaskList), which split a
+          // single TodoWrite call into per-item events keyed by taskId — that
+          // would need server-side state accumulation we haven't built yet.
+          CLAUDE_CODE_ENABLE_TASKS: '0',
         } as Record<string, string>,
       },
     );

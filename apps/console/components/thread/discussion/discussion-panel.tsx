@@ -1,9 +1,9 @@
 'use client';
 
 import type { DiscussionMessage, SessionStatus } from '@tempo/contracts';
-import { Loader2, Sparkles, X } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { useLatestToolFeed } from '@/hooks/use-thread-events';
+import { Sparkles, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { LiveActivityGroup } from './live-activity-group';
 import { MessageComposer } from './message-composer';
 import { MessageList } from './message-list';
 
@@ -30,7 +30,6 @@ export function DiscussionPanel({
   onClose: () => void;
   onOpened: () => void;
 }) {
-  const toolFeed = useLatestToolFeed(threadId);
   // Stamp "seen" whenever the panel renders open. Parent guarantees this
   // component only mounts while `open` — so a mount equals an open event.
   useEffect(() => {
@@ -56,25 +55,6 @@ export function DiscussionPanel({
     ? 'Thread is approved — reopen to continue the Discussion.'
     : null;
 
-  const lastMessage = messages[messages.length - 1];
-  const liveCardPending = lastMessage?.questions != null;
-  const showThinking =
-    !approved && !liveCardPending && sessionStatus === 'connected' && lastMessage?.author === 'dev';
-
-  let endSlot: ReactNode = null;
-  if (showThinking) {
-    // `||` rather than `??` — a zero-length tool name should fall through.
-    const label = toolFeed?.tool || 'Working';
-    const detail = toolFeed?.summary || null;
-    endSlot = (
-      <div className="flex items-center gap-2 text-[13px] text-ink-subtle">
-        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-        <span className="font-medium text-ink shrink-0">{label}</span>
-        {detail ? <span className="truncate">— {detail}</span> : null}
-      </div>
-    );
-  }
-
   return (
     <aside
       aria-label="Discussion"
@@ -84,7 +64,7 @@ export function DiscussionPanel({
       <MessageList
         messages={messages}
         threadId={threadId}
-        endSlot={endSlot}
+        endSlot={<LiveActivityGroup threadId={threadId} />}
         emptyState={<EmptyState />}
       />
       <MessageComposer
