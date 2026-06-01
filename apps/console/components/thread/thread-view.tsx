@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import type { Editor } from '@tiptap/core';
-import { ArrowLeft, GitBranch, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, GitBranch, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
@@ -15,7 +15,7 @@ import { PlanEditor } from '@/components/thread/editor/editor';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
 import { Button } from '@/components/ui/button';
-import { useLatestToolFeed, useThreadEvents } from '@/hooks/use-thread-events';
+import { useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
 
 type View = z.infer<typeof GetThreadResponse>;
@@ -42,7 +42,10 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
   const [showResolved, setShowResolved] = useState(false);
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
-  const [userOpenedDiscussion, setUserOpenedDiscussion] = useState(false);
+  // Open the Discussion by default on a fresh Thread (no Plan yet) — the Agent
+  // and Dev will be talking before there's any Plan to read. After mount the
+  // Dev controls it via the FAB or ⌘/.
+  const [userOpenedDiscussion, setUserOpenedDiscussion] = useState(initial.plan.body === null);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
   const [discussionWidth, setDiscussionWidth] = useState(DEFAULT_DISCUSSION_WIDTH);
 
@@ -210,7 +213,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         <section>
           {approved ? <HandoffBanner planMarkdown={markdown} /> : null}
           {view.plan.body === null ? (
-            <EmptyPlanState threadId={threadId} />
+            <EmptyPlanState />
           ) : (
             <div
               className={`rounded-md transition-shadow duration-700 ${
@@ -261,20 +264,12 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   );
 }
 
-function EmptyPlanState({ threadId }: { threadId: string }) {
-  const latest = useLatestToolFeed(threadId);
+function EmptyPlanState() {
   return (
     <div className="border border-dashed border-hairline rounded-md p-6 text-center">
       <p className="text-sm text-ink-subtle">
         The Agent hasn't drafted a Plan yet. When it does, edits appear here live.
       </p>
-      {latest ? (
-        <p className="mt-3 text-sm text-ink-subtle flex gap-2 items-center justify-center">
-          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-          <span className="text-ink font-medium shrink-0">{latest.tool}</span>
-          {latest.summary ? <span className="truncate max-w-[28rem]">{latest.summary}</span> : null}
-        </p>
-      ) : null}
     </div>
   );
 }
