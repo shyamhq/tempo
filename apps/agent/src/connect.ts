@@ -1,13 +1,10 @@
 import { exec } from 'node:child_process';
-import { rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { type ConnectToken, ZERO_EVENT_CURSOR } from '@tempo/contracts';
+import type { ConnectToken } from '@tempo/contracts';
 import { env } from './env';
 import { ConsoleClient } from './http-client';
 import { logger } from './logger';
-import { spawnInteractiveClaude } from './spawn-claude';
+import { runPtyLoop } from './pty-loop';
 
 const execAsync = promisify(exec);
 
@@ -22,23 +19,14 @@ export async function connect(token: ConnectToken): Promise<void> {
   process.stdout.write(
     `attached to thread ${session.thread_id} as session ${session.session_id}\n`,
   );
+  process.stdout.write('launching claude...\n\n');
 
-  const cursorFile = join(tmpdir(), `tempo-cursor-${session.session_id}`);
-  writeFileSync(cursorFile, ZERO_EVENT_CURSOR, { mode: 0o600 });
-
-  process.stdout.write('launching claude with tempo tools...\n\n');
-  try {
-    const exitCode = await spawnInteractiveClaude({
-      initialPrompt: 'Call tempo_attach to begin.',
-      sessionId: session.session_id,
-      threadId: session.thread_id,
-      token,
-      cursorFile,
-    });
-    process.exit(exitCode);
-  } finally {
-    rmSync(cursorFile, { force: true });
-  }
+  const exitCode = await runPtyLoop({
+    sessionId: session.session_id,
+    threadId: session.thread_id,
+    token,
+  });
+  process.exit(exitCode);
 }
 
 async function collectRepoMetadata(): Promise<{

@@ -47,12 +47,17 @@ export class ConsoleClient {
     return this.send('POST', `/api/threads/${threadId}/plan`, { markdown }, WritePlanResponse);
   }
 
-  poll(threadId: ThreadId, cursor: EventId, waitSeconds = 25) {
+  poll(threadId: ThreadId, cursor: EventId, waitSeconds = 25, signal?: AbortSignal) {
+    // Bound the long-poll fetch with waitSeconds + 5s slack so it can't sit
+    // on a half-open socket after a macOS sleep/wake. Without this, undici's
+    // bodyTimeout (~5min) is the only backstop. Caller can pass an additional
+    // signal (e.g. a wake-watchdog abort) — combined per-attempt in fetchJson.
     return this.send(
       'GET',
       `/api/threads/${threadId}/events?cursor=${encodeURIComponent(cursor)}&wait=${waitSeconds}`,
       null,
       EventsLongPollResponse,
+      { timeoutMs: waitSeconds * 1000 + 5000, signal },
     );
   }
 
@@ -79,9 +84,10 @@ export class ConsoleClient {
     path: string,
     body: unknown,
     schema: z.ZodType<T>,
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const raw = await this.fetchJson(method, url, body);
+    const raw = await this.fetchJson(method, url, body, opts);
     const parsed = schema.safeParse(raw);
     if (!parsed.success) {
       logger.debug({ url, issues: parsed.error.issues }, 'contract validation failed');
@@ -90,12 +96,27 @@ export class ConsoleClient {
     return parsed.data;
   }
 
-  private async fetchJson(method: Method, url: string, body: unknown): Promise<unknown> {
+  private async fetchJson(
+    method: Method,
+    url: string,
+    body: unknown,
+    opts?: { timeoutMs?: number; signal?: AbortSignal },
+  ): Promise<unknown> {
     return this.withRetries(url, async () => {
+      // AbortSignal.timeout must be re-created per attempt — re-using one
+      // already-fired signal across retries would abort every retry instantly.
+      // The caller-supplied signal is sticky by design (wake watchdog cancels
+      // all attempts).
       const init: RequestInit = { method, headers: this.headers() };
       if (body !== null && body !== undefined) {
         (init.headers as Record<string, string>)['Content-Type'] = 'application/json';
         init.body = JSON.stringify(body);
+      }
+      if (opts?.timeoutMs !== undefined || opts?.signal) {
+        const signals: AbortSignal[] = [];
+        if (opts.timeoutMs !== undefined) signals.push(AbortSignal.timeout(opts.timeoutMs));
+        if (opts.signal) signals.push(opts.signal);
+        init.signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
       }
       const res = await fetch(url, init);
       if (!res.ok) throw await this.toHttpError(res, url);
