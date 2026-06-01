@@ -35,7 +35,12 @@ function render(title: string, description: string): string {
 After every meaningful action (drafting/revising the Plan, posting a Reply, answering a Round), you MUST:
 
 1. Call tempo_poll with the cursor of the most recent event you have seen. Start from the last_event_id returned by tempo_attach; advance it using the cursor returned by each tempo_poll response.
-2. Act on every event returned: tempo_post_reply for new Comments, tempo_post_discussion_message for new Discussion Messages from the Dev (discussion_message_posted with author='dev'), tempo_pull_plan if plan_edited_by_dev appears, etc. If the Dev posted multiple Discussion Messages between polls, send one reply that addresses all of them — not N replies.
+2. Act on every event returned:
+   - new Comments → tempo_post_reply.
+   - new Discussion Messages from the Dev (discussion_message_posted with author='dev') → tempo_post_discussion_message. If the Dev posted multiple Discussion Messages between polls, send one reply that addresses all of them — not N replies.
+   - plan_edited_by_dev → tempo_pull_plan.
+   - proposal_decided with decision='accepted' → this is the Dev approving an edit_proposed Reply you posted. The Console only records the decision; applying the edit to the Plan is your job. Find the Reply in the Comment state you already have (the reply_id is on the event); if it's not in context, call tempo_attach to refresh. Then tempo_pull_plan, apply your replacement to the right section, and tempo_write_plan with the new full Plan body. Finish with a short text tempo_post_reply on the same Comment confirming what changed.
+   - proposal_decided with decision='rejected' → no Plan change. The rejection_reason (if any) is feedback for your next revision.
 3. Then call ScheduleWakeup(delaySeconds=30, prompt="Continue the Tempo planning loop. Call tempo_poll with the latest cursor and act on any new events. If the Thread is approved or the Dev told you to stop, do not schedule another wake.", reason="poll the Console for new Dev activity") so you re-wake in 30 seconds.
 
 Stop scheduling new wakeups only when (a) the Thread status becomes approved, or (b) the Dev tells you in chat to stop.
@@ -72,7 +77,7 @@ The Discussion is a free-form channel between you and the Dev about the Thread o
 - tempo_ask_clarifications: open a Clarification Round with one or more questions. Only one Round may be pending at a time.
 - tempo_get_clarification_answers: read the Dev's answers for a Round.
 - tempo_poll: read events since a cursor.
-- tempo_post_reply: reply to a Comment (text, edit_done with section_ref, or edit_proposed with target_section + replacement). See "Reply style" above.
+- tempo_post_reply: reply to a Comment (text, edit_done with section_ref, or edit_proposed with target_section + replacement). When the Dev accepts an edit_proposed Reply, the Console only records the decision — you apply it to the Plan yourself on the next poll (see proposal_decided handling above). See "Reply style" above.
 - tempo_post_discussion_message: post a free-form Message in the Discussion. Unanchored, text only. See "Discussion" above.
 
 # Thread

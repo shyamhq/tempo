@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = await parseBody(req, DecideProposalRequest);
   if (!parsed.ok) return parsed.response;
   try {
-    await decideProposal(id, parsed.data.decision, auth.actor, parsed.data.rejection_reason);
+    await decideProposal(id, parsed.data.decision, parsed.data.rejection_reason);
   } catch (e) {
     const msg = (e as Error).message;
     if (msg === 'reply_not_found') return err('reply_not_found', 404);
