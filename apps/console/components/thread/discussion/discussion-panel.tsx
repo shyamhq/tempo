@@ -1,27 +1,32 @@
 'use client';
 
-import type { DiscussionMessage, PendingRound, SessionStatus } from '@tempo/contracts';
+import type { DiscussionMessage, SessionStatus } from '@tempo/contracts';
 import { Loader2, Sparkles, X } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useLatestToolFeed } from '@/hooks/use-thread-events';
 import { MessageComposer } from './message-composer';
 import { MessageList } from './message-list';
-import { RoundCard } from './round-card';
 
 export function DiscussionPanel({
   threadId,
   messages,
-  pendingRound,
   approved,
   sessionStatus,
+  width,
+  minWidth,
+  maxWidth,
+  onWidthChange,
   onClose,
   onOpened,
 }: {
   threadId: string;
   messages: DiscussionMessage[];
-  pendingRound: PendingRound | null;
   approved: boolean;
   sessionStatus: SessionStatus;
+  width: number;
+  minWidth: number;
+  maxWidth: number;
+  onWidthChange: (w: number) => void;
   onClose: () => void;
   onOpened: () => void;
 }) {
@@ -34,34 +39,30 @@ export function DiscussionPanel({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !pendingRound) {
+      if (e.key === 'Escape') {
         e.preventDefault();
         onClose();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, pendingRound]);
+  }, [onClose]);
 
-  const composerDisabled = approved || pendingRound !== null;
-  let composerReason: string | null = null;
-  if (approved) {
-    composerReason = 'Thread is approved — reopen to continue the Discussion.';
-  } else if (pendingRound) {
-    composerReason = 'Answer the Round above to continue.';
-  }
+  // Composer disabled only when the Thread is frozen (approved). When a live
+  // question card sits at the bottom of the timeline the Dev can still post
+  // free-form pushback — sending any message supersedes the card.
+  const composerDisabled = approved;
+  const composerReason = approved
+    ? 'Thread is approved — reopen to continue the Discussion.'
+    : null;
 
   const lastMessage = messages[messages.length - 1];
+  const liveCardPending = lastMessage?.questions != null;
   const showThinking =
-    !approved &&
-    !pendingRound &&
-    sessionStatus === 'connected' &&
-    lastMessage?.author === 'dev';
+    !approved && !liveCardPending && sessionStatus === 'connected' && lastMessage?.author === 'dev';
 
   let endSlot: ReactNode = null;
-  if (pendingRound) {
-    endSlot = <RoundCard round={pendingRound} />;
-  } else if (showThinking) {
+  if (showThinking) {
     // `||` rather than `??` — a zero-length tool name should fall through.
     const label = toolFeed?.tool || 'Working';
     const detail = toolFeed?.summary || null;
@@ -77,10 +78,15 @@ export function DiscussionPanel({
   return (
     <aside
       aria-label="Discussion"
-      className="flex flex-col h-full min-h-0 bg-canvas border-r border-hairline overflow-hidden"
+      className="relative flex flex-col h-full min-h-0 bg-canvas border-r border-hairline overflow-hidden"
     >
-      <PanelHeader sessionStatus={sessionStatus} canClose={!pendingRound} onClose={onClose} />
-      <MessageList messages={messages} endSlot={endSlot} emptyState={<EmptyState />} />
+      <PanelHeader sessionStatus={sessionStatus} onClose={onClose} />
+      <MessageList
+        messages={messages}
+        threadId={threadId}
+        endSlot={endSlot}
+        emptyState={<EmptyState />}
+      />
       <MessageComposer
         threadId={threadId}
         disabled={composerDisabled}
@@ -93,17 +99,109 @@ export function DiscussionPanel({
         <span className="sr-only">. </span>
         general discussion, not tied to a selection
       </p>
+      <ResizeHandle
+        width={width}
+        minWidth={minWidth}
+        maxWidth={maxWidth}
+        onWidthChange={onWidthChange}
+      />
     </aside>
+  );
+}
+
+function ResizeHandle({
+  width,
+  minWidth,
+  maxWidth,
+  onWidthChange,
+}: {
+  width: number;
+  minWidth: number;
+  maxWidth: number;
+  onWidthChange: (w: number) => void;
+}) {
+  const startRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  // Body cursor/select tied to dragging state, not to handler call order — if
+  // the panel unmounts (Escape, ⌘/) mid-drag, the cleanup restores them.
+  useEffect(() => {
+    if (!dragging) return;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    return () => {
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [dragging]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startRef.current = { pointerId: e.pointerId, startX: e.clientX, startWidth: width };
+    setDragging(true);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    if (!start || start.pointerId !== e.pointerId) return;
+    const delta = e.clientX - start.startX;
+    const next = Math.max(minWidth, Math.min(maxWidth, start.startWidth + delta));
+    onWidthChange(next);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const start = startRef.current;
+    if (!start || start.pointerId !== e.pointerId) return;
+    startRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    setDragging(false);
+  };
+
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: <hr> has no value semantics; div+role=separator is the WAI-ARIA window-splitter pattern.
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize Discussion panel"
+      aria-valuemin={minWidth}
+      aria-valuemax={maxWidth}
+      aria-valuenow={width}
+      aria-valuetext={`${width} pixels`}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          onWidthChange(Math.max(minWidth, width - (e.shiftKey ? 32 : 8)));
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          onWidthChange(Math.min(maxWidth, width + (e.shiftKey ? 32 : 8)));
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          onWidthChange(minWidth);
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          onWidthChange(maxWidth);
+        }
+      }}
+      className="absolute top-0 right-0 h-full w-1.5 -mr-[3px] cursor-col-resize group focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/15 z-10"
+    >
+      <div className="absolute inset-y-0 right-[2px] w-px bg-hairline group-hover:bg-accent group-focus-visible:bg-accent transition-colors" />
+    </div>
   );
 }
 
 function PanelHeader({
   sessionStatus,
-  canClose,
   onClose,
 }: {
   sessionStatus: SessionStatus;
-  canClose: boolean;
   onClose: () => void;
 }) {
   const connected = sessionStatus === 'connected';
@@ -122,24 +220,20 @@ function PanelHeader({
           <span
             aria-hidden
             className={`inline-block h-[7px] w-[7px] rounded-full ${
-              connected
-                ? 'bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.16)]'
-                : 'bg-ink-tertiary'
+              connected ? 'bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.16)]' : 'bg-ink-tertiary'
             }`}
           />
           {connected ? 'connected' : 'offline'}
         </span>
       </div>
-      {canClose ? (
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close Discussion"
-          className="inline-flex items-center justify-center h-7 w-7 -mr-1 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      ) : null}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close Discussion"
+        className="inline-flex items-center justify-center h-7 w-7 -mr-1 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }

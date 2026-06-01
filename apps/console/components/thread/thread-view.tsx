@@ -5,7 +5,7 @@ import type { GetThreadResponse } from '@tempo/contracts/http';
 import type { Editor } from '@tiptap/core';
 import { ArrowLeft, GitBranch, Loader2, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { CommentsRail } from '@/components/thread/comments-rail';
 import { ConnectButton } from '@/components/thread/connect-button';
@@ -19,6 +19,15 @@ import { useLatestToolFeed, useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
 
 type View = z.infer<typeof GetThreadResponse>;
+
+const DEFAULT_DISCUSSION_WIDTH = 360;
+const MIN_DISCUSSION_WIDTH = 320;
+const MAX_DISCUSSION_WIDTH = 720;
+const DISCUSSION_WIDTH_STORAGE = 'tempo:discussion_width';
+
+function clampWidth(w: number): number {
+  return Math.max(MIN_DISCUSSION_WIDTH, Math.min(MAX_DISCUSSION_WIDTH, Math.round(w)));
+}
 
 export function ThreadView({ threadId, initial }: { threadId: string; initial: View }) {
   const qc = useQueryClient();
@@ -35,6 +44,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
   const [userOpenedDiscussion, setUserOpenedDiscussion] = useState(false);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
+  const [discussionWidth, setDiscussionWidth] = useState(DEFAULT_DISCUSSION_WIDTH);
 
   useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id, () =>
     setPlanUpdatedAt(Date.now()),
@@ -44,6 +54,32 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     if (typeof window === 'undefined') return;
     setDiscussionSeenAt(window.localStorage.getItem(`tempo:thread:${threadId}:discussion_seen_at`));
   }, [threadId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(DISCUSSION_WIDTH_STORAGE);
+    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
+    if (Number.isFinite(parsed)) setDiscussionWidth(clampWidth(parsed));
+  }, []);
+
+  // Debounce the localStorage write — pointermove fires ~60×/s during a drag;
+  // committing the final value at ~5Hz keeps state live while sparing the disk.
+  const widthPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (widthPersistTimer.current) clearTimeout(widthPersistTimer.current);
+    },
+    [],
+  );
+  const persistDiscussionWidth = useCallback((w: number) => {
+    const clamped = clampWidth(w);
+    setDiscussionWidth(clamped);
+    if (typeof window === 'undefined') return;
+    if (widthPersistTimer.current) clearTimeout(widthPersistTimer.current);
+    widthPersistTimer.current = setTimeout(() => {
+      window.localStorage.setItem(DISCUSSION_WIDTH_STORAGE, String(clamped));
+    }, 200);
+  }, []);
 
   useEffect(() => {
     if (planUpdatedAt === null) return;
@@ -87,10 +123,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const approved = view.status === 'approved';
 
-  // Single source of truth for D13 blocking enforcement: `pending_round !== null`
-  // forces the panel open, hides its close button, and disables the composer.
-  // User-opened state (userOpenedDiscussion) controls the panel otherwise.
-  const discussionOpen = userOpenedDiscussion || view.pending_round !== null;
+  const discussionOpen = userOpenedDiscussion;
 
   const unreadCount = useMemo(() => {
     if (discussionOpen) return 0;
@@ -112,20 +145,23 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   }, [threadId]);
 
   const gridClass = discussionOpen
-    ? 'grid-cols-[360px_1fr] 2xl:grid-cols-[360px_1fr_360px]'
+    ? 'grid-cols-[var(--discussion-w)_1fr] 2xl:grid-cols-[var(--discussion-w)_1fr_360px]'
     : 'grid-cols-1 lg:grid-cols-[1fr_360px]';
+  const gridStyle = discussionOpen
+    ? ({ ['--discussion-w' as string]: `${discussionWidth}px` } as CSSProperties)
+    : undefined;
 
-  // Onkeydown for ⌘/ panel toggle — only when no Round is pending (Round-sticky).
+  // ⌘/ toggles the panel.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === '/' && !view.pending_round) {
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         setUserOpenedDiscussion((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [view.pending_round]);
+  }, []);
 
   return (
     <div className="min-h-dvh">
@@ -153,15 +189,18 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       </header>
 
-      <div className={`mx-auto max-w-[1600px] px-6 py-6 grid gap-6 ${gridClass}`}>
+      <div className={`mx-auto max-w-[1600px] px-6 py-6 grid gap-6 ${gridClass}`} style={gridStyle}>
         {discussionOpen ? (
           <aside className="h-[calc(100dvh-3.5rem-3rem)] sticky top-[calc(3.5rem+1.5rem)]">
             <DiscussionPanel
               threadId={threadId}
               messages={view.discussion.messages}
-              pendingRound={view.pending_round}
               approved={approved}
               sessionStatus={view.session_status}
+              width={discussionWidth}
+              minWidth={MIN_DISCUSSION_WIDTH}
+              maxWidth={MAX_DISCUSSION_WIDTH}
+              onWidthChange={persistDiscussionWidth}
               onClose={closeDiscussion}
               onOpened={markOpened}
             />
@@ -217,12 +256,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      <DiscussionButton
-        open={discussionOpen}
-        unreadCount={unreadCount}
-        roundPending={view.pending_round !== null}
-        onClick={openDiscussion}
-      />
+      <DiscussionButton open={discussionOpen} unreadCount={unreadCount} onClick={openDiscussion} />
     </div>
   );
 }

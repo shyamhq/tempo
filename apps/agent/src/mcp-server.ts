@@ -2,8 +2,6 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { SessionId, ThreadId } from '@tempo/contracts';
 import {
-  AskClarificationsInput,
-  GetClarificationAnswersInput,
   PollInput,
   PostDiscussionMessageInput,
   PostReplyInput,
@@ -23,7 +21,7 @@ export async function runStdioMcpServer(args: {
     'tempo_attach',
     {
       description:
-        'Always call first. Returns Thread state — title, description, status — plus Plan, open Comments, Discussion messages, pending Round, last event cursor, and the workflow guide for this session. Call again after any session resume or context compact.',
+        'Always call first. Returns Thread state — title, description, status — plus Plan, open Comments, Discussion messages, and the workflow guide for this session. Call again after any session resume or context compact.',
       inputSchema: {},
     },
     async () => wrap(await client.getSessionState(sessionId)),
@@ -39,27 +37,6 @@ export async function runStdioMcpServer(args: {
     'tempo_write_plan',
     { description: 'Replace the Plan markdown.', inputSchema: WritePlanInput.shape },
     async (args) => wrap(await client.writePlan(threadId, args.markdown)),
-  );
-
-  server.registerTool(
-    'tempo_ask_clarifications',
-    {
-      description: 'Open a Clarification Round with structured questions.',
-      inputSchema: AskClarificationsInput.shape,
-    },
-    async (args) => {
-      const r = await client.openRound(threadId, args.questions);
-      return wrap({ round_id: r.round_id });
-    },
-  );
-
-  server.registerTool(
-    'tempo_get_clarification_answers',
-    {
-      description: "Read the Dev's answers to a Round; returns pending until submitted.",
-      inputSchema: GetClarificationAnswersInput.shape,
-    },
-    async (args) => wrap(await client.getRoundAnswers(args.round_id)),
   );
 
   server.registerTool(
@@ -88,11 +65,11 @@ export async function runStdioMcpServer(args: {
     'tempo_post_discussion_message',
     {
       description:
-        "Post a free-form Message in the Thread Discussion (unanchored, no Plan quote). Use for approach-level talk about your reasoning, the codebase, or the Thread overall — not line-level pushback on the Plan (use tempo_post_reply for that). Same short, designer-to-PM tone as Replies: three short paragraphs at most, markdown welcome.\n\nIf multiple Dev Messages arrived since your last poll, send ONE Reply that addresses all of them — not N. If a change to the Plan is the right answer, just edit the Plan with tempo_write_plan and say so briefly here (\"Updated section 3 to use XState — see Plan.\"). Discussion Messages cannot carry edit proposals; the Plan is the artifact. When a Clarification Round is pending, finish it first.",
+        "Post one Message to the Thread Discussion. Two forms (use either, or both in one Message):\n\n• `text` — free-form prose. Use for approach-level talk about your reasoning, the codebase, or the Thread overall — not line-level pushback on the Plan (use tempo_post_reply for that). Designer-to-PM tone: three short paragraphs at most, markdown welcome.\n\n• `questions` — a batch of 1–10 structured questions (`single_choice` / `multi_choice` / `open_text`) that the Console renders as a stepper at the bottom of the Discussion. Use when you want clear decisions on specific things before you continue. Choice questions can `allow_other` for a Dev-typed write-in. The Dev's reply lands as a normal Discussion Message whose `text` formats the answers as `**<prompt>**\\n→ <answer>` — read it as prose; there is no separate answers payload.\n\nIf multiple Dev Messages arrived since your last poll, send ONE Reply that addresses all of them. If a change to the Plan is the right answer, just edit the Plan with tempo_write_plan and say so briefly here. Discussion Messages cannot carry edit proposals; the Plan is the artifact.",
       inputSchema: PostDiscussionMessageInput.shape,
     },
     async (args) => {
-      const message = await client.postDiscussionMessage(threadId, args.text);
+      const message = await client.postDiscussionMessage(threadId, args);
       return wrap({ message_id: message.id });
     },
   );

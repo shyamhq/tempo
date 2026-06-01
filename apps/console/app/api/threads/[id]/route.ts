@@ -5,7 +5,6 @@ import { listMessagesForThread } from '../../../../server/discussion';
 import { latestEventId } from '../../../../server/event-log';
 import { err, ok } from '../../../../server/http';
 import { getPlan } from '../../../../server/plan';
-import { getPendingRound } from '../../../../server/rounds';
 import {
   deleteThread,
   getThread,
@@ -30,21 +29,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const thread = await getThread(id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, pending_round, comments, messages, session_status, repo, last_event_id] =
-    await Promise.all([
-      getPlan(id),
-      getPendingRound(id),
-      listCommentsForThread(id),
-      listMessagesForThread(id),
-      latestSessionStatus(id),
-      latestAttachedRepo(id),
-      latestEventId(id),
-    ]);
+  const [plan, comments, messages, session_status, repo, last_event_id] = await Promise.all([
+    getPlan(id),
+    listCommentsForThread(id),
+    listMessagesForThread(id),
+    latestSessionStatus(id),
+    latestAttachedRepo(id),
+    latestEventId(id),
+  ]);
   return ok({
     thread: { id: thread.id, title: thread.title, description: thread.description },
     status: thread.status,
     plan,
-    pending_round,
     comments,
     discussion: { messages },
     session_status,

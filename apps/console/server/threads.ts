@@ -1,10 +1,9 @@
+import { randomBytes } from 'node:crypto';
 import type { ThreadSummary } from '@tempo/contracts';
 import { desc, eq, inArray } from 'drizzle-orm';
-import { randomBytes } from 'node:crypto';
 import { db } from '../db';
 import { defaultWorkspaceId } from '../db/ids';
 import {
-  clarification_rounds,
   comments,
   discussion_messages,
   events,
@@ -110,7 +109,6 @@ export async function deleteThread(threadId: string): Promise<void> {
     }
     await tx.delete(comments).where(eq(comments.thread_id, threadId));
     await tx.delete(discussion_messages).where(eq(discussion_messages.thread_id, threadId));
-    await tx.delete(clarification_rounds).where(eq(clarification_rounds.thread_id, threadId));
     await tx.delete(events).where(eq(events.thread_id, threadId));
     await tx.delete(sessions).where(eq(sessions.thread_id, threadId));
     await tx.delete(plans).where(eq(plans.thread_id, threadId));

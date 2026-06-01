@@ -108,16 +108,13 @@ export function MessageComposer({
           )}
         </button>
       </div>
-      {sendError ? (
-        <p className="mt-2 px-1 text-[11px] text-danger">{sendError}</p>
-      ) : null}
+      {sendError ? <p className="mt-2 px-1 text-[11px] text-danger">{sendError}</p> : null}
     </div>
   );
 }
 
 function humaniseSendError(e: unknown): string {
   const msg = e instanceof Error ? e.message : '';
-  if (msg.includes('round_pending')) return 'Answer the open Clarification Round first.';
   if (msg.includes('thread_approved')) return 'Thread is approved — reopen to continue.';
   return 'Send failed. Try again.';
 }

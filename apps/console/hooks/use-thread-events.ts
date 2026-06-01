@@ -153,10 +153,6 @@ function apply(
           : next.plan.body;
         return { ...next, plan: { ...next.plan, body } };
       }
-      case 'round_opened':
-        return { ...next, pending_round: ev.round };
-      case 'round_answered':
-        return { ...next, pending_round: null };
       case 'status_changed':
         return {
           ...next,

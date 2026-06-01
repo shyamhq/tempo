@@ -1,22 +1,15 @@
 import { z } from 'zod';
 import { Event } from './events';
 import {
-  Answer,
   Comment,
-  CommentId,
   ConnectToken,
   DiscussionMessage,
   EventId,
   IsoTimestamp,
-  PendingRound,
   Plan,
   ProposalStatus,
-  Question,
-  QuestionInput,
   Reply,
-  ReplyId,
   ReplyPayload,
-  RoundId,
   SessionId,
   SessionStatus,
   ThreadId,
@@ -56,7 +49,6 @@ export const GetThreadResponse = z.object({
   thread: ThreadSummary,
   status: ThreadStatus,
   plan: Plan,
-  pending_round: PendingRound.nullable(),
   comments: z.array(Comment),
   discussion: z.object({
     messages: z.array(DiscussionMessage),
@@ -134,29 +126,11 @@ export const DecideProposalRequest = z.object({
 });
 export const DecideProposalResponse = z.object({ ok: z.literal(true) });
 
-// POST /api/threads/:id/clarification-rounds
-export const OpenRoundRequest = z.object({
-  questions: z.array(QuestionInput).min(1),
-});
-export const OpenRoundResponse = z.object({
-  round_id: RoundId,
-});
-
-// GET /api/clarification-rounds/:id
-// Same shape as `tempo_get_clarification_answers` (MCP); re-exported for callers
-// that import only from `@tempo/contracts/http`.
-export { GetClarificationAnswersOutput as GetClarificationRoundResponse } from './mcp';
-
-// POST /api/clarification-rounds/:id/answers
-export const AnswerRoundRequest = z.object({
-  answers: z.array(Answer).min(1),
-});
-export const AnswerRoundResponse = z.object({ ok: z.literal(true) });
-
 // POST /api/threads/:id/discussion/messages
-export const CreateDiscussionMessageRequest = z.object({
-  text: z.string().min(1).max(8_000),
-});
+// Wire body is identical to the MCP tool's input — re-export so the two
+// surfaces can't drift. The `author='dev'` + questions rejection lives in
+// `server/discussion.ts`, not the schema.
+export { PostDiscussionMessageInput as CreateDiscussionMessageRequest } from './mcp';
 export const CreateDiscussionMessageResponse = DiscussionMessage;
 
 // POST /api/threads/:id/approve

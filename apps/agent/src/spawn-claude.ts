@@ -23,8 +23,6 @@ const TEMPO_TOOL_NAMES = [
   'mcp__tempo__tempo_attach',
   'mcp__tempo__tempo_pull_plan',
   'mcp__tempo__tempo_write_plan',
-  'mcp__tempo__tempo_ask_clarifications',
-  'mcp__tempo__tempo_get_clarification_answers',
   'mcp__tempo__tempo_poll',
   'mcp__tempo__tempo_post_reply',
   'mcp__tempo__tempo_post_discussion_message',

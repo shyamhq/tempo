@@ -5,11 +5,9 @@ import {
   DiscussionMessage,
   EventId,
   IsoTimestamp,
-  PendingRound,
   ProposalStatus,
   Reply,
   ReplyId,
-  RoundId,
   ThreadStatus,
 } from './primitives';
 
@@ -44,16 +42,6 @@ export const PlanEditedByDevEvent = eventBase.extend({
 export const PlanEditedByAgentEvent = eventBase.extend({
   kind: z.literal('plan_edited_by_agent'),
   updated_at: IsoTimestamp,
-});
-
-export const RoundOpenedEvent = eventBase.extend({
-  kind: z.literal('round_opened'),
-  round: PendingRound,
-});
-
-export const RoundAnsweredEvent = eventBase.extend({
-  kind: z.literal('round_answered'),
-  round_id: RoundId,
 });
 
 export const StatusChangedEvent = eventBase.extend({
@@ -97,8 +85,6 @@ export const Event = z.discriminatedUnion('kind', [
   ProposalDecidedEvent,
   PlanEditedByDevEvent,
   PlanEditedByAgentEvent,
-  RoundOpenedEvent,
-  RoundAnsweredEvent,
   StatusChangedEvent,
   CommentResolvedEvent,
   CommentUnresolvedEvent,
@@ -115,8 +101,6 @@ export const EventKind = z.enum([
   'proposal_decided',
   'plan_edited_by_dev',
   'plan_edited_by_agent',
-  'round_opened',
-  'round_answered',
   'status_changed',
   'comment_resolved',
   'comment_unresolved',

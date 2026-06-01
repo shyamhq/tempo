@@ -99,25 +99,12 @@ export const discussion_messages = sqliteTable(
       .notNull()
       .references(() => threads.id),
     author: text('author', { enum: ['dev', 'agent'] }).notNull(),
-    text: text('text').notNull(),
+    text: text('text'),
+    questions: text('questions', { mode: 'json' }),
     created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [index('idx_discussion_messages_thread').on(t.thread_id, t.created_at, t.id)],
 );
-
-export const clarification_rounds = sqliteTable('clarification_rounds', {
-  id: text('id').primaryKey(),
-  thread_id: text('thread_id')
-    .notNull()
-    .references(() => threads.id),
-  questions_json: text('questions_json', { mode: 'json' }).notNull(),
-  answers_json: text('answers_json', { mode: 'json' }),
-  status: text('status', { enum: ['pending', 'answered'] })
-    .notNull()
-    .default('pending'),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  answered_at: text('answered_at'),
-});
 
 export const events = sqliteTable(
   'events',

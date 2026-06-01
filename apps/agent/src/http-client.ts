@@ -4,7 +4,6 @@ import type {
   EventId,
   QuestionInput,
   ReplyPayload,
-  RoundId,
   SessionId,
   ThreadId,
 } from '@tempo/contracts';
@@ -14,10 +13,9 @@ import {
   CreateSessionResponse,
   EventsLongPollResponse,
   GetPlanResponse,
-  OpenRoundResponse,
   WritePlanResponse,
 } from '@tempo/contracts/http';
-import { AttachOutput, GetClarificationAnswersOutput } from '@tempo/contracts/mcp';
+import { AttachOutput } from '@tempo/contracts/mcp';
 import type { z } from 'zod';
 import { AuthError, ContractError, HttpStatusError, NetworkError } from './errors';
 import { logger } from './logger';
@@ -49,24 +47,6 @@ export class ConsoleClient {
     return this.send('POST', `/api/threads/${threadId}/plan`, { markdown }, WritePlanResponse);
   }
 
-  openRound(threadId: ThreadId, questions: QuestionInput[]) {
-    return this.send(
-      'POST',
-      `/api/threads/${threadId}/clarification-rounds`,
-      { questions },
-      OpenRoundResponse,
-    );
-  }
-
-  getRoundAnswers(roundId: RoundId) {
-    return this.send(
-      'GET',
-      `/api/clarification-rounds/${roundId}`,
-      null,
-      GetClarificationAnswersOutput,
-    );
-  }
-
   poll(threadId: ThreadId, cursor: EventId, waitSeconds = 25) {
     return this.send(
       'GET',
@@ -85,11 +65,11 @@ export class ConsoleClient {
     );
   }
 
-  postDiscussionMessage(threadId: ThreadId, text: string) {
+  postDiscussionMessage(threadId: ThreadId, body: { text?: string; questions?: QuestionInput[] }) {
     return this.send(
       'POST',
       `/api/threads/${threadId}/discussion/messages`,
-      { text },
+      body,
       CreateDiscussionMessageResponse,
     );
   }

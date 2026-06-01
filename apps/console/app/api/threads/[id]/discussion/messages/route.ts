@@ -17,12 +17,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!parsed.ok) return parsed.response;
 
   try {
-    const message = await postMessage(id, auth.actor, parsed.data.text);
+    const message = await postMessage(id, auth.actor, parsed.data);
     return ok(message, 201);
   } catch (e) {
     const msg = (e as Error).message;
     if (msg === 'thread_not_found') return err('thread_not_found', 404);
-    if (msg === 'thread_approved' || msg === 'round_pending') return err(msg, 409);
+    if (msg === 'thread_approved') return err(msg, 409);
+    if (msg === 'invalid_input') return err(msg, 400);
     throw e;
   }
 }

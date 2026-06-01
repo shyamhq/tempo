@@ -3,13 +3,17 @@
 import type { DiscussionMessage } from '@tempo/contracts';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { MarkdownText } from '../markdown-text';
+import { AgentIdentity } from './agent-identity';
+import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function MessageList({
   messages,
+  threadId,
   endSlot,
   emptyState,
 }: {
   messages: DiscussionMessage[];
+  threadId: string;
   endSlot?: React.ReactNode;
   emptyState?: React.ReactNode;
 }) {
@@ -53,20 +57,36 @@ export function MessageList({
 
   let lastDayKey: string | null = null;
   let lastAuthor: DiscussionMessage['author'] | null = null;
+  const lastIdx = messages.length - 1;
 
   return (
     <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-4">
       <div className="flex flex-col">
-        {messages.map((m) => {
+        {messages.map((m, i) => {
           const dayKey = dayKeyOf(m.created_at);
           const showDay = dayKey !== lastDayKey;
-          const sameAuthor = !showDay && lastAuthor === m.author;
+          const isQuestion = m.questions !== null;
+          // Question carriers stand on their own — never share author-grouping
+          // margins with neighbouring bubbles, in either direction.
+          const sameAuthor = !showDay && !isQuestion && lastAuthor === m.author;
           lastDayKey = dayKey;
-          lastAuthor = m.author;
+          lastAuthor = isQuestion ? null : m.author;
+          const isLive = isQuestion && i === lastIdx;
+          const marginClass = isQuestion
+            ? 'mt-[18px]'
+            : sameAuthor
+              ? 'mt-1.5'
+              : 'mt-[18px] first:mt-0';
           return (
-            <div key={m.id} className={sameAuthor ? 'mt-1.5' : 'mt-[18px] first:mt-0'}>
+            <div key={m.id} className={marginClass}>
               {showDay ? <DayDivider iso={m.created_at} /> : null}
-              <MessageRow message={m} showIdentity={!sameAuthor} />
+              {isLive ? (
+                <LiveQuestionCard message={m} threadId={threadId} />
+              ) : m.questions !== null ? (
+                <MinimizedQuestionCard message={m} />
+              ) : (
+                <MessageRow message={m} showIdentity={!sameAuthor} />
+              )}
             </div>
           );
         })}
@@ -89,31 +109,22 @@ function MessageRow({
   showIdentity: boolean;
 }) {
   const timeLabel = formatTime(message.created_at);
+  // Question-carrying messages render via LiveQuestionCard / MinimizedQuestionCard;
+  // this row only handles text-only messages, so `text` is non-null here.
+  const text = message.text ?? '';
 
   if (message.author === 'agent') {
     return (
       <div style={ENTER_ANIM}>
         {showIdentity ? (
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#069072]">
-              <span aria-hidden className="size-[5px] rounded-full bg-current" />
-              Agent
-            </span>
-            <span aria-hidden className="text-[11px] text-ink-tertiary tabular-nums">·</span>
-            <time
-              dateTime={message.created_at}
-              className="text-[11px] text-ink-tertiary tabular-nums"
-            >
-              {timeLabel}
-            </time>
-          </div>
+          <AgentIdentity created_at={message.created_at} />
         ) : (
           <time dateTime={message.created_at} className="sr-only">
             {timeLabel}
           </time>
         )}
         <div className="text-[13.5px] leading-[1.6] text-ink">
-          <MarkdownText text={message.text} />
+          <MarkdownText text={text} />
         </div>
       </div>
     );
@@ -126,7 +137,9 @@ function MessageRow({
           <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-subtle">
             You
           </span>
-          <span aria-hidden className="text-[11px] text-ink-tertiary tabular-nums">·</span>
+          <span aria-hidden className="text-[11px] text-ink-tertiary tabular-nums">
+            ·
+          </span>
           <time
             dateTime={message.created_at}
             className="text-[11px] text-ink-tertiary tabular-nums"
@@ -140,7 +153,7 @@ function MessageRow({
         </time>
       )}
       <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-surface-2 px-3.5 py-2 text-[13.5px] leading-[1.55] text-ink">
-        <MarkdownText text={message.text} />
+        <MarkdownText text={text} />
       </div>
     </div>
   );

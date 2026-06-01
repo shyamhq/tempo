@@ -1,6 +1,4 @@
 import {
-  type AnswerRoundRequest,
-  AnswerRoundResponse,
   ApproveThreadResponse,
   type CreateCommentRequest,
   CreateCommentResponse,
@@ -16,8 +14,6 @@ import {
   GetConnectTokenResponse,
   GetThreadResponse,
   ListThreadsResponse,
-  type OpenRoundRequest,
-  OpenRoundResponse,
   ReopenThreadResponse,
   ResolveCommentResponse,
   UnresolveCommentResponse,
@@ -101,12 +97,6 @@ export const api = {
 
   decideProposal: (replyId: string, input: z.infer<typeof DecideProposalRequest>) =>
     request('POST', `/api/replies/${replyId}/decision`, input, DecideProposalResponse),
-
-  openRound: (threadId: string, input: z.infer<typeof OpenRoundRequest>) =>
-    request('POST', `/api/threads/${threadId}/clarification-rounds`, input, OpenRoundResponse),
-
-  answerRound: (roundId: string, input: z.infer<typeof AnswerRoundRequest>) =>
-    request('POST', `/api/clarification-rounds/${roundId}/answers`, input, AnswerRoundResponse),
 
   approveThread: (threadId: string) =>
     request('POST', `/api/threads/${threadId}/approve`, {}, ApproveThreadResponse),

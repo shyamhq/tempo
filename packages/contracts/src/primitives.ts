@@ -5,7 +5,6 @@ export const SessionId = z.string().regex(/^ses_[A-Z0-9]{26}$/);
 export const PlanId = z.string().regex(/^pln_[A-Z0-9]{26}$/);
 export const CommentId = z.string().regex(/^cmt_[A-Z0-9]{26}$/);
 export const ReplyId = z.string().regex(/^rep_[A-Z0-9]{26}$/);
-export const RoundId = z.string().regex(/^rnd_[A-Z0-9]{26}$/);
 export const MessageId = z.string().regex(/^msg_[A-Z0-9]{26}$/);
 export const EventId = z.string().regex(/^evt_[0-9]{14,}$/);
 export const ConnectToken = z.string().regex(/^tmp_[A-Za-z0-9_-]{32,}$/);
@@ -15,7 +14,6 @@ export type SessionId = z.infer<typeof SessionId>;
 export type PlanId = z.infer<typeof PlanId>;
 export type CommentId = z.infer<typeof CommentId>;
 export type ReplyId = z.infer<typeof ReplyId>;
-export type RoundId = z.infer<typeof RoundId>;
 export type MessageId = z.infer<typeof MessageId>;
 export type EventId = z.infer<typeof EventId>;
 export type ConnectToken = z.infer<typeof ConnectToken>;
@@ -28,12 +26,10 @@ export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 export const ThreadStatus = z.enum(['unapproved', 'approved']);
 export const SessionStatus = z.enum(['pending', 'connected', 'disconnected']);
 export const Actor = z.enum(['dev', 'agent']);
-export const RoundStatus = z.enum(['pending', 'answered']);
 
 export type ThreadStatus = z.infer<typeof ThreadStatus>;
 export type SessionStatus = z.infer<typeof SessionStatus>;
 export type Actor = z.infer<typeof Actor>;
-export type RoundStatus = z.infer<typeof RoundStatus>;
 
 export const IsoTimestamp = z.iso.datetime();
 export type IsoTimestamp = z.infer<typeof IsoTimestamp>;
@@ -84,28 +80,6 @@ export type QuestionInput = z.infer<typeof QuestionInput>;
 export const Question = z.intersection(QuestionInput, z.object({ id: z.string() }));
 export type Question = z.infer<typeof Question>;
 
-export const Answer = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('single_choice'),
-    value: z.union([z.string(), z.object({ other: z.string() })]),
-  }),
-  z.object({
-    type: z.literal('multi_choice'),
-    value: z.union([z.array(z.string()), z.object({ other: z.string() })]),
-  }),
-  z.object({
-    type: z.literal('open_text'),
-    value: z.string(),
-  }),
-]);
-export type Answer = z.infer<typeof Answer>;
-
-export const PendingRound = z.object({
-  id: RoundId,
-  questions: z.array(Question),
-});
-export type PendingRound = z.infer<typeof PendingRound>;
-
 export const ReplyPayload = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
@@ -150,11 +124,16 @@ export const Comment = z.object({
 });
 export type Comment = z.infer<typeof Comment>;
 
+// A Discussion Message carries free-form text, an inline structured Question
+// batch, or both. Authoring rules (Agent-only for `questions`, non-empty body)
+// live in the server module — enforced where the row is written, not on the
+// read shape.
 export const DiscussionMessage = z.object({
   id: MessageId,
   thread_id: ThreadId,
   author: Actor,
-  text: z.string().min(1).max(8_000),
+  text: z.string().min(1).max(8_000).nullable(),
+  questions: z.array(Question).nullable(),
   created_at: IsoTimestamp,
 });
 export type DiscussionMessage = z.infer<typeof DiscussionMessage>;
