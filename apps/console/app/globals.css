@@ -102,6 +102,11 @@
   }
 }
 
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']) {
+  cursor: pointer;
+}
+
 html {
   background: var(--color-canvas);
   color: var(--color-ink);
