@@ -87,6 +87,12 @@ export function DiscussionPanel({
         disabledReason={composerReason}
         autoFocus={!composerDisabled}
       />
+      <p className="px-5 pb-3 -mt-1 text-[11px] text-ink-tertiary">
+        <kbd className="font-sans">⌘Enter</kbd> to send
+        <span aria-hidden> · </span>
+        <span className="sr-only">. </span>
+        general discussion, not tied to a selection
+      </p>
     </aside>
   );
 }
@@ -102,19 +108,23 @@ function PanelHeader({
 }) {
   const connected = sessionStatus === 'connected';
   return (
-    <div className="flex items-center justify-between gap-3 px-5 h-12 bg-canvas/85 backdrop-blur sticky top-0 z-10">
+    <div className="flex items-center justify-between gap-3 px-5 h-12 border-b border-hairline">
       <div className="flex items-center gap-2.5 min-w-0">
-        <h2 className="font-display text-[15px] font-semibold text-ink truncate">Discussion</h2>
+        <h2 className="font-display text-[16px] font-semibold text-ink truncate tracking-[-0.01em]">
+          Discussion
+        </h2>
         <span
-          className="inline-flex items-center gap-1.5 text-[11px] text-ink-tertiary shrink-0"
+          className="inline-flex items-center gap-1.5 text-[12px] text-ink-subtle shrink-0"
           title={
             connected ? 'Agent connected' : 'Agent disconnected — messages deliver on reconnect'
           }
         >
           <span
             aria-hidden
-            className={`inline-block h-1.5 w-1.5 rounded-full ${
-              connected ? 'bg-success' : 'bg-ink-tertiary'
+            className={`inline-block h-[7px] w-[7px] rounded-full ${
+              connected
+                ? 'bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.16)]'
+                : 'bg-ink-tertiary'
             }`}
           />
           {connected ? 'connected' : 'offline'}

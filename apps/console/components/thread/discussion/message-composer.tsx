@@ -1,11 +1,14 @@
 'use client';
 
-import { ArrowUp, Loader2 } from 'lucide-react';
+import { ArrowUp, Check, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api-client';
 
 const MIN_ROWS = 1;
 const MAX_ROWS = 6;
+const SENT_DWELL_MS = 1200;
+
+type Phase = 'idle' | 'sending' | 'sent';
 
 export function MessageComposer({
   threadId,
@@ -19,29 +22,38 @@ export function MessageComposer({
   autoFocus: boolean;
 }) {
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const sentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (autoFocus && !disabled) ref.current?.focus();
   }, [autoFocus, disabled]);
 
-  const canSend = !disabled && !sending && draft.trim().length > 0;
+  useEffect(() => {
+    return () => {
+      if (sentTimerRef.current) clearTimeout(sentTimerRef.current);
+    };
+  }, []);
+
+  const canSend = !disabled && phase !== 'sending' && draft.trim().length > 0;
 
   const send = async () => {
     if (!canSend) return;
     const text = draft.trim();
-    setSending(true);
+    setPhase('sending');
     setSendError(null);
     try {
       await api.postDiscussionMessage(threadId, { text });
       setDraft('');
+      setPhase('sent');
       ref.current?.focus();
+      if (sentTimerRef.current) clearTimeout(sentTimerRef.current);
+      sentTimerRef.current = setTimeout(() => setPhase('idle'), SENT_DWELL_MS);
     } catch (e) {
       setSendError(humaniseSendError(e));
-    } finally {
-      setSending(false);
+      setPhase('idle');
     }
   };
 
@@ -53,12 +65,12 @@ export function MessageComposer({
   };
 
   return (
-    <div className="bg-canvas px-4 pt-2 pb-4">
+    <div className="bg-canvas px-4 pt-2 pb-3">
       <div
-        className={`rounded-2xl border bg-surface-1 transition-colors ${
+        className={`flex items-end gap-1.5 rounded-xl border bg-surface-1 pl-3 pr-1.5 py-1.5 transition-[border-color,box-shadow] ${
           disabled
             ? 'border-hairline'
-            : 'border-hairline-strong focus-within:border-ink-subtle'
+            : 'border-hairline-strong focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/15'
         }`}
       >
         <textarea
@@ -71,28 +83,30 @@ export function MessageComposer({
           placeholder={
             disabledReason ?? 'Ask about the approach — anything not tied to a line of the Plan.'
           }
-          className="block w-full resize-none bg-transparent px-4 pt-3 pb-1.5 text-[13.5px] leading-[1.55] text-ink placeholder:text-ink-tertiary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="block w-full resize-none bg-transparent py-1.5 text-[13.5px] leading-[1.55] text-ink placeholder:text-ink-tertiary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           style={{ maxHeight: `${MAX_ROWS * 1.55 + 1}em` }}
         />
-        <div className="flex items-center justify-end px-2 pb-2">
-          <button
-            type="button"
-            onClick={send}
-            disabled={!canSend}
-            aria-label="Send"
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition-all ${
-              canSend
+        <button
+          type="button"
+          onClick={send}
+          disabled={!canSend}
+          aria-label={phase === 'sent' ? 'Sent' : 'Send'}
+          className={`inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full transition-colors ${
+            phase === 'sent'
+              ? 'bg-accent/10 text-[#069072]'
+              : canSend
                 ? 'bg-primary text-on-primary hover:bg-primary-hover'
                 : 'bg-surface-3 text-ink-tertiary cursor-not-allowed'
-            }`}
-          >
-            {sending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ArrowUp className="h-3.5 w-3.5" />
-            )}
-          </button>
-        </div>
+          }`}
+        >
+          {phase === 'sending' ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : phase === 'sent' ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowUp className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
       {sendError ? (
         <p className="mt-2 px-1 text-[11px] text-danger">{sendError}</p>

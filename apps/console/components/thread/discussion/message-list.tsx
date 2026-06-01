@@ -55,7 +55,7 @@ export function MessageList({
   let lastAuthor: DiscussionMessage['author'] | null = null;
 
   return (
-    <div ref={scrollerRef} className="flex-1 overflow-y-auto px-5 py-4">
+    <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-4">
       <div className="flex flex-col">
         {messages.map((m) => {
           const dayKey = dayKeyOf(m.created_at);
@@ -64,13 +64,13 @@ export function MessageList({
           lastDayKey = dayKey;
           lastAuthor = m.author;
           return (
-            <div key={m.id} className={sameAuthor ? 'mt-1.5' : 'mt-5 first:mt-0'}>
+            <div key={m.id} className={sameAuthor ? 'mt-1.5' : 'mt-[18px] first:mt-0'}>
               {showDay ? <DayDivider iso={m.created_at} /> : null}
-              <MessageRow message={m} />
+              <MessageRow message={m} showIdentity={!sameAuthor} />
             </div>
           );
         })}
-        {endSlot ? <div className="mt-5">{endSlot}</div> : null}
+        {endSlot ? <div className="mt-[18px]">{endSlot}</div> : null}
         <div ref={bottomRef} />
       </div>
     </div>
@@ -81,36 +81,66 @@ const ENTER_ANIM = {
   animation: 'discussion-message-enter 140ms cubic-bezier(0.22, 1, 0.36, 1) both',
 };
 
-function MessageRow({ message }: { message: DiscussionMessage }) {
+function MessageRow({
+  message,
+  showIdentity,
+}: {
+  message: DiscussionMessage;
+  showIdentity: boolean;
+}) {
   const timeLabel = formatTime(message.created_at);
-  const body = (
-    <>
-      <time dateTime={message.created_at} className="sr-only">
-        {timeLabel}
-      </time>
-      <MarkdownText text={message.text} />
-    </>
-  );
 
   if (message.author === 'agent') {
     return (
-      <div
-        className="text-[13.5px] leading-[1.6] text-ink"
-        title={timeLabel}
-        style={ENTER_ANIM}
-      >
-        {body}
+      <div style={ENTER_ANIM}>
+        {showIdentity ? (
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[#069072]">
+              <span aria-hidden className="size-[5px] rounded-full bg-current" />
+              Agent
+            </span>
+            <span aria-hidden className="text-[11px] text-ink-tertiary tabular-nums">·</span>
+            <time
+              dateTime={message.created_at}
+              className="text-[11px] text-ink-tertiary tabular-nums"
+            >
+              {timeLabel}
+            </time>
+          </div>
+        ) : (
+          <time dateTime={message.created_at} className="sr-only">
+            {timeLabel}
+          </time>
+        )}
+        <div className="text-[13.5px] leading-[1.6] text-ink">
+          <MarkdownText text={message.text} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex justify-end" style={ENTER_ANIM}>
-      <div
-        className="max-w-[85%] rounded-2xl bg-surface-3 px-3.5 py-2 text-[13.5px] leading-[1.55] text-ink"
-        title={timeLabel}
-      >
-        {body}
+    <div className="flex flex-col items-end" style={ENTER_ANIM}>
+      {showIdentity ? (
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-subtle">
+            You
+          </span>
+          <span aria-hidden className="text-[11px] text-ink-tertiary tabular-nums">·</span>
+          <time
+            dateTime={message.created_at}
+            className="text-[11px] text-ink-tertiary tabular-nums"
+          >
+            {timeLabel}
+          </time>
+        </div>
+      ) : (
+        <time dateTime={message.created_at} className="sr-only">
+          {timeLabel}
+        </time>
+      )}
+      <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-surface-2 px-3.5 py-2 text-[13.5px] leading-[1.55] text-ink">
+        <MarkdownText text={message.text} />
       </div>
     </div>
   );
