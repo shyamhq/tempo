@@ -23,16 +23,13 @@ export async function connect(token: ConnectToken): Promise<void> {
     `attached to thread ${session.thread_id} as session ${session.session_id}\n`,
   );
 
-  const initialPrompt = await client.getInitialPrompt(session.session_id);
-  logger.debug({ chars: initialPrompt.length }, 'fetched initial prompt');
-
   const cursorFile = join(tmpdir(), `tempo-cursor-${session.session_id}`);
   writeFileSync(cursorFile, ZERO_EVENT_CURSOR, { mode: 0o600 });
 
   process.stdout.write('launching claude with tempo tools...\n\n');
   try {
     const exitCode = await spawnInteractiveClaude({
-      initialPrompt,
+      initialPrompt: 'Call tempo_attach to begin.',
       sessionId: session.session_id,
       threadId: session.thread_id,
       token,

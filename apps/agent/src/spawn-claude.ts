@@ -29,9 +29,9 @@ const TEMPO_TOOL_NAMES = [
   'mcp__tempo__tempo_post_reply',
   'mcp__tempo__tempo_post_discussion_message',
   // ScheduleWakeup powers the polling-loop heartbeat described in the
-  // server-rendered initial prompt: the Agent schedules its own re-wake every
-  // ~30s so Comments arriving while it's idle get picked up between Stop-hook
-  // long-poll windows.
+  // workflow field of the tempo_attach response: the Agent schedules its own
+  // re-wake every ~30s so Comments arriving while it's idle get picked up
+  // between Stop-hook long-poll windows.
   'ScheduleWakeup',
 ];
 

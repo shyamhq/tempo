@@ -81,9 +81,6 @@ export const CreateSessionResponse = z.object({
   thread_id: ThreadId,
 });
 
-// GET /api/sessions/:id/initial-prompt
-// Returns text/plain. No JSON envelope.
-
 // GET /api/sessions/:id/state
 // Same shape as MCP attach output, but server-rendered.
 export { AttachOutput as GetSessionStateResponse } from './mcp';

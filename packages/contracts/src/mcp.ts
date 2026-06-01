@@ -29,6 +29,7 @@ export const AttachOutput = z.object({
     messages: z.array(DiscussionMessage),
   }),
   last_event_id: EventId,
+  workflow: z.string(),
 });
 
 export const PullPlanInput = z.object({});

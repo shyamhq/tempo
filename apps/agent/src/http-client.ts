@@ -37,10 +37,6 @@ export class ConsoleClient {
     return this.send('POST', '/api/sessions', body, CreateSessionResponse);
   }
 
-  async getInitialPrompt(sessionId: SessionId): Promise<string> {
-    return this.sendText('GET', `/api/sessions/${sessionId}/initial-prompt`);
-  }
-
   getSessionState(sessionId: SessionId) {
     return this.send('GET', `/api/sessions/${sessionId}/state`, null, AttachOutput);
   }
@@ -112,15 +108,6 @@ export class ConsoleClient {
       throw new ContractError(url, parsed.error);
     }
     return parsed.data;
-  }
-
-  private async sendText(method: Method, path: string): Promise<string> {
-    const url = `${this.baseUrl}${path}`;
-    return this.withRetries(url, async () => {
-      const res = await fetch(url, { method, headers: this.headers() });
-      if (!res.ok) throw await this.toHttpError(res, url);
-      return res.text();
-    });
   }
 
   private async fetchJson(method: Method, url: string, body: unknown): Promise<unknown> {

@@ -21,7 +21,11 @@ export async function runStdioMcpServer(args: {
 
   server.registerTool(
     'tempo_attach',
-    { description: 'Fetch initial Thread state.', inputSchema: {} },
+    {
+      description:
+        'Always call first. Returns Thread state — title, description, status — plus Plan, open Comments, Discussion messages, pending Round, last event cursor, and the workflow guide for this session. Call again after any session resume or context compact.',
+      inputSchema: {},
+    },
     async () => wrap(await client.getSessionState(sessionId)),
   );
 
@@ -69,7 +73,11 @@ export async function runStdioMcpServer(args: {
 
   server.registerTool(
     'tempo_post_reply',
-    { description: 'Post a Reply on a Comment.', inputSchema: PostReplyInput.shape },
+    {
+      description:
+        'Post a Reply on a Comment. Three payload types: text (free-form), edit_done (point at a section that you already rewrote via tempo_write_plan), edit_proposed (target_section + replacement that the Dev decides on).\n\nStyle: short, designer-to-PM tone — what you did, why, the one takeaway. Three short paragraphs at most. Markdown renders (bold, inline code, fenced blocks, lists). Do not paste full test output, the entire verification log, or a step-by-step transcript — that work belongs in your session, not the rail.\n\nGood: "Verified — pino\'s default `err` serializer keeps `err.tempo` intact, so the structured-log path is fine. Updated the plan: removed the bullet that worried about #1; kept the #3 `process.argv[1]` bullet since I haven\'t run that smoke yet. Risk left: one false-positive with `JSON.stringify(err, Object.getOwnPropertyNames(err))`."\n\nBad: pasting the full debug output of three test runs, then re-stating each conclusion in prose, then quoting the resulting plan diff inline.',
+      inputSchema: PostReplyInput.shape,
+    },
     async (args) => {
       const reply = await client.postReply(args.comment_id, args.payload);
       return wrap({ reply_id: reply.id });
@@ -80,7 +88,7 @@ export async function runStdioMcpServer(args: {
     'tempo_post_discussion_message',
     {
       description:
-        'Post a free-form Message in the Thread Discussion (unanchored, no Plan quote). Use for approach-level talk, not line-level pushback on the Plan (use tempo_post_reply for that).',
+        "Post a free-form Message in the Thread Discussion (unanchored, no Plan quote). Use for approach-level talk about your reasoning, the codebase, or the Thread overall — not line-level pushback on the Plan (use tempo_post_reply for that). Same short, designer-to-PM tone as Replies: three short paragraphs at most, markdown welcome.\n\nIf multiple Dev Messages arrived since your last poll, send ONE Reply that addresses all of them — not N. If a change to the Plan is the right answer, just edit the Plan with tempo_write_plan and say so briefly here (\"Updated section 3 to use XState — see Plan.\"). Discussion Messages cannot carry edit proposals; the Plan is the artifact. When a Clarification Round is pending, finish it first.",
       inputSchema: PostDiscussionMessageInput.shape,
     },
     async (args) => {

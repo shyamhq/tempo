@@ -2,6 +2,7 @@ import { listCommentsForThread } from '../../../../../server/comments';
 import { listMessagesForThread } from '../../../../../server/discussion';
 import { latestEventId } from '../../../../../server/event-log';
 import { err, ok } from '../../../../../server/http';
+import { WORKFLOW } from '../../../../../server/workflow';
 import { getPlan } from '../../../../../server/plan';
 import { getPendingRound } from '../../../../../server/rounds';
 import { getSession } from '../../../../../server/sessions';
@@ -27,5 +28,6 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     comments,
     discussion: { messages },
     last_event_id,
+    workflow: WORKFLOW,
   });
 }
