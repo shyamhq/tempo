@@ -12,7 +12,7 @@ export type PlanEditorCoreProps = {
   comments: Comment[];
   showResolved?: boolean;
   focusedCommentId?: string | null;
-  onSave: (markdown: string) => void;
+  onUserEdit?: () => void;
   onFocusComment?: (commentId: string | null) => void;
   onEditorReady?: (editor: Editor | null) => void;
   readOnly?: boolean;
@@ -24,7 +24,7 @@ export function usePlanEditor({
   comments,
   showResolved = false,
   focusedCommentId = null,
-  onSave,
+  onUserEdit,
   onFocusComment,
   onEditorReady,
   readOnly = false,
@@ -35,8 +35,7 @@ export function usePlanEditor({
   const lastCreatedCommentId = useComposerStore((s) => s.lastCreatedCommentId);
   const composerRange = useComposerStore((s) => s.range);
   const setLastCreated = useComposerStore((s) => s.setLastCreated);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSaved = useRef(markdown);
+  const lastSeenMarkdown = useRef(markdown);
   const reapplyingMarks = useRef(false);
 
   const editor = useEditor({
@@ -57,17 +56,14 @@ export function usePlanEditor({
         return false;
       },
     },
-    onUpdate: ({ editor: ed }) => {
+    // Tiptap fires `update` on no-op transactions when @tiptap/react reconciles
+    // editor options (every parent re-render): docChanged is false, steps is
+    // empty. Treat those as not-an-edit. The reapplyingMarks gate still covers
+    // the genuine doc-changing mark mutations from the comment-mark effect.
+    onUpdate: ({ transaction }) => {
       if (reapplyingMarks.current) return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        const md = (
-          ed.storage as unknown as { markdown: { getMarkdown(): string } }
-        ).markdown.getMarkdown();
-        if (md === lastSaved.current) return;
-        lastSaved.current = md;
-        onSave(md);
-      }, 800);
+      if (!transaction.docChanged) return;
+      onUserEdit?.();
     },
     immediatelyRender: false,
   });
@@ -78,8 +74,8 @@ export function usePlanEditor({
 
   useEffect(() => {
     if (!editor) return;
-    if (markdown === lastSaved.current) return;
-    lastSaved.current = markdown;
+    if (markdown === lastSeenMarkdown.current) return;
+    lastSeenMarkdown.current = markdown;
     editor.commands.setContent(markdown, { emitUpdate: false });
   }, [markdown, editor]);
 
@@ -183,12 +179,19 @@ export function usePlanEditor({
     const ctxFrom = Math.max(0, from - 60);
     const ctxTo = Math.min(editor.state.doc.content.size, to + 60);
     const context = editor.state.doc.textBetween(ctxFrom, ctxTo, '\n');
-    editor
-      .chain()
-      .setTextSelection({ from, to })
-      .setPendingCommentMark()
-      .setTextSelection(to)
-      .run();
+    reapplyingMarks.current = true;
+    try {
+      editor
+        .chain()
+        .setTextSelection({ from, to })
+        .setPendingCommentMark()
+        .setTextSelection(to)
+        .run();
+    } finally {
+      queueMicrotask(() => {
+        reapplyingMarks.current = false;
+      });
+    }
     begin(quote, context, { from, to });
   }, [editor, begin]);
 
@@ -196,12 +199,19 @@ export function usePlanEditor({
     if (!editor || !composerRange || composerOpen) return;
     const { from, to } = composerRange;
     if (from >= to) return;
-    const chain = editor.chain().setTextSelection({ from, to });
-    if (lastCreatedCommentId) {
-      chain.setCommentMark(lastCreatedCommentId).setTextSelection(to).run();
-      setLastCreated(null);
-    } else {
-      chain.unsetCommentMark().setTextSelection(to).run();
+    reapplyingMarks.current = true;
+    try {
+      const chain = editor.chain().setTextSelection({ from, to });
+      if (lastCreatedCommentId) {
+        chain.setCommentMark(lastCreatedCommentId).setTextSelection(to).run();
+        setLastCreated(null);
+      } else {
+        chain.unsetCommentMark().setTextSelection(to).run();
+      }
+    } finally {
+      queueMicrotask(() => {
+        reapplyingMarks.current = false;
+      });
     }
     useComposerStore.setState({ range: null });
   }, [editor, composerOpen, lastCreatedCommentId, composerRange, setLastCreated]);

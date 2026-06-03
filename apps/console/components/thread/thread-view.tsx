@@ -13,6 +13,8 @@ import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanEditor } from '@/components/thread/editor/editor';
+import { PlanSaveBar } from '@/components/thread/editor/plan-save-bar';
+import { usePlanSave } from '@/components/thread/editor/use-plan-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
 import { Button } from '@/components/ui/button';
@@ -111,12 +113,15 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       );
       try {
         await api.writePlan(threadId, { markdown: md });
-      } catch {
+      } catch (e) {
         qc.invalidateQueries({ queryKey: ['thread', threadId] });
+        throw e;
       }
     },
     [threadId, qc],
   );
+
+  const { isDirty, save, discard, discardKey, notifyEdit } = usePlanSave(editor, onSave);
 
   const approve = async () => {
     await api.approveThread(threadId);
@@ -225,11 +230,12 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
               }`}
             >
               <PlanEditor
+                key={discardKey}
                 markdown={markdown}
                 comments={view.comments}
                 showResolved={showResolved}
                 focusedCommentId={focusedCommentId}
-                onSave={onSave}
+                onUserEdit={notifyEdit}
                 onFocusComment={setFocusedCommentId}
                 onEditorReady={setEditor}
                 readOnly={approved}
@@ -266,6 +272,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       ) : null}
 
       <DiscussionButton open={discussionOpen} unreadCount={unreadCount} onClick={openDiscussion} />
+      {approved ? null : <PlanSaveBar isDirty={isDirty} save={save} discard={discard} />}
     </div>
   );
 }

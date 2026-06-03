@@ -18,15 +18,12 @@ const DEFAULT_EDITOR_CLASS = [
   'prose-code:before:content-none prose-code:after:content-none',
 ].join(' ');
 
-// Plan editor. Markdown is the source of truth (D4) — the editor parses it
-// on mount and on every external refetch, and serializes back to markdown
-// on debounced save.
 export function PlanEditor({
   markdown,
   comments,
   showResolved = false,
   focusedCommentId = null,
-  onSave,
+  onUserEdit,
   onFocusComment,
   onEditorReady,
   readOnly = false,
@@ -35,7 +32,7 @@ export function PlanEditor({
   comments: Comment[];
   showResolved?: boolean;
   focusedCommentId?: string | null;
-  onSave: (markdown: string) => void;
+  onUserEdit?: () => void;
   onFocusComment?: (commentId: string | null) => void;
   onEditorReady?: (editor: Editor | null) => void;
   readOnly?: boolean;
@@ -45,7 +42,7 @@ export function PlanEditor({
     comments,
     showResolved,
     focusedCommentId,
-    onSave,
+    onUserEdit,
     onFocusComment,
     onEditorReady,
     readOnly,
