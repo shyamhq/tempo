@@ -176,6 +176,45 @@ body {
   color: inherit;
 }
 
+.plan-editor-dense .confluence-code-block[data-rendered='true'] {
+  background: #ffffff;
+}
+
+.plan-editor-dense .confluence-code-block[data-rendered='true'] .confluence-code-block__chrome {
+  display: none;
+}
+
+.plan-editor-dense .mermaid-preview {
+  padding: 0.75rem;
+  background: #ffffff;
+}
+
+.plan-editor-dense .confluence-code-block:not([data-rendered='true']) .mermaid-preview {
+  border-bottom: 1px solid #dfe1e6;
+}
+
+.plan-editor-dense .mermaid-preview__svg {
+  width: 100%;
+}
+
+.plan-editor-dense .mermaid-preview__svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+.plan-editor-dense .mermaid-preview__error {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #bf2600;
+  background: #ffebe6;
+  border: 1px solid #ffbdad;
+  border-radius: 3px;
+  padding: 0.5rem 0.65rem;
+  width: 100%;
+}
+
 /* Reply rendering — marked → sanitized HTML. Mirrors the Plan editor's
    inline-code and fenced-block visuals but matches raw HTML, not ProseMirror. */
 .reply-md :not(pre) > code {

@@ -1,19 +1,19 @@
 import CodeBlock from '@tiptap/extension-code-block';
 import { mergeAttributes } from '@tiptap/core';
+import { ReactNodeViewRenderer } from '@tiptap/react';
+import { CodeBlockView } from './code-block-view';
 
-function languageLabel(language: string | null | undefined): string {
-  if (!language) return 'Code';
-  return language;
-}
-
-// Confluence-style fenced block: chrome header + gray panel body.
 export const ConfluenceCodeBlock = CodeBlock.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(CodeBlockView);
+  },
+
   renderHTML({ node, HTMLAttributes }) {
     const language = node.attrs.language as string | null;
     return [
       'div',
       { class: 'confluence-code-block', 'data-language': language ?? '' },
-      ['div', { class: 'confluence-code-block__header' }, languageLabel(language)],
+      ['div', { class: 'confluence-code-block__header' }, language ?? 'Code'],
       [
         'pre',
         mergeAttributes(HTMLAttributes, { class: 'confluence-code-block__pre' }),
