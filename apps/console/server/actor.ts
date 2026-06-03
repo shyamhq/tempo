@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
 import { db } from '../db';
 import { sessions, threads } from '../db/schema';
@@ -22,10 +22,14 @@ export async function authFromRequest(req: NextRequest): Promise<AuthContext> {
       .where(eq(threads.connect_token, bearer))
       .limit(1);
     if (!t) return null;
+    // Pick the most-recent session — Threads accumulate one row per
+    // `tempo-agent connect` call; the running Agent always has the newest
+    // session_id in its env, so the auth lookup must match it.
     const [s] = await db
       .select({ id: sessions.id })
       .from(sessions)
       .where(eq(sessions.thread_id, t.id))
+      .orderBy(desc(sessions.created_at))
       .limit(1);
     return { actor: 'agent', thread_id: t.id, session_id: s?.id ?? null };
   }
