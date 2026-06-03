@@ -3,46 +3,54 @@
 import type { AgentTodo } from '@tempo/contracts';
 import { Check, Loader2 } from 'lucide-react';
 import { useState } from 'react';
-import { type LiveActivity, useLiveActivityGroup } from '@/hooks/use-thread-events';
+import type { ToolCallEntry } from '@/hooks/use-thread-events';
 
-// How many tool rows render before "+N earlier · expand" hides the rest.
-const VISIBLE_TOOL_ROWS = 3;
-
-export function LiveActivityGroup({ threadId }: { threadId: string }) {
-  const activity = useLiveActivityGroup(threadId);
-  const todos = activity.todos;
-  const hasTools = activity.toolCalls.length > 0;
+export function ActivityCard({
+  todos,
+  toolCalls,
+}: {
+  todos: AgentTodo[] | null;
+  toolCalls: ToolCallEntry[];
+}) {
+  const hasTools = toolCalls.length > 0;
   if (!todos && !hasTools) return null;
-
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink-tertiary">
-          Agent activity
-        </span>
-        <span aria-hidden className="flex-1 h-px bg-hairline" />
-      </div>
-      <div className="rounded-lg border border-hairline bg-canvas px-3.5 py-3">
-        {todos ? <TodoCard todos={todos} /> : null}
-        {hasTools ? <ToolStack toolCalls={activity.toolCalls} hasTodos={todos !== null} /> : null}
-      </div>
-    </section>
+    <div className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 shadow-[0_8px_22px_rgba(10,10,10,0.10)]">
+      {todos ? <TodoCard todos={todos} /> : null}
+      {hasTools ? <ToolStack toolCalls={toolCalls} hasTodos={todos !== null} /> : null}
+    </div>
   );
 }
 
 function TodoCard({ todos }: { todos: AgentTodo[] }) {
-  const done = todos.filter((t) => t.status === 'completed').length;
+  const completed = todos.filter((t) => t.status === 'completed');
+  const active = todos.filter((t) => t.status !== 'completed');
+  // Default-collapse the completed rows when there are many, so a long run
+  // (e.g. an 18-todo task) doesn't take over the popover.
+  const collapsible = completed.length > 6;
+  const [showCompleted, setShowCompleted] = useState(false);
+  const visible = collapsible && !showCompleted ? active : [...completed, ...active];
+
   return (
     <div>
       <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-tertiary mb-1.5">
-        Todos · {done} of {todos.length}
+        Todos · {completed.length} of {todos.length}
       </div>
-      <ul className="flex flex-col">
-        {todos.map((todo, idx) => (
-          // TodoWrite rewrites the whole list each call; positional key is the
-          // natural identity since items have no SDK-provided ids.
-          // biome-ignore lint/suspicious/noArrayIndexKey: see above
-          <TodoRow key={idx} todo={todo} first={idx === 0} />
+      <ul className="flex flex-col max-h-[260px] overflow-y-auto">
+        {collapsible && !showCompleted ? (
+          <li className="py-1.5">
+            <button
+              type="button"
+              onClick={() => setShowCompleted(true)}
+              className="text-[11.5px] text-ink-tertiary hover:text-ink-subtle"
+            >
+              ▸ {completed.length} completed · expand
+            </button>
+          </li>
+        ) : null}
+        {visible.map((todo, idx) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: AgentTodo has no SDK id; content + index is the natural identity
+          <TodoRow key={`${idx}-${todo.content}`} todo={todo} first={idx === 0 && !collapsible} />
         ))}
       </ul>
     </div>
@@ -81,8 +89,6 @@ function TodoMark({ status }: { status: AgentTodo['status'] }) {
     );
   }
   if (status === 'in_progress') {
-    // Pulsing accent dot inside an accent ring — same visual vocabulary as the
-    // Discussion panel's connected-status dot.
     return (
       <span
         aria-hidden
@@ -100,21 +106,15 @@ function TodoMark({ status }: { status: AgentTodo['status'] }) {
   );
 }
 
-function ToolStack({
-  toolCalls,
-  hasTodos,
-}: {
-  toolCalls: LiveActivity['toolCalls'];
-  hasTodos: boolean;
-}) {
+function ToolStack({ toolCalls, hasTodos }: { toolCalls: ToolCallEntry[]; hasTodos: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? toolCalls : toolCalls.slice(0, VISIBLE_TOOL_ROWS);
+  const visible = expanded ? toolCalls : toolCalls.slice(0, 3);
   const hiddenCount = toolCalls.length - visible.length;
   return (
     <div className={hasTodos ? 'mt-2.5 pt-2 border-t border-hairline' : ''}>
       <ul className="flex flex-col">
         {visible.map((tc, idx) => (
-          <ToolRow key={tc.id} entry={tc} isFirst={idx === 0} dim={idx >= 2 && !expanded} />
+          <ToolRow key={tc.id} entry={tc} dim={idx >= 2 && !expanded} spinner={idx === 0} />
         ))}
       </ul>
       {hiddenCount > 0 ? (
@@ -132,12 +132,12 @@ function ToolStack({
 
 function ToolRow({
   entry,
-  isFirst,
   dim,
+  spinner,
 }: {
-  entry: { tool: string; summary: string };
-  isFirst: boolean;
+  entry: ToolCallEntry;
   dim: boolean;
+  spinner: boolean;
 }) {
   return (
     <li
@@ -145,7 +145,7 @@ function ToolRow({
         dim ? 'opacity-50' : ''
       }`}
     >
-      {isFirst ? (
+      {spinner ? (
         <Loader2 className="h-[10px] w-[10px] shrink-0 animate-spin text-ink-tertiary" />
       ) : (
         <span aria-hidden className="h-[5px] w-[5px] shrink-0 rounded-full bg-ink-tertiary" />

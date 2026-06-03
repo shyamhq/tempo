@@ -21,6 +21,11 @@ export async function recordAgentTodosUpdated(
   await appendEvent(threadId, { kind: 'agent_todos_updated', todos });
 }
 
+export async function recordAgentTurnEnded(sessionId: string): Promise<void> {
+  const threadId = await threadIdForSession(sessionId);
+  await appendEvent(threadId, { kind: 'agent_turn_ended' });
+}
+
 async function threadIdForSession(sessionId: string): Promise<string> {
   const [s] = await db
     .select({ thread_id: sessions.thread_id })

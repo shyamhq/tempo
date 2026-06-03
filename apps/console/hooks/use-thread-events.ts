@@ -13,12 +13,16 @@ export type ToolCallEntry = { id: string; tool: string; summary: string };
 export type LiveActivity = {
   todos: AgentTodo[] | null;
   toolCalls: ToolCallEntry[];
+  // True while Claude is mid-turn (a tool call has fired and no Stop hook has
+  // landed since). The widget shows a spinner on the latest tool while
+  // turnActive; on Stop it becomes a dot — the rest of the card stays.
+  turnActive: boolean;
 };
 
 // Tool stream cap — keeps the in-memory list bounded if Claude bursts hundreds
 // of tool calls between Dev messages.
 const TOOL_CALLS_MAX = 100;
-const EMPTY_ACTIVITY: LiveActivity = { todos: null, toolCalls: [] };
+const EMPTY_ACTIVITY: LiveActivity = { todos: null, toolCalls: [], turnActive: false };
 
 export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
 
@@ -209,7 +213,11 @@ function applyLiveActivity(
       qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
         const base = prev ?? EMPTY_ACTIVITY;
         const entry: ToolCallEntry = { id: ev.id, tool: ev.tool, summary: ev.summary };
-        return { ...base, toolCalls: [entry, ...base.toolCalls].slice(0, TOOL_CALLS_MAX) };
+        return {
+          ...base,
+          toolCalls: [entry, ...base.toolCalls].slice(0, TOOL_CALLS_MAX),
+          turnActive: true,
+        };
       });
       return;
     case 'agent_todos_updated':
@@ -218,6 +226,14 @@ function applyLiveActivity(
       qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
         ...(prev ?? EMPTY_ACTIVITY),
         todos: ev.todos.length > 0 ? ev.todos : null,
+      }));
+      return;
+    case 'agent_turn_ended':
+      // Claude stopped — keep the last todos + tool stream visible (final
+      // state context) but flip the spinner off.
+      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
+        ...(prev ?? EMPTY_ACTIVITY),
+        turnActive: false,
       }));
       return;
     case 'discussion_message_posted':

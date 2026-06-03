@@ -7,6 +7,7 @@ import { ArrowLeft, GitBranch, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
+import { ActivityWidget } from '@/components/thread/activity-widget';
 import { CommentsRail } from '@/components/thread/comments-rail';
 import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
@@ -45,7 +46,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   // Open the Discussion by default on a fresh Thread (no Plan yet) — the Agent
   // and Dev will be talking before there's any Plan to read. After mount the
   // Dev controls it via the FAB or ⌘/.
-  const [userOpenedDiscussion, setUserOpenedDiscussion] = useState(initial.plan.body === null);
+  const [discussionOpen, setDiscussionOpen] = useState(initial.plan.body === null);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
   const [discussionWidth, setDiscussionWidth] = useState(DEFAULT_DISCUSSION_WIDTH);
 
@@ -126,8 +127,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const approved = view.status === 'approved';
 
-  const discussionOpen = userOpenedDiscussion;
-
   const unreadCount = useMemo(() => {
     if (discussionOpen) return 0;
     if (!discussionSeenAt) {
@@ -138,8 +137,13 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     ).length;
   }, [view.discussion.messages, discussionSeenAt, discussionOpen]);
 
-  const openDiscussion = useCallback(() => setUserOpenedDiscussion(true), []);
-  const closeDiscussion = useCallback(() => setUserOpenedDiscussion(false), []);
+  const openDiscussion = useCallback(() => setDiscussionOpen(true), []);
+  // Closing unmounts the focused X button; pin scroll across the focus→body reflow.
+  const closeDiscussion = useCallback(() => {
+    const y = window.scrollY;
+    setDiscussionOpen(false);
+    requestAnimationFrame(() => window.scrollTo({ top: y }));
+  }, []);
   const markOpened = useCallback(() => {
     if (typeof window === 'undefined') return;
     const now = new Date().toISOString();
@@ -159,7 +163,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
-        setUserOpenedDiscussion((v) => !v);
+        setDiscussionOpen((v) => !v);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -247,6 +251,8 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             onFocusChange={setFocusedCommentId}
           />
         </aside>
+
+        <ActivityWidget threadId={threadId} />
       </div>
 
       {planUpdatedAt ? (

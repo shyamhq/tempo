@@ -159,9 +159,9 @@ export function spawnTerminal(args: {
   };
 }
 
-// Inline settings JSON: PreToolUse → hook-relay only. Hook-relay posts a
-// one-line "Agent is calling X" record to the Console so the Activity rail
-// stays live. No Stop or PostToolBatch hooks — Node owns the polling loop.
+// Inline settings JSON: PreToolUse → hook-relay (per-tool live activity);
+// Stop → stop-hook (clears spinner at end-of-turn). Both are fire-and-forget
+// to the Console; the loop is still Node-owned.
 const HOOK_SETTINGS_JSON = JSON.stringify({
   hooks: {
     PreToolUse: [
@@ -171,6 +171,18 @@ const HOOK_SETTINGS_JSON = JSON.stringify({
           {
             type: 'command',
             command: `${shellEscape(process.execPath)} ${shellEscape(CLI_PATH)} hook-relay`,
+            timeout: 2,
+          },
+        ],
+      },
+    ],
+    Stop: [
+      {
+        matcher: '*',
+        hooks: [
+          {
+            type: 'command',
+            command: `${shellEscape(process.execPath)} ${shellEscape(CLI_PATH)} stop-hook`,
             timeout: 2,
           },
         ],

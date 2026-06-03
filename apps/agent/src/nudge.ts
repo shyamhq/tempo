@@ -36,6 +36,7 @@ function shouldNotify(ev: Event): boolean {
     case 'plan_edited_by_agent':
     case 'agent_tool_use':
     case 'agent_todos_updated':
+    case 'agent_turn_ended':
     case 'session_connected':
     case 'session_disconnected':
       return false;

@@ -93,6 +93,12 @@ export const RecordTodosUpdatedRequest = z.object({
 });
 export const RecordTodosUpdatedResponse = z.object({ ok: z.literal(true) });
 
+// POST /api/sessions/:id/turn-ended
+// Recorded by the Agent's Claude Code Stop hook (fire-and-forget). Empty body —
+// the act of POSTing is the signal that the agent's turn has ended.
+export const RecordTurnEndedRequest = z.object({});
+export const RecordTurnEndedResponse = z.object({ ok: z.literal(true) });
+
 // GET /api/threads/:id/plan
 export const GetPlanResponse = Plan;
 

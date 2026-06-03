@@ -3,7 +3,6 @@
 import type { DiscussionMessage, SessionStatus } from '@tempo/contracts';
 import { Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { LiveActivityGroup } from './live-activity-group';
 import { MessageComposer } from './message-composer';
 import { MessageList } from './message-list';
 
@@ -61,12 +60,7 @@ export function DiscussionPanel({
       className="relative flex flex-col h-full min-h-0 bg-canvas border-r border-hairline overflow-hidden"
     >
       <PanelHeader sessionStatus={sessionStatus} onClose={onClose} />
-      <MessageList
-        messages={messages}
-        threadId={threadId}
-        endSlot={<LiveActivityGroup threadId={threadId} />}
-        emptyState={<EmptyState />}
-      />
+      <MessageList messages={messages} threadId={threadId} emptyState={<EmptyState />} />
       <MessageComposer
         threadId={threadId}
         disabled={composerDisabled}

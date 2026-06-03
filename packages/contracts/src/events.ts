@@ -78,6 +78,10 @@ export const AgentTodosUpdatedEvent = eventBase.extend({
   todos: z.array(AgentTodo).max(50),
 });
 
+export const AgentTurnEndedEvent = eventBase.extend({
+  kind: z.literal('agent_turn_ended'),
+});
+
 export const SessionConnectedEvent = eventBase.extend({
   kind: z.literal('session_connected'),
 });
@@ -102,6 +106,7 @@ export const Event = z.discriminatedUnion('kind', [
   CommentUnresolvedEvent,
   AgentToolUseEvent,
   AgentTodosUpdatedEvent,
+  AgentTurnEndedEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
   DiscussionMessagePostedEvent,
@@ -119,6 +124,7 @@ export const EventKind = z.enum([
   'comment_unresolved',
   'agent_tool_use',
   'agent_todos_updated',
+  'agent_turn_ended',
   'session_connected',
   'session_disconnected',
   'discussion_message_posted',
