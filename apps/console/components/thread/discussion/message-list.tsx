@@ -123,7 +123,7 @@ function MessageRow({
             {timeLabel}
           </time>
         )}
-        <div className="text-[13.5px] leading-[1.6] text-ink">
+        <div className="text-body-sm leading-[1.6] text-ink">
           <MarkdownText text={text} />
         </div>
       </div>
@@ -134,15 +134,13 @@ function MessageRow({
     <div className="flex flex-col items-end" style={ENTER_ANIM}>
       {showIdentity ? (
         <div className="flex items-center gap-1.5 mb-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-subtle">
-            You
-          </span>
-          <span aria-hidden className="text-[11px] text-ink-tertiary tabular-nums">
+          <span className="text-micro-uppercase uppercase text-ink-subtle">You</span>
+          <span aria-hidden className="text-micro font-normal text-ink-tertiary tabular-nums">
             ·
           </span>
           <time
             dateTime={message.created_at}
-            className="text-[11px] text-ink-tertiary tabular-nums"
+            className="text-micro font-normal text-ink-tertiary tabular-nums"
           >
             {timeLabel}
           </time>
@@ -152,7 +150,7 @@ function MessageRow({
           {timeLabel}
         </time>
       )}
-      <div className="max-w-[85%] rounded-[14px] rounded-br-[4px] bg-surface-2 px-3.5 py-2 text-[13.5px] leading-[1.55] text-ink">
+      <div className="max-w-[85%] rounded-lg rounded-br-xs bg-surface-2 px-3.5 py-2 text-body-sm leading-[1.55] text-ink">
         <MarkdownText text={text} />
       </div>
     </div>
@@ -162,7 +160,9 @@ function MessageRow({
 function DayDivider({ iso }: { iso: string }) {
   return (
     <div className="flex items-center justify-center my-4">
-      <span className="text-[10.5px] text-ink-tertiary tabular-nums">{formatDay(iso)}</span>
+      <span className="text-micro font-normal text-ink-tertiary tabular-nums">
+        {formatDay(iso)}
+      </span>
     </div>
   );
 }

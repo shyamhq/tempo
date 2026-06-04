@@ -4,8 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Undo2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { api } from '@/lib/api-client';
 import { useSidebar } from '@/hooks/use-sidebar-state';
+import { api } from '@/lib/api-client';
 
 export function UndoToast() {
   const pending = useSidebar((s) => s.pendingDelete);
@@ -37,7 +37,8 @@ export function UndoToast() {
   }, [pending, qc, router, clear]);
 
   if (!pending) return null;
-  const label = pending.kind === 'space' ? `Deleted "${pending.name}"` : `Deleted "${pending.title}"`;
+  const label =
+    pending.kind === 'space' ? `Deleted "${pending.name}"` : `Deleted "${pending.title}"`;
 
   const undo = () => {
     if (!pending) return;
@@ -52,7 +53,7 @@ export function UndoToast() {
   };
 
   return (
-    <div className="fixed bottom-5 left-5 z-[95] flex items-center gap-3.5 rounded-[10px] bg-ink px-4 py-2.5 text-[13px] text-white shadow-[0_10px_28px_rgba(10,11,13,0.3)]">
+    <div className="fixed bottom-5 left-5 z-[95] flex items-center gap-3.5 rounded-md bg-ink px-4 py-2.5 text-caption text-on-primary shadow-toast">
       {label}
       <button
         type="button"
@@ -64,4 +65,3 @@ export function UndoToast() {
     </div>
   );
 }
-

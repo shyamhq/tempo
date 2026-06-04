@@ -1,6 +1,6 @@
 'use client';
 
-import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
+import { NodeViewContent, type NodeViewProps, NodeViewWrapper } from '@tiptap/react';
 import { useEffect, useId, useState } from 'react';
 
 type Mermaid = typeof import('mermaid')['default'];

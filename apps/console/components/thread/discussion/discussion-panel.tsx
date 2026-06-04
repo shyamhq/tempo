@@ -67,7 +67,7 @@ export function DiscussionPanel({
         disabledReason={composerReason}
         autoFocus={!composerDisabled}
       />
-      <p className="px-5 pb-3 -mt-1 text-[11px] text-ink-tertiary">
+      <p className="px-5 pb-3 -mt-1 text-micro font-normal text-ink-tertiary">
         <kbd className="font-sans">⌘Enter</kbd> to send
         <span aria-hidden> · </span>
         <span className="sr-only">. </span>
@@ -182,11 +182,11 @@ function PanelHeader({
   return (
     <div className="flex items-center justify-between gap-3 px-5 h-12 border-b border-hairline">
       <div className="flex items-center gap-2.5 min-w-0">
-        <h2 className="font-display text-[16px] font-semibold text-ink truncate tracking-[-0.01em]">
+        <h2 className="font-display text-body-md font-semibold text-ink truncate tracking-[-0.01em]">
           Discussion
         </h2>
         <span
-          className="inline-flex items-center gap-1.5 text-[12px] text-ink-subtle shrink-0"
+          className="inline-flex items-center gap-1.5 text-micro font-normal text-ink-subtle shrink-0"
           title={
             connected ? 'Agent connected' : 'Agent disconnected — messages deliver on reconnect'
           }
@@ -218,10 +218,10 @@ function EmptyState() {
       <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-surface-3 text-accent mb-3">
         <Sparkles className="h-4 w-4" />
       </div>
-      <p className="text-[13px] text-ink leading-[1.55] mb-1.5 font-medium">
+      <p className="text-caption text-ink leading-[1.55] mb-1.5 font-medium">
         Ask the Agent about the approach
       </p>
-      <p className="text-[12px] text-ink-subtle leading-[1.55]">
+      <p className="text-micro font-normal text-ink-subtle leading-[1.55]">
         Anything that isn't tied to a specific line of the Plan — e.g. "Why did you reject the
         polling approach?"
       </p>

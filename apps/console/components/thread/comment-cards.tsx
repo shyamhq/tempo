@@ -224,8 +224,8 @@ export function CommentCard({
         <span
           className={
             orphan
-              ? 'flex-1 truncate text-[10px] uppercase tracking-wider text-ink-tertiary self-center'
-              : 'flex-1 truncate text-[13px] italic text-ink-subtle self-center'
+              ? 'flex-1 truncate text-micro font-normal uppercase tracking-uppercase text-ink-tertiary self-center'
+              : 'flex-1 truncate text-caption italic text-ink-subtle self-center'
           }
           title={!orphan && comment.plan_quote ? comment.plan_quote : undefined}
         >
@@ -238,7 +238,7 @@ export function CommentCard({
             {showUnread ? `${unreadCount} unread ${unreadCount === 1 ? 'reply' : 'replies'}` : ''}
           </span>
           {showUnread ? (
-            <Badge tone="accent" aria-hidden className="h-5 px-2 text-[10px]">
+            <Badge tone="accent" aria-hidden className="h-5 px-2 text-micro font-normal">
               {unreadCount} new
             </Badge>
           ) : null}
@@ -337,14 +337,14 @@ function ReplyRow({
     <div className="py-2 first:pt-0 border-t border-hairline first:border-t-0">
       <div className="flex items-center gap-1.5 mb-1">
         <span
-          className={`inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] ${
-            reply.author === 'agent' ? 'text-[#069072]' : 'text-ink-subtle'
+          className={`inline-flex items-center gap-1.5 text-micro-uppercase uppercase ${
+            reply.author === 'agent' ? 'text-accent-deep' : 'text-ink-subtle'
           }`}
         >
           <span aria-hidden className="size-[5px] rounded-full bg-current" />
           {reply.author}
         </span>
-        <span className="text-[11px] text-ink-tertiary tabular-nums">
+        <span className="text-micro font-normal text-ink-tertiary tabular-nums">
           {`· ${formatReplyTime(reply.created_at)}`}
         </span>
       </div>

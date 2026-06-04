@@ -27,9 +27,9 @@ export function SpaceBody({ space, spaces }: { space: Space; spaces: Space[] }) 
     <div className="mt-px mb-1.5">
       <div className="ml-[37px] border-l border-hairline">
         {isLoading ? (
-          <div className="px-2 py-1 text-[13px] text-ink-tertiary">Loading…</div>
+          <div className="px-2 py-1 text-caption text-ink-tertiary">Loading…</div>
         ) : threads.length === 0 ? (
-          <div className="px-2 py-1 text-[13px] text-ink-tertiary">No threads yet.</div>
+          <div className="px-2 py-1 text-caption text-ink-tertiary">No threads yet.</div>
         ) : (
           <SortableContext items={threads.map((t) => t.id)} strategy={verticalListSortingStrategy}>
             {threads.map((t) => (
@@ -47,7 +47,7 @@ export function SpaceBody({ space, spaces }: { space: Space; spaces: Space[] }) 
       <button
         type="button"
         onClick={() => router.push(`/threads/new?space=${space.id}`)}
-        className="mt-0.5 flex w-full items-center gap-2 rounded-[7px] py-1.5 pl-[68px] pr-2 text-[13px] text-ink-tertiary hover:bg-surface-2 hover:text-ink"
+        className="mt-0.5 flex w-full items-center gap-2 rounded-sm py-1.5 pl-[68px] pr-2 text-caption text-ink-tertiary hover:bg-surface-2 hover:text-ink"
       >
         <Plus className="h-3 w-3" strokeWidth={2.2} /> New thread
       </button>

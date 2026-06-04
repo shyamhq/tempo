@@ -1,5 +1,5 @@
-import CodeBlock from '@tiptap/extension-code-block';
 import { mergeAttributes } from '@tiptap/core';
+import CodeBlock from '@tiptap/extension-code-block';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import { CodeBlockView } from './code-block-view';
 

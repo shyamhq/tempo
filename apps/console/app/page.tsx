@@ -39,7 +39,7 @@ export default async function HomePage({
     <main className="mx-auto max-w-4xl px-8 py-8">
       <header className="flex items-center justify-between mb-6">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-wider text-ink-tertiary mb-1">Space</div>
+          <div className="text-micro-uppercase uppercase text-ink-tertiary mb-1">Space</div>
           <h1 className="font-display text-xl font-semibold tracking-tight">{activeSpace.name}</h1>
         </div>
         <Link
@@ -50,7 +50,7 @@ export default async function HomePage({
         </Link>
       </header>
 
-      <div className="flex items-center gap-3 px-3 h-9 border-y border-hairline bg-surface-2/40 text-[11px] uppercase tracking-wider text-ink-tertiary">
+      <div className="flex items-center gap-3 px-3 h-9 border-y border-hairline bg-surface-2/40 text-micro-uppercase uppercase text-ink-tertiary">
         <span className="flex-1">Thread</span>
         <span className="w-24 text-right">Session</span>
         <span className="w-20 text-right">Status</span>
@@ -89,7 +89,7 @@ export default async function HomePage({
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-ink font-medium truncate">{t.title}</div>
                   {t.description ? (
-                    <div className="text-[12px] text-ink-subtle truncate mt-0.5">
+                    <div className="text-micro font-normal text-ink-subtle truncate mt-0.5">
                       {t.description}
                     </div>
                   ) : null}
@@ -100,7 +100,7 @@ export default async function HomePage({
                 <div className="w-20 text-right shrink-0">
                   <Badge tone={t.status === 'approved' ? 'success' : 'accent'}>{t.status}</Badge>
                 </div>
-                <span className="w-28 text-right shrink-0 text-[11px] text-ink-tertiary tabular-nums">
+                <span className="w-28 text-right shrink-0 text-micro font-normal text-ink-tertiary tabular-nums">
                   {formatUpdated(t.updated_at)}
                 </span>
                 <div className="w-6 flex justify-end opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">

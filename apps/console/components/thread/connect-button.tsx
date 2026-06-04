@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy, Plug, Loader2 } from 'lucide-react';
+import { Check, Copy, Loader2, Plug } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {

@@ -48,7 +48,7 @@ export function InlineRename({
       onBlur={commit}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
-      className="flex-1 min-w-0 rounded-md border border-accent bg-canvas px-1.5 py-0.5 text-[13.5px] text-ink outline-none shadow-[0_0_0_3px_rgba(0,212,164,0.12)]"
+      className="flex-1 min-w-0 rounded-md border border-accent bg-canvas px-1.5 py-0.5 text-body-sm text-ink outline-none shadow-[0_0_0_3px_rgba(0,212,164,0.12)]"
     />
   );
 }

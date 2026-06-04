@@ -7,10 +7,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Space } from '@tempo/contracts';
 import { ChevronRight, GripVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
-import { colorForSpace } from '@/lib/space-color';
 import { useSidebar } from '@/hooks/use-sidebar-state';
+import { api } from '@/lib/api-client';
+import { colorForSpace } from '@/lib/space-color';
+import { cn } from '@/lib/utils';
 import { InlineRename } from './inline-rename';
 import { RowMenu } from './row-menu';
 import { SpaceBody } from './space-body';
@@ -24,7 +24,9 @@ export function SpaceRow({ space, spaces }: { space: Space; spaces: Space[] }) {
   const startRename = useSidebar((s) => s.startRename);
   const clearRename = useSidebar((s) => s.clearRename);
   const queueDelete = useSidebar((s) => s.queueDelete);
-  const pendingDel = useSidebar((s) => s.pendingDelete?.kind === 'space' && s.pendingDelete.id === space.id);
+  const pendingDel = useSidebar(
+    (s) => s.pendingDelete?.kind === 'space' && s.pendingDelete.id === space.id,
+  );
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: space.id,
@@ -74,9 +76,9 @@ export function SpaceRow({ space, spaces }: { space: Space; spaces: Space[] }) {
         onClick={() => toggle(space.id)}
         onContextMenu={(e) => e.preventDefault()}
         className={cn(
-          'group flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 transition-colors cursor-pointer',
+          'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 transition-colors cursor-pointer',
           'hover:bg-surface-2',
-          isOver ? 'ring-2 ring-accent ring-inset bg-[rgba(0,212,164,0.08)]' : null,
+          isOver ? 'ring-2 ring-accent ring-inset bg-accent/8' : null,
         )}
       >
         <span
@@ -97,7 +99,7 @@ export function SpaceRow({ space, spaces }: { space: Space; spaces: Space[] }) {
         />
 
         <span
-          className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[7px] text-[11px] font-bold"
+          className="flex size-icon-lg shrink-0 items-center justify-center rounded-sm text-micro font-bold"
           style={{ background: `${color}22`, color }}
         >
           {space.name.charAt(0).toUpperCase() || '·'}
@@ -113,13 +115,15 @@ export function SpaceRow({ space, spaces }: { space: Space; spaces: Space[] }) {
             onCancel={clearRename}
           />
         ) : (
-          <span className="flex-1 truncate text-[14px] font-medium text-ink text-left">
+          <span className="flex-1 truncate text-body-sm-medium text-ink text-left">
             {space.name}
           </span>
         )}
 
         <span className="inline-flex items-center gap-1 shrink-0">
-          <span className="text-[12px] tabular-nums text-ink-tertiary">{space.thread_count}</span>
+          <span className="text-micro font-normal tabular-nums text-ink-tertiary">
+            {space.thread_count}
+          </span>
           <RowMenu
             kind="space"
             onAction={(a) => {

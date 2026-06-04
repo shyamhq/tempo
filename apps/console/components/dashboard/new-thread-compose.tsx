@@ -88,8 +88,8 @@ export function NewThreadCompose({ space }: { space: Space }) {
   return (
     <div className="flex flex-col h-full bg-canvas">
       <header className="flex-none h-[53px] flex items-center justify-between px-[22px] border-b border-hairline">
-        <div className="flex items-center gap-[9px] text-[13.5px] font-medium text-ink-muted">
-          <span className="flex items-center justify-center w-[22px] h-[22px] rounded-[7px] bg-accent/15 text-accent text-[11px] font-bold">
+        <div className="flex items-center gap-[9px] text-body-sm font-medium text-ink-muted">
+          <span className="flex items-center justify-center size-icon-lg rounded-sm bg-accent/15 text-accent text-micro font-bold">
             T
           </span>
           <span>Tempo</span>
@@ -97,8 +97,11 @@ export function NewThreadCompose({ space }: { space: Space }) {
           <span className="font-normal text-ink-tertiary">New thread</span>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[13px] text-ink-tertiary">{space.name}</span>
-          <Link href={`/?space=${space.id}`} className="text-[13px] text-ink-subtle hover:text-ink">
+          <span className="text-caption text-ink-tertiary">{space.name}</span>
+          <Link
+            href={`/?space=${space.id}`}
+            className="text-caption text-ink-subtle hover:text-ink"
+          >
             Cancel
           </Link>
         </div>
@@ -106,14 +109,14 @@ export function NewThreadCompose({ space }: { space: Space }) {
 
       <section className="flex-1 min-h-0 overflow-auto flex flex-col items-center justify-center px-6 pt-10 pb-16">
         <div className="w-full max-w-[680px] flex flex-col items-center">
-          <div className="flex items-center gap-[7px] font-mono text-[11.5px] tracking-[1.4px] uppercase text-ink-tertiary mb-4">
-            <Sparkles className="h-[13px] w-[13px] text-accent-deep" strokeWidth={1.6} />
+          <div className="flex items-center gap-[7px] font-mono text-micro tracking-mono-display uppercase text-ink-tertiary mb-4">
+            <Sparkles className="size-icon-xs text-accent-deep" strokeWidth={1.6} />
             New thread
           </div>
           <h1 className="text-[clamp(28px,4vw,40px)] font-semibold tracking-tight text-ink text-center leading-[1.08] mb-3">
             What do you want to plan?
           </h1>
-          <p className="text-[16px] text-ink-tertiary leading-[1.6] text-center max-w-[46ch] mb-7">
+          <p className="text-body-md text-ink-tertiary leading-[1.6] text-center max-w-[46ch] mb-7">
             Describe the change. The Agent reads your codebase and drafts a Plan you can edit
             together before anything runs.
           </p>
@@ -128,7 +131,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
             />
           ) : (
             <>
-              <div className="w-full bg-canvas border border-hairline rounded-[16px] shadow-[0_1px_2px_rgba(10,11,13,0.04),0_12px_28px_-16px_rgba(10,11,13,0.16)] transition focus-within:border-accent focus-within:shadow-focus-soft overflow-hidden">
+              <div className="w-full bg-canvas border border-hairline rounded-xl shadow-compose transition focus-within:border-accent focus-within:shadow-focus-soft overflow-hidden">
                 <textarea
                   ref={textareaRef}
                   value={text}
@@ -136,7 +139,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
                   onKeyDown={onTextareaKeyDown}
                   placeholder="Describe the change you want to plan…"
                   disabled={isSubmitting}
-                  className="block w-full min-h-[132px] max-h-[280px] px-5 pt-5 pb-2 text-[16px] leading-[1.6] text-ink placeholder:text-ink-tertiary bg-transparent border-0 resize-none focus:outline-none disabled:cursor-not-allowed"
+                  className="block w-full min-h-[132px] max-h-[280px] px-5 pt-5 pb-2 text-body-md leading-[1.6] text-ink placeholder:text-ink-tertiary bg-transparent border-0 resize-none focus:outline-none disabled:cursor-not-allowed"
                 />
                 <div className="flex items-center justify-end px-3 pb-3">
                   <StartButton
@@ -153,7 +156,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
                     type="button"
                     onClick={() => prefill(lead)}
                     disabled={isSubmitting}
-                    className="inline-flex items-center gap-[7px] px-3 py-1.5 rounded-full border border-hairline bg-canvas text-[13px] text-ink-subtle hover:bg-surface-2 hover:border-hairline-strong transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-[7px] px-3 py-1.5 rounded-full border border-hairline bg-canvas text-caption text-ink-subtle hover:bg-surface-2 hover:border-hairline-strong transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Icon className="h-[14px] w-[14px] text-ink-tertiary" strokeWidth={1.9} />
                     {label}
@@ -161,7 +164,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
                 ))}
               </div>
 
-              <p className="flex items-center gap-[7px] justify-center mt-[18px] text-[12.5px] text-ink-tertiary">
+              <p className="flex items-center gap-[7px] justify-center mt-[18px] text-micro font-normal text-ink-tertiary">
                 <Kbd>↵</Kbd>
                 <span>to start</span>
                 <span className="text-hairline-strong">·</span>
@@ -193,11 +196,11 @@ function StartButton({
   const isOn = state === 'on';
   const isSubmitting = state === 'submitting';
   const base =
-    'inline-flex items-center gap-[9px] h-[38px] px-3.5 rounded-[10px] text-[13.5px] font-semibold transition';
+    'inline-flex items-center gap-[9px] h-[38px] px-3.5 rounded-md text-body-sm font-semibold transition';
   if (isSubmitting) {
     return (
       <button type="button" disabled className={`${base} bg-ink text-on-primary cursor-default`}>
-        <span className="h-[14px] w-[14px] rounded-full border-2 border-white/35 border-t-white animate-spin" />
+        <span className="h-[14px] w-[14px] rounded-full border-2 border-on-primary/35 border-t-on-primary animate-spin" />
         Starting…
       </button>
     );
@@ -215,9 +218,9 @@ function StartButton({
     >
       Start thread
       <span
-        className={`font-mono text-[11px] leading-none px-[5px] py-[3px] rounded-[5px] ${
+        className={`font-mono text-micro leading-none px-[5px] py-[3px] rounded-xs ${
           isOn
-            ? 'bg-white/15 text-on-primary'
+            ? 'bg-on-primary/15 text-on-primary'
             : 'bg-canvas border border-hairline text-ink-tertiary'
         }`}
       >
@@ -241,11 +244,11 @@ function CreatedCard({
   onOpen: () => void;
 }) {
   return (
-    <div className="w-full bg-canvas border border-hairline rounded-[16px] shadow-[0_1px_2px_rgba(10,11,13,0.04),0_12px_28px_-16px_rgba(10,11,13,0.16)] p-6 text-left">
-      <h2 className="text-[15px] font-semibold text-ink">
+    <div className="w-full bg-canvas border border-hairline rounded-xl shadow-compose p-6 text-left">
+      <h2 className="text-body-md font-semibold text-ink">
         Thread created — connect the Agent to start
       </h2>
-      <p className="text-[13px] text-ink-tertiary mt-1">
+      <p className="text-caption text-ink-tertiary mt-1">
         Run this in your repo. The Agent will pick up your first message and start drafting.
       </p>
       <div className="mt-4 rounded-md border border-hairline bg-surface-2 p-3 font-mono text-xs text-ink break-all flex items-start gap-2">
@@ -262,14 +265,14 @@ function CreatedCard({
       <div className="mt-5 flex justify-end gap-2">
         <Link
           href={`/?space=${spaceId}`}
-          className="inline-flex items-center justify-center h-[38px] px-3.5 rounded-[10px] text-[13.5px] font-semibold border border-hairline text-ink hover:bg-surface-2"
+          className="inline-flex items-center justify-center h-[38px] px-3.5 rounded-md text-body-sm font-semibold border border-hairline text-ink hover:bg-surface-2"
         >
           Close
         </Link>
         <button
           type="button"
           onClick={onOpen}
-          className="inline-flex items-center h-[38px] px-3.5 rounded-[10px] text-[13.5px] font-semibold bg-ink text-on-primary hover:bg-ink-muted"
+          className="inline-flex items-center h-[38px] px-3.5 rounded-md text-body-sm font-semibold bg-ink text-on-primary hover:bg-ink-muted"
         >
           Open Thread
         </button>
@@ -280,7 +283,7 @@ function CreatedCard({
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center font-mono text-[10.5px] px-[5px] py-[2px] rounded-[5px] bg-surface-2 border border-hairline text-ink-subtle">
+    <span className="inline-flex items-center font-mono text-micro px-[5px] py-[2px] rounded-xs bg-surface-2 border border-hairline text-ink-subtle">
       {children}
     </span>
   );

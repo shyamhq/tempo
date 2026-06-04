@@ -21,7 +21,7 @@ export function PlanSaveBar({
       </Button>
       <Button variant="primary" size="sm" onClick={save}>
         Save
-        <kbd className="ml-1.5 font-mono text-[10px] opacity-70">⌘S</kbd>
+        <kbd className="ml-1.5 font-mono text-micro opacity-70">⌘S</kbd>
       </Button>
     </div>
   );

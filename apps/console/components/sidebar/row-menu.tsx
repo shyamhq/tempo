@@ -2,10 +2,10 @@
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { Space } from '@tempo/contracts';
-import { ChevronRight, MoreHorizontal, Pencil, Trash2, MoveRight } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, MoveRight, Pencil, Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 import { colorForSpace } from '@/lib/space-color';
+import { cn } from '@/lib/utils';
 
 export type MenuAction =
   | { kind: 'rename' }
@@ -42,24 +42,24 @@ export function RowMenu({
         <DropdownMenu.Content
           align="end"
           sideOffset={4}
-          className="z-50 min-w-[190px] rounded-[10px] border border-hairline bg-canvas p-[5px] shadow-[0_1px_2px_rgba(10,11,13,0.04),0_12px_32px_-8px_rgba(10,11,13,0.22)]"
+          className="z-50 min-w-[190px] rounded-md border border-hairline bg-canvas p-[5px] shadow-[0_1px_2px_rgba(10,11,13,0.04),0_12px_32px_-8px_rgba(10,11,13,0.22)]"
         >
           <MenuItem onSelect={() => onAction({ kind: 'rename' })}>
-            <Pencil className="h-[15px] w-[15px] text-ink-subtle" />
+            <Pencil className="size-icon-sm text-ink-subtle" />
             Rename
           </MenuItem>
 
           {kind === 'thread' && spaces ? (
             <DropdownMenu.Sub>
               <DropdownMenu.SubTrigger className={subTriggerCls}>
-                <MoveRight className="h-[15px] w-[15px] text-ink-subtle" />
+                <MoveRight className="size-icon-sm text-ink-subtle" />
                 Move to
                 <ChevronRight className="ml-auto h-3 w-3 text-ink-tertiary" />
               </DropdownMenu.SubTrigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.SubContent
                   sideOffset={6}
-                  className="z-50 min-w-[180px] rounded-[10px] border border-hairline bg-canvas p-[5px] shadow-[0_1px_2px_rgba(10,11,13,0.04),0_12px_32px_-8px_rgba(10,11,13,0.22)]"
+                  className="z-50 min-w-[180px] rounded-md border border-hairline bg-canvas p-[5px] shadow-[0_1px_2px_rgba(10,11,13,0.04),0_12px_32px_-8px_rgba(10,11,13,0.22)]"
                 >
                   {spaces
                     .filter((s) => s.id !== spaceId)
@@ -69,14 +69,16 @@ export function RowMenu({
                         onSelect={() => onAction({ kind: 'move', toSpaceId: s.id })}
                       >
                         <span
-                          className="h-[9px] w-[9px] rounded-[3px]"
+                          className="h-[9px] w-[9px] rounded-xs"
                           style={{ background: colorForSpace(s.id) }}
                         />
                         <span className="truncate">{s.name}</span>
                       </MenuItem>
                     ))}
                   {spaces.length <= 1 ? (
-                    <div className="px-2 py-2 text-[12px] text-ink-tertiary">No other spaces</div>
+                    <div className="px-2 py-2 text-micro font-normal text-ink-tertiary">
+                      No other spaces
+                    </div>
                   ) : null}
                 </DropdownMenu.SubContent>
               </DropdownMenu.Portal>
@@ -86,7 +88,7 @@ export function RowMenu({
           <DropdownMenu.Separator className="my-1 h-px bg-hairline" />
 
           <MenuItem danger onSelect={() => onAction({ kind: 'delete' })}>
-            <Trash2 className="h-[15px] w-[15px]" />
+            <Trash2 className="size-icon-sm" />
             Delete
           </MenuItem>
         </DropdownMenu.Content>
@@ -96,7 +98,7 @@ export function RowMenu({
 }
 
 const subTriggerCls = cn(
-  'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-[13.5px] text-ink-muted outline-none',
+  'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-body-sm text-ink-muted outline-none',
   'data-[state=open]:bg-surface-2 data-[highlighted]:bg-surface-2 data-[highlighted]:text-ink',
 );
 
@@ -113,9 +115,9 @@ function MenuItem({
     <DropdownMenu.Item
       onSelect={onSelect}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-[13.5px] outline-none cursor-pointer',
+        'flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-body-sm outline-none cursor-pointer',
         danger
-          ? 'text-danger data-[highlighted]:bg-[#FDECEC]'
+          ? 'text-danger data-[highlighted]:bg-danger-soft'
           : 'text-ink-muted data-[highlighted]:bg-surface-2 data-[highlighted]:text-ink',
       )}
     >

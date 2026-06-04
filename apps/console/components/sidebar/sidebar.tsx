@@ -1,22 +1,26 @@
 'use client';
 
 import {
+  closestCenter,
   DndContext,
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { Plus, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { api } from '@/lib/api-client';
+import { useEffect, useMemo, useState } from 'react';
 import { useSidebar } from '@/hooks/use-sidebar-state';
+import { api } from '@/lib/api-client';
 import { SpaceRow } from './space-row';
 import { UndoToast } from './undo-toast';
 
@@ -75,10 +79,10 @@ export function Sidebar({ initial }: { initial: Space[] }) {
   const onDragEnd = (e: DragEndEvent) => handleDragEnd(e, qc, spaces, router.refresh);
 
   return (
-    <aside className="flex h-dvh w-[300px] shrink-0 flex-col border-r border-hairline bg-surface-2/40">
+    <aside className="flex h-dvh w-sidebar shrink-0 flex-col border-r border-hairline bg-surface-2/40">
       <div className="px-[18px] pt-[18px] pb-3.5">
-        <div className="flex items-center gap-2.5 text-[17px] font-bold tracking-tight text-ink">
-          <span className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-ink text-[13px] font-bold text-white">
+        <div className="flex items-center gap-2.5 text-heading-5 tracking-tight text-ink">
+          <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-ink text-caption font-bold text-on-primary">
             T
           </span>
           Tempo
@@ -86,26 +90,24 @@ export function Sidebar({ initial }: { initial: Space[] }) {
       </div>
 
       <div className="px-4 pb-2.5">
-        <label className="flex h-[34px] items-center gap-2 rounded-[9px] border border-hairline bg-canvas px-2.5 text-ink-tertiary">
+        <label className="flex h-[34px] items-center gap-2 rounded-md border border-hairline bg-canvas px-2.5 text-ink-tertiary">
           <Search className="h-3.5 w-3.5" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search threads…"
-            className="flex-1 min-w-0 border-none bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-tertiary"
+            className="flex-1 min-w-0 border-none bg-transparent text-caption text-ink outline-none placeholder:text-ink-tertiary"
           />
         </label>
       </div>
 
       <div className="flex items-center justify-between px-[18px] py-1.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.6px] text-ink-subtle">
-          Spaces
-        </span>
+        <span className="text-micro-uppercase uppercase text-ink-subtle">Spaces</span>
         <button
           type="button"
           onClick={() => newSpace.mutate()}
           disabled={newSpace.isPending}
-          className="flex items-center gap-1.5 text-[13px] font-medium text-accent-deep hover:text-accent-hover"
+          className="flex items-center gap-1.5 text-caption font-medium text-accent-deep hover:text-accent-hover"
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={2.2} /> New
         </button>
@@ -119,7 +121,7 @@ export function Sidebar({ initial }: { initial: Space[] }) {
             ))}
           </SortableContext>
           {filtered.length === 0 ? (
-            <div className="px-2 py-2 text-[13px] text-ink-tertiary">
+            <div className="px-2 py-2 text-caption text-ink-tertiary">
               {search ? 'No matches.' : 'No spaces yet.'}
             </div>
           ) : null}
@@ -154,7 +156,10 @@ function handleDragEnd(
     const next = arrayMove(spaces, from, to);
     const idx = next.findIndex((s) => s.id === active.id);
     const sortOrder = midpoint(next[idx - 1]?.sort_order, next[idx + 1]?.sort_order);
-    qc.setQueryData(['spaces'], next.map((s, i) => (i === idx ? { ...s, sort_order: sortOrder } : s)));
+    qc.setQueryData(
+      ['spaces'],
+      next.map((s, i) => (i === idx ? { ...s, sort_order: sortOrder } : s)),
+    );
     void api.updateSpace(String(active.id), { sort_order: sortOrder }).then(() => {
       qc.invalidateQueries({ queryKey: ['spaces'] });
     });
@@ -191,9 +196,11 @@ function handleDragEnd(
         return;
       }
       const existing =
-        (qc.getQueryData(['space-threads', fromSpace]) as
-          | { threads: SpaceThreadLite[] }
-          | undefined)?.threads ?? [];
+        (
+          qc.getQueryData(['space-threads', fromSpace]) as
+            | { threads: SpaceThreadLite[] }
+            | undefined
+        )?.threads ?? [];
       const fromIdx = existing.findIndex((t) => t.id === active.id);
       const toIdx = existing.findIndex((t) => t.id === over.id);
       if (fromIdx < 0 || toIdx < 0) return;

@@ -74,7 +74,7 @@ export function LiveQuestionCard({
       {message.text ? (
         <div>
           <AgentIdentity created_at={message.created_at} />
-          <div className="text-[13.5px] leading-[1.6] text-ink">
+          <div className="text-body-sm leading-[1.6] text-ink">
             <MarkdownText text={message.text} />
           </div>
         </div>
@@ -145,13 +145,13 @@ function Stepper({ questions, threadId }: { questions: Question[]; threadId: str
   }
 
   return (
-    <div className="rounded-[14px] border border-hairline bg-surface-1 shadow-[0_1px_2px_rgba(10,11,13,0.04)] overflow-hidden">
+    <div className="rounded-lg border border-hairline bg-surface-1 shadow-1 overflow-hidden">
       <div className="flex items-center gap-2 px-[15px] py-[13px] border-b border-hairline bg-surface-2">
-        <Sparkles className="h-[15px] w-[15px] text-accent shrink-0" />
-        <span className="flex-1 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-ink-subtle">
+        <Sparkles className="size-icon-sm text-accent shrink-0" />
+        <span className="flex-1 text-micro-uppercase uppercase text-ink-subtle">
           Agent questions
         </span>
-        <span className="text-[11px] font-semibold font-mono text-ink-subtle bg-surface-3 px-2 py-[3px] rounded-full tabular-nums">
+        <span className="text-micro-uppercase uppercase font-mono text-ink-subtle bg-surface-3 px-2 py-[3px] rounded-full tabular-nums">
           {step + 1}/{total}
         </span>
       </div>
@@ -167,20 +167,20 @@ function Stepper({ questions, threadId }: { questions: Question[]; threadId: str
         ))}
       </div>
 
-      <div className="px-[15px] pt-[11px] text-[11px] font-semibold uppercase tracking-[0.04em] text-ink-subtle">
+      <div className="px-[15px] pt-[11px] text-micro-uppercase uppercase text-ink-subtle">
         Question {step + 1} of {total}
       </div>
 
       <div className="px-[15px] pt-[10px] pb-1">
         <div className="mb-[11px]">
-          <p id={`q-${q.id}-prompt`} className="text-[15px] font-semibold text-ink leading-[1.4]">
+          <p id={`q-${q.id}-prompt`} className="text-body-md font-semibold text-ink leading-[1.4]">
             {q.prompt}
           </p>
         </div>
 
         {q.type === 'open_text' && d.type === 'open_text' ? (
           <textarea
-            className="w-full rounded-[10px] border border-hairline bg-surface-1 px-3 py-2.5 text-[13.5px] leading-[1.55] text-ink resize-y min-h-[64px] outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-[3px] focus:ring-accent/15 placeholder:text-ink-tertiary"
+            className="w-full rounded-md border border-hairline bg-surface-1 px-3 py-2.5 text-body-sm leading-[1.55] text-ink resize-y min-h-[64px] outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-[3px] focus:ring-accent/15 placeholder:text-ink-tertiary"
             placeholder="Type your answer…"
             value={d.text}
             onChange={(e) => update({ type: 'open_text', text: e.target.value })}
@@ -239,7 +239,7 @@ function Stepper({ questions, threadId }: { questions: Question[]; threadId: str
             type="button"
             onClick={back}
             disabled={submitting}
-            className="h-9 px-3 rounded-md text-[13.5px] font-medium text-ink-subtle hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50"
+            className="h-9 px-3 rounded-md text-body-sm font-medium text-ink-subtle hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50"
           >
             ← Back
           </button>
@@ -247,13 +247,13 @@ function Stepper({ questions, threadId }: { questions: Question[]; threadId: str
           <span />
         )}
         <span className="flex-1">
-          {error ? <span className="text-[12px] text-danger">{error}</span> : null}
+          {error ? <span className="text-micro font-normal text-danger">{error}</span> : null}
         </span>
         <button
           type="button"
           onClick={skip}
           disabled={submitting}
-          className="h-9 px-3 rounded-md text-[13.5px] font-medium text-ink-subtle hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50"
+          className="h-9 px-3 rounded-md text-body-sm font-medium text-ink-subtle hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50"
         >
           Skip
         </button>
@@ -261,7 +261,7 @@ function Stepper({ questions, threadId }: { questions: Question[]; threadId: str
           type="button"
           onClick={() => (isLast ? void submit() : advance())}
           disabled={(!answered && !skipped.has(step)) || submitting}
-          className="h-9 px-[18px] rounded-full bg-primary text-on-primary text-[13.5px] font-medium hover:bg-primary-hover transition-colors disabled:bg-surface-3 disabled:text-ink-tertiary disabled:cursor-not-allowed whitespace-nowrap"
+          className="h-9 px-[18px] rounded-full bg-primary text-on-primary text-body-sm font-medium hover:bg-primary-hover transition-colors disabled:bg-surface-3 disabled:text-ink-tertiary disabled:cursor-not-allowed whitespace-nowrap"
         >
           {submitting ? 'Submitting…' : isLast ? 'Submit answers' : 'Next →'}
         </button>
@@ -288,14 +288,14 @@ function OptionRow({
       onClick={onClick}
       aria-checked={selected}
       role={kind === 'check' ? 'checkbox' : 'radio'}
-      className={`w-full flex items-start gap-[11px] text-left px-[13px] py-3 rounded-[10px] border transition-[border-color,background-color] ${
+      className={`w-full flex items-start gap-[11px] text-left px-[13px] py-3 rounded-md border transition-[border-color,background-color] ${
         selected
           ? 'border-accent bg-accent/10'
           : 'border-hairline bg-surface-1 hover:border-hairline-strong'
       } focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/15 focus-visible:border-accent`}
     >
       <Control kind={kind} selected={selected} />
-      <span className="flex-1 min-w-0 text-[14px] leading-[1.4] font-medium text-ink">{label}</span>
+      <span className="flex-1 min-w-0 text-body-sm-medium leading-[1.4] text-ink">{label}</span>
     </button>
   );
 }
@@ -304,7 +304,7 @@ function Control({ kind, selected }: { kind: 'check' | 'radio'; selected: boolea
   if (kind === 'check') {
     return (
       <span
-        className={`flex-none mt-[1px] inline-flex items-center justify-center h-[18px] w-[18px] rounded-[5px] border transition-colors ${
+        className={`flex-none mt-[1px] inline-flex items-center justify-center size-icon-md rounded-xs border transition-colors ${
           selected ? 'border-accent bg-accent text-on-accent' : 'border-hairline bg-surface-1'
         }`}
       >
@@ -314,7 +314,7 @@ function Control({ kind, selected }: { kind: 'check' | 'radio'; selected: boolea
   }
   return (
     <span
-      className={`flex-none mt-[1px] relative inline-block h-[18px] w-[18px] rounded-full border transition-colors ${
+      className={`flex-none mt-[1px] relative inline-block size-icon-md rounded-full border transition-colors ${
         selected ? 'border-accent' : 'border-hairline bg-surface-1'
       }`}
     >
@@ -332,7 +332,7 @@ function CustomInput({ value, onChange }: { value: string; onChange: (v: string)
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder="Or type your own…"
-      className="w-full rounded-[10px] border border-dashed border-hairline bg-surface-1 px-[13px] py-3 text-[14px] leading-[1.4] text-ink placeholder:text-ink-subtle outline-none transition-[border-color,box-shadow] focus:border-accent focus:border-solid focus:ring-[3px] focus:ring-accent/15"
+      className="w-full rounded-md border border-dashed border-hairline bg-surface-1 px-[13px] py-3 text-body-sm leading-[1.4] text-ink placeholder:text-ink-subtle outline-none transition-[border-color,box-shadow] focus:border-accent focus:border-solid focus:ring-[3px] focus:ring-accent/15"
     />
   );
 }
@@ -349,10 +349,10 @@ export function MinimizedQuestionCard({ message }: { message: DiscussionMessage 
         className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-2 transition-colors"
       >
         <Sparkles className="h-3 w-3 text-ink-tertiary shrink-0" />
-        <span className="text-[11px] font-medium uppercase tracking-wider text-ink-tertiary shrink-0">
+        <span className="text-micro-uppercase uppercase text-ink-tertiary shrink-0">
           Agent asked {questions.length} {questions.length === 1 ? 'question' : 'questions'}
         </span>
-        <span className="text-[12px] text-ink-subtle truncate flex-1">
+        <span className="text-micro font-normal text-ink-subtle truncate flex-1">
           {questions[0]?.prompt ?? ''}
         </span>
         <ChevronDown
@@ -362,11 +362,11 @@ export function MinimizedQuestionCard({ message }: { message: DiscussionMessage 
       {open ? (
         <div className="px-4 pb-3 pt-1 space-y-2">
           {message.text ? (
-            <div className="text-[12.5px] leading-[1.55] text-ink-muted">
+            <div className="text-micro font-normal leading-[1.55] text-ink-muted">
               <MarkdownText text={message.text} />
             </div>
           ) : null}
-          <ol className="space-y-1.5 text-[12.5px] text-ink-muted list-decimal list-inside">
+          <ol className="space-y-1.5 text-micro font-normal text-ink-muted list-decimal list-inside">
             {questions.map((q) => (
               <li key={q.id}>{q.prompt}</li>
             ))}

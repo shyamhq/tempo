@@ -83,7 +83,7 @@ export function MessageComposer({
           placeholder={
             disabledReason ?? 'Ask about the approach — anything not tied to a line of the Plan.'
           }
-          className="block w-full resize-none bg-transparent py-1.5 text-[13.5px] leading-[1.55] text-ink placeholder:text-ink-tertiary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="block w-full resize-none bg-transparent py-1.5 text-body-sm leading-[1.55] text-ink placeholder:text-ink-tertiary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
           style={{ maxHeight: `${MAX_ROWS * 1.55 + 1}em` }}
         />
         <button
@@ -93,7 +93,7 @@ export function MessageComposer({
           aria-label={phase === 'sent' ? 'Sent' : 'Send'}
           className={`inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full transition-colors ${
             phase === 'sent'
-              ? 'bg-accent/10 text-[#069072]'
+              ? 'bg-accent/10 text-accent-deep'
               : canSend
                 ? 'bg-primary text-on-primary hover:bg-primary-hover'
                 : 'bg-surface-3 text-ink-tertiary cursor-not-allowed'
@@ -108,7 +108,9 @@ export function MessageComposer({
           )}
         </button>
       </div>
-      {sendError ? <p className="mt-2 px-1 text-[11px] text-danger">{sendError}</p> : null}
+      {sendError ? (
+        <p className="mt-2 px-1 text-micro font-normal text-danger">{sendError}</p>
+      ) : null}
     </div>
   );
 }

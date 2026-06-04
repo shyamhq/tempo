@@ -61,13 +61,13 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Expand Agent activity"
-          className="w-[280px] text-left rounded-[10px] border border-hairline bg-canvas px-3 pt-2.5 pb-2 shadow-[0_8px_22px_rgba(10,10,10,0.10)] hover:border-hairline-strong transition-colors"
+          className="w-[280px] text-left rounded-md border border-hairline bg-canvas px-3 pt-2.5 pb-2 shadow-[0_8px_22px_rgba(10,10,10,0.10)] hover:border-hairline-strong transition-colors"
         >
-          <div className="flex items-baseline justify-between text-[10.5px] font-semibold uppercase tracking-[0.06em] text-ink-tertiary mb-1">
+          <div className="flex items-baseline justify-between text-micro font-semibold uppercase tracking-uppercase text-ink-tertiary mb-1">
             <span>{progress}</span>
             <ChevronDown className="h-3 w-3" aria-hidden />
           </div>
-          <div className="flex items-center gap-2 text-[13px] font-medium text-ink">
+          <div className="flex items-center gap-2 text-caption font-medium text-ink">
             <span
               aria-hidden
               className="inline-block h-[7px] w-[7px] shrink-0 rounded-full bg-accent animate-pulse"
@@ -75,7 +75,7 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
             <span className="truncate">{topLine}</span>
           </div>
           {latestTool ? (
-            <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[11.5px] text-ink-subtle">
+            <div className="mt-1.5 flex items-center gap-1.5 font-mono text-micro text-ink-subtle">
               <Loader2 className="h-[10px] w-[10px] shrink-0 animate-spin text-ink-tertiary" />
               <span className="text-ink font-semibold truncate">{latestTool.tool}</span>
               {latestTool.summary ? (

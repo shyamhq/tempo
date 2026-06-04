@@ -33,7 +33,7 @@ function TodoCard({ todos }: { todos: AgentTodo[] }) {
 
   return (
     <div>
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-ink-tertiary mb-1.5">
+      <div className="text-micro font-semibold uppercase tracking-uppercase text-ink-tertiary mb-1.5">
         Todos · {completed.length} of {todos.length}
       </div>
       <ul className="flex flex-col max-h-[260px] overflow-y-auto">
@@ -42,7 +42,7 @@ function TodoCard({ todos }: { todos: AgentTodo[] }) {
             <button
               type="button"
               onClick={() => setShowCompleted(true)}
-              className="text-[11.5px] text-ink-tertiary hover:text-ink-subtle"
+              className="text-micro font-normal text-ink-tertiary hover:text-ink-subtle"
             >
               ▸ {completed.length} completed · expand
             </button>
@@ -67,7 +67,7 @@ function TodoRow({ todo, first }: { todo: AgentTodo; first: boolean }) {
   const text = todo.status === 'in_progress' && todo.activeForm ? todo.activeForm : todo.content;
   return (
     <li
-      className={`flex items-start gap-2.5 py-1.5 text-[13px] leading-[1.5] ${
+      className={`flex items-start gap-2.5 py-1.5 text-caption ${
         first ? '' : 'border-t border-hairline/60'
       }`}
     >
@@ -82,7 +82,7 @@ function TodoMark({ status }: { status: AgentTodo['status'] }) {
     return (
       <span
         aria-hidden
-        className="mt-[3px] inline-flex h-[13px] w-[13px] shrink-0 items-center justify-center rounded-full bg-success text-white"
+        className="mt-[3px] inline-flex size-icon-xs shrink-0 items-center justify-center rounded-full bg-success text-on-primary"
       >
         <Check className="h-[9px] w-[9px]" strokeWidth={3} />
       </span>
@@ -121,7 +121,7 @@ function ToolStack({ toolCalls, hasTodos }: { toolCalls: ToolCallEntry[]; hasTod
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="mt-1 text-[11.5px] text-ink-tertiary hover:text-ink-subtle"
+          className="mt-1 text-micro font-normal text-ink-tertiary hover:text-ink-subtle"
         >
           + {hiddenCount} earlier · expand
         </button>
@@ -141,7 +141,7 @@ function ToolRow({
 }) {
   return (
     <li
-      className={`flex items-center gap-2 py-[3px] font-mono text-[12px] text-ink-subtle ${
+      className={`flex items-center gap-2 py-[3px] font-mono text-micro font-normal text-ink-subtle ${
         dim ? 'opacity-50' : ''
       }`}
     >

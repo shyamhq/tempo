@@ -115,7 +115,7 @@ export function CommentsCanvas({
 
       {layout.orphanDivider !== null ? (
         <div
-          className="absolute left-0 right-0 flex items-center gap-2 text-[10px] uppercase tracking-wider text-ink-tertiary"
+          className="absolute left-0 right-0 flex items-center gap-2 text-micro font-normal uppercase tracking-uppercase text-ink-tertiary"
           style={{ top: `${layout.orphanDivider}px`, height: `${DIVIDER_HEIGHT}px` }}
         >
           <span className="h-px flex-1 bg-hairline" />

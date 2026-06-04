@@ -7,9 +7,9 @@ import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { Check, GripVertical } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useSidebar } from '@/hooks/use-sidebar-state';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { useSidebar } from '@/hooks/use-sidebar-state';
 import { InlineRename } from './inline-rename';
 import { RowMenu } from './row-menu';
 
@@ -26,13 +26,13 @@ export function ThreadRow({
 }) {
   const qc = useQueryClient();
   const router = useRouter();
-  const renaming = useSidebar(
-    (s) => s.renaming?.kind === 'thread' && s.renaming.id === thread.id,
-  );
+  const renaming = useSidebar((s) => s.renaming?.kind === 'thread' && s.renaming.id === thread.id);
   const startRename = useSidebar((s) => s.startRename);
   const clearRename = useSidebar((s) => s.clearRename);
   const queueDelete = useSidebar((s) => s.queueDelete);
-  const pendingDel = useSidebar((s) => s.pendingDelete?.kind === 'thread' && s.pendingDelete.id === thread.id);
+  const pendingDel = useSidebar(
+    (s) => s.pendingDelete?.kind === 'thread' && s.pendingDelete.id === thread.id,
+  );
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: thread.id,
@@ -70,7 +70,7 @@ export function ThreadRow({
         opacity: isDragging ? 0.4 : 1,
       }}
       className={cn(
-        'group/thread relative rounded-[7px] transition-colors',
+        'group/thread relative rounded-sm transition-colors',
         active ? 'bg-surface-2' : 'hover:bg-surface-2',
       )}
       onContextMenu={(e) => e.preventDefault()}
@@ -80,7 +80,7 @@ export function ThreadRow({
           href={`/threads/${thread.id}`}
           aria-current={active ? 'page' : undefined}
           aria-label={thread.title}
-          className="absolute inset-0 rounded-[7px] focus:outline-none focus-visible:shadow-focus-soft"
+          className="absolute inset-0 rounded-sm focus:outline-none focus-visible:shadow-focus-soft"
         />
       ) : null}
 
@@ -116,7 +116,7 @@ export function ThreadRow({
         ) : (
           <span
             className={cn(
-              'flex-1 truncate text-[13.5px]',
+              'flex-1 truncate text-caption',
               active ? 'text-ink font-medium' : 'text-ink-muted',
             )}
           >
@@ -147,7 +147,7 @@ export function ThreadRow({
 function StatusGlyph({ status }: { status: SpaceThreadLite['status'] }) {
   if (status === 'approved') {
     return (
-      <span className="inline-flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-full bg-[rgba(0,212,164,0.18)] text-accent-deep">
+      <span className="inline-flex size-icon-sm shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent-deep">
         <Check className="h-2.5 w-2.5" strokeWidth={3} />
       </span>
     );
