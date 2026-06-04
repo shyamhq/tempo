@@ -13,6 +13,7 @@ import {
   spaces,
   threads,
 } from '../db/schema';
+import { appendEvent } from './event-log';
 import { newPlanId, newThreadId } from './ids';
 
 export async function createThread(
@@ -136,9 +137,9 @@ export async function deleteThread(threadId: string): Promise<void> {
 // Thread under a foreign workspace's Space.
 export async function updateThread(
   threadId: string,
-  patch: { title?: string; space_id?: string; sort_order?: number },
+  patch: { title?: string; space_id?: string; sort_order?: number; description?: string },
 ): Promise<ThreadSummary> {
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [t] = await tx
       .select({
         id: threads.id,
@@ -164,14 +165,29 @@ export async function updateThread(
     if (patch.title !== undefined) set.title = patch.title;
     if (patch.space_id !== undefined) set.space_id = patch.space_id;
     if (patch.sort_order !== undefined) set.sort_order = patch.sort_order;
+    if (patch.description !== undefined) set.description = patch.description;
     await tx.update(threads).set(set).where(eq(threads.id, threadId));
 
+    const titleChanged = patch.title !== undefined && patch.title !== t.title;
     return {
-      id: t.id,
-      title: patch.title ?? t.title,
-      description: t.description,
+      thread: {
+        id: t.id,
+        title: patch.title ?? t.title,
+        description: patch.description ?? t.description,
+      },
+      titleChanged,
     };
   });
+
+  // Title changes drive live UI: the Thread header refreshes from the SSE
+  // payload, and the sidebar invalidates its `['space-threads']` cache.
+  // Emitted outside the tx so a failed event append doesn't roll back the
+  // rename — matches the at-least-once posture of the other server modules.
+  if (result.titleChanged) {
+    await appendEvent(threadId, { kind: 'thread_renamed', title: result.thread.title });
+  }
+
+  return result.thread;
 }
 
 export async function reopenThread(threadId: string) {

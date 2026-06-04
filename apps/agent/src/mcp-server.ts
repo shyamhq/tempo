@@ -5,6 +5,7 @@ import {
   PollInput,
   PostDiscussionMessageInput,
   PostReplyInput,
+  SetThreadMetaInput,
   WritePlanInput,
 } from '@tempo/contracts/mcp';
 import type { ConsoleClient } from './http-client';
@@ -58,6 +59,19 @@ export async function runStdioMcpServer(args: {
     async (args) => {
       const reply = await client.postReply(args.comment_id, args.payload);
       return wrap({ reply_id: reply.id });
+    },
+  );
+
+  server.registerTool(
+    'tempo_set_thread_meta',
+    {
+      description:
+        'Set the Thread title (and optionally description). Only call when the title equals the literal placeholder "Untitled thread" — never rewrite a Dev-chosen title. Title: 3–6 words, no trailing punctuation. Derive from the first Dev Discussion Message.',
+      inputSchema: SetThreadMetaInput.shape,
+    },
+    async (args) => {
+      const { thread } = await client.updateThreadMeta(threadId, args);
+      return wrap({ thread });
     },
   );
 

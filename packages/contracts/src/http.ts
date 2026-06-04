@@ -195,17 +195,22 @@ export const ApproveThreadResponse = z.object({ ok: z.literal(true) });
 // POST /api/threads/:id/reopen
 export const ReopenThreadResponse = z.object({ ok: z.literal(true) });
 
-// PATCH /api/threads/:id  — rename, move between Spaces, and/or reorder.
-// At least one of `title` / `space_id` / `sort_order` must be present.
+// PATCH /api/threads/:id  — rename, move between Spaces, reorder, and/or
+// rewrite the description. At least one field must be present.
 export const UpdateThreadRequest = z
   .object({
     title: z.string().min(1).max(200).optional(),
     space_id: SpaceId.optional(),
     sort_order: z.number().finite().optional(),
+    description: z.string().max(10_000).optional(),
   })
   .refine(
-    (d) => d.title !== undefined || d.space_id !== undefined || d.sort_order !== undefined,
-    { message: 'at_least_one_of_title_or_space_id_or_sort_order_required' },
+    (d) =>
+      d.title !== undefined ||
+      d.space_id !== undefined ||
+      d.sort_order !== undefined ||
+      d.description !== undefined,
+    { message: 'at_least_one_field_required' },
   );
 export const UpdateThreadResponse = z.object({ thread: ThreadSummary });
 

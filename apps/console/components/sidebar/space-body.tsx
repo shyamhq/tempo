@@ -1,7 +1,7 @@
 'use client';
 
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { Space } from '@tempo/contracts';
 import { Plus } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -11,26 +11,11 @@ import { ThreadRow } from './thread-row';
 export function SpaceBody({ space, spaces }: { space: Space; spaces: Space[] }) {
   const pathname = usePathname();
   const router = useRouter();
-  const qc = useQueryClient();
   const activeThreadId = pathname?.startsWith('/threads/') ? pathname.split('/')[2] : undefined;
 
   const { data, isLoading } = useQuery({
     queryKey: ['space-threads', space.id],
     queryFn: () => api.listSpaceThreads(space.id),
-  });
-
-  const newThread = useMutation({
-    mutationFn: () =>
-      api.createThread({
-        title: 'Untitled thread',
-        description: '',
-        space_id: space.id,
-      }),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['space-threads', space.id] });
-      qc.invalidateQueries({ queryKey: ['spaces'] });
-      router.push(`/threads/${res.thread.id}`);
-    },
   });
 
   const threads = data?.threads ?? [];
@@ -61,8 +46,7 @@ export function SpaceBody({ space, spaces }: { space: Space; spaces: Space[] }) 
       </div>
       <button
         type="button"
-        onClick={() => newThread.mutate()}
-        disabled={newThread.isPending}
+        onClick={() => router.push(`/threads/new?space=${space.id}`)}
         className="mt-0.5 flex w-full items-center gap-2 rounded-[7px] py-1.5 pl-[68px] pr-2 text-[13px] text-ink-tertiary hover:bg-surface-2 hover:text-ink"
       >
         <Plus className="h-3 w-3" strokeWidth={2.2} /> New thread

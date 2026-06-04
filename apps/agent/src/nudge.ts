@@ -40,6 +40,10 @@ function shouldNotify(ev: Event): boolean {
     case 'agent_turn_ended':
     case 'session_connected':
     case 'session_disconnected':
+    // Title changes are pure UI sync — the Agent already knows the title (it
+    // either set it itself via tempo_set_thread_meta or it pulled it from
+    // tempo_attach). Nothing to react to.
+    case 'thread_renamed':
       return false;
   }
 }

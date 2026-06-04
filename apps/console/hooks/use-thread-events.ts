@@ -191,6 +191,8 @@ function apply(
           discussion: { messages: [...next.discussion.messages, ev.message] },
         };
       }
+      case 'thread_renamed':
+        return { ...next, thread: { ...next.thread, title: ev.title } };
       default:
         return next;
     }
@@ -200,6 +202,13 @@ function apply(
   // text (D6: last-write-wins, Console is authoritative).
   if (ev.kind === 'plan_edited_by_agent' || ev.kind === 'plan_edited_by_dev') {
     qc.invalidateQueries({ queryKey: ['thread', threadId] });
+  }
+
+  // Sidebar reads `['space-threads', spaceId]` independently of the Thread
+  // view's cache — a rename has to ping it explicitly. Broad prefix match
+  // avoids threading space_id through every event.
+  if (ev.kind === 'thread_renamed') {
+    qc.invalidateQueries({ queryKey: ['space-threads'] });
   }
 }
 

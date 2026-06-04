@@ -95,6 +95,11 @@ export const DiscussionMessagePostedEvent = eventBase.extend({
   message: DiscussionMessage,
 });
 
+export const ThreadRenamedEvent = eventBase.extend({
+  kind: z.literal('thread_renamed'),
+  title: z.string().min(1).max(200),
+});
+
 export const Event = z.discriminatedUnion('kind', [
   CommentAddedEvent,
   ReplyAddedEvent,
@@ -110,6 +115,7 @@ export const Event = z.discriminatedUnion('kind', [
   SessionConnectedEvent,
   SessionDisconnectedEvent,
   DiscussionMessagePostedEvent,
+  ThreadRenamedEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -128,5 +134,6 @@ export const EventKind = z.enum([
   'session_connected',
   'session_disconnected',
   'discussion_message_posted',
+  'thread_renamed',
 ]);
 export type EventKind = z.infer<typeof EventKind>;

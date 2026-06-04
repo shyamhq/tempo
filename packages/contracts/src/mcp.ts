@@ -69,6 +69,12 @@ export const PostDiscussionMessageOutput = z.object({
   message_id: MessageId,
 });
 
+export const SetThreadMetaInput = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(10_000).optional(),
+});
+export const SetThreadMetaOutput = z.object({ thread: ThreadSummary });
+
 export const McpTool = z.enum([
   'tempo_attach',
   'tempo_pull_plan',
@@ -76,6 +82,7 @@ export const McpTool = z.enum([
   'tempo_poll',
   'tempo_post_reply',
   'tempo_post_discussion_message',
+  'tempo_set_thread_meta',
 ]);
 export type McpTool = z.infer<typeof McpTool>;
 

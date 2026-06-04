@@ -13,6 +13,7 @@ import {
   CreateSessionResponse,
   EventsLongPollResponse,
   GetPlanResponse,
+  UpdateThreadResponse,
   WritePlanResponse,
 } from '@tempo/contracts/http';
 import { AttachOutput } from '@tempo/contracts/mcp';
@@ -20,7 +21,7 @@ import type { z } from 'zod';
 import { AuthError, ContractError, HttpStatusError, NetworkError } from './errors';
 import { logger } from './logger';
 
-type Method = 'GET' | 'POST';
+type Method = 'GET' | 'POST' | 'PATCH';
 
 const RETRYABLE_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [500, 1000, 2000];
@@ -77,6 +78,10 @@ export class ConsoleClient {
       body,
       CreateDiscussionMessageResponse,
     );
+  }
+
+  updateThreadMeta(threadId: ThreadId, patch: { title: string; description?: string }) {
+    return this.send('PATCH', `/api/threads/${threadId}`, patch, UpdateThreadResponse);
   }
 
   private async send<T>(

@@ -1,6 +1,6 @@
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { DeleteThreadButton } from '@/components/dashboard/delete-thread-button';
-import { NewThreadDialog } from '@/components/dashboard/new-thread-dialog';
 import { EmptyHome } from '@/components/home/empty-home';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api-client';
@@ -42,7 +42,12 @@ export default async function HomePage({
           <div className="text-[11px] uppercase tracking-wider text-ink-tertiary mb-1">Space</div>
           <h1 className="font-display text-xl font-semibold tracking-tight">{activeSpace.name}</h1>
         </div>
-        <NewThreadDialog spaceId={activeSpace.id} />
+        <Link
+          href={`/threads/new?space=${activeSpace.id}`}
+          className="inline-flex items-center justify-center gap-1.5 h-9 px-5 text-sm font-medium rounded-full bg-primary text-on-primary hover:bg-primary-hover border border-transparent transition focus-visible:outline-none focus-visible:shadow-focus-soft"
+        >
+          <Plus className="h-3.5 w-3.5" /> New Thread
+        </Link>
       </header>
 
       <div className="flex items-center gap-3 px-3 h-9 border-y border-hairline bg-surface-2/40 text-[11px] uppercase tracking-wider text-ink-tertiary">

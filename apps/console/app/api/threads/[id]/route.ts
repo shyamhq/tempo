@@ -29,10 +29,17 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
 
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  if (!auth) return err('unauthorized', 401);
+  const { id } = await ctx.params;
+  if (auth.actor === 'agent' && auth.thread_id !== id) return err('forbidden', 403);
   const parsed = await parseBody(req, UpdateThreadRequest);
   if (!parsed.ok) return parsed.response;
-  const { id } = await ctx.params;
+  // Agents may only edit Thread metadata (title, description). space_id and
+  // sort_order are Dev-only — they reflect Dev workspace organisation that
+  // the Agent has no business mutating, even on its own Thread.
+  if (auth.actor === 'agent' && (parsed.data.space_id || parsed.data.sort_order !== undefined)) {
+    return err('forbidden', 403);
+  }
   try {
     const thread = await updateThread(id, parsed.data);
     return ok({ thread });
