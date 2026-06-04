@@ -45,8 +45,7 @@ export const CommentMark = Mark.create({
       focused: {
         default: false,
         parseHTML: (el) => el.getAttribute('data-focused') === 'true',
-        renderHTML: (attrs) =>
-          attrs.focused && !attrs.pending ? { 'data-focused': 'true' } : {},
+        renderHTML: (attrs) => (attrs.focused && !attrs.pending ? { 'data-focused': 'true' } : {}),
       },
       resolved: {
         default: false,

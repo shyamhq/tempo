@@ -235,9 +235,7 @@ export function CommentCard({
           {/* Always-mounted live region so screen readers announce on arrival
               of the first unread reply; the visible Badge below is purely visual. */}
           <span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-            {showUnread
-              ? `${unreadCount} unread ${unreadCount === 1 ? 'reply' : 'replies'}`
-              : ''}
+            {showUnread ? `${unreadCount} unread ${unreadCount === 1 ? 'reply' : 'replies'}` : ''}
           </span>
           {showUnread ? (
             <Badge tone="accent" aria-hidden className="h-5 px-2 text-[10px]">

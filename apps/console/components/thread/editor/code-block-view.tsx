@@ -3,7 +3,7 @@
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import { useEffect, useId, useState } from 'react';
 
-type Mermaid = (typeof import('mermaid'))['default'];
+type Mermaid = typeof import('mermaid')['default'];
 let mermaidPromise: Promise<Mermaid> | null = null;
 function loadMermaid() {
   if (!mermaidPromise) {
