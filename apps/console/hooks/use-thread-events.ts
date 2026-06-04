@@ -132,23 +132,6 @@ function apply(
           ),
         };
       }
-      case 'proposal_decided': {
-        return {
-          ...next,
-          comments: next.comments.map((c) => ({
-            ...c,
-            replies: c.replies.map((r) =>
-              r.id === ev.reply_id
-                ? {
-                    ...r,
-                    proposal_status: ev.decision,
-                    rejection_reason: ev.rejection_reason,
-                  }
-                : r,
-            ),
-          })),
-        };
-      }
       case 'plan_edited_by_dev':
       case 'plan_edited_by_agent': {
         // Body markdown is fetched on refetch (the SSE event carries only the timestamp).

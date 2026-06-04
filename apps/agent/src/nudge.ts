@@ -20,7 +20,6 @@ function shouldNotify(ev: Event): boolean {
   switch (ev.kind) {
     case 'comment_added':
     case 'plan_edited_by_dev':
-    case 'proposal_decided':
     case 'comment_unresolved':
     case 'status_changed':
       return true;

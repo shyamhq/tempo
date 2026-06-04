@@ -98,13 +98,7 @@ export const replies = sqliteTable('replies', {
     .notNull()
     .references(() => comments.id),
   author: text('author', { enum: ['dev', 'agent'] }).notNull(),
-  payload_type: text('payload_type', { enum: ['text', 'edit_done', 'edit_proposed'] }).notNull(),
   text: text('text'),
-  section_ref: text('section_ref'),
-  target_section: text('target_section'),
-  replacement: text('replacement'),
-  proposal_status: text('proposal_status', { enum: ['accepted', 'rejected'] }),
-  rejection_reason: text('rejection_reason'),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 

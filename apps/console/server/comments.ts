@@ -1,4 +1,4 @@
-import type { Comment, Reply, ReplyPayload } from '@tempo/contracts';
+import type { Comment, Reply } from '@tempo/contracts';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { comments, replies } from '../db/schema';
@@ -92,27 +92,9 @@ function shapeReply(row: typeof replies.$inferSelect): Reply {
     id: row.id,
     comment_id: row.comment_id,
     author: row.author,
-    payload: shapeReplyPayload(row),
-    proposal_status: row.proposal_status,
-    rejection_reason: row.rejection_reason,
+    payload: { text: row.text ?? '' },
     created_at: toIso(row.created_at),
   };
-}
-
-function shapeReplyPayload(row: typeof replies.$inferSelect): ReplyPayload {
-  switch (row.payload_type) {
-    case 'text':
-      return { type: 'text', text: row.text ?? '' };
-    case 'edit_done':
-      return { type: 'edit_done', text: row.text ?? '', section_ref: row.section_ref ?? '' };
-    case 'edit_proposed':
-      return {
-        type: 'edit_proposed',
-        text: row.text ?? '',
-        target_section: row.target_section ?? '',
-        replacement: row.replacement ?? '',
-      };
-  }
 }
 
 export { shapeReply };

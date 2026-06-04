@@ -29,7 +29,7 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
     setPhase('sending');
     try {
       const c = await api.createComment(threadId, { plan_quote, plan_context });
-      await api.createReply(c.id, { payload: { type: 'text', text: draft.trim() } });
+      await api.createReply(c.id, { payload: { text: draft.trim() } });
       setLastCreated(c.id);
       setPhase('sent');
       closeTimerRef.current = setTimeout(() => cancel(), 700);
@@ -166,7 +166,7 @@ export function CommentCard({
     setSubmitting(true);
     try {
       await api.createReply(comment.id, {
-        payload: { type: 'text', text: replyDraft.trim() },
+        payload: { text: replyDraft.trim() },
       });
       setReplyDraft('');
     } finally {
@@ -333,24 +333,8 @@ function ReplyRow({
   bodyRef?: React.RefObject<HTMLDivElement | null>;
   clamp?: boolean;
 }) {
-  const isEditProposed = reply.payload.type === 'edit_proposed';
-  const isEditDone = reply.payload.type === 'edit_done';
-  // Boxed treatment is reserved for rows with structured affordances (edit
-  // proposals, applied edits). Plain text replies read better as transcript.
-  const boxed = isEditProposed || isEditDone;
-
-  const decide = async (decision: 'accepted' | 'rejected') => {
-    await api.decideProposal(reply.id, { decision });
-  };
-
-  const text = reply.payload.text;
-
-  const containerClass = boxed
-    ? 'my-2 first:mt-0 last:mb-0 rounded border border-hairline bg-surface-2 p-2'
-    : 'py-2 first:pt-0 border-t border-hairline first:border-t-0';
-
   return (
-    <div className={containerClass}>
+    <div className="py-2 first:pt-0 border-t border-hairline first:border-t-0">
       <div className="flex items-center gap-1.5 mb-1">
         <span
           className={`inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] ${
@@ -363,50 +347,10 @@ function ReplyRow({
         <span className="text-[11px] text-ink-tertiary tabular-nums">
           {`· ${formatReplyTime(reply.created_at)}`}
         </span>
-        {isEditProposed ? (
-          <span className="text-[10px] text-accent-hover">proposed edit</span>
-        ) : null}
-        {isEditDone ? <span className="text-[10px] text-success">edit applied</span> : null}
       </div>
       <div ref={bodyRef} className={clamp ? 'line-clamp-3' : undefined}>
-        <MarkdownText text={text} />
+        <MarkdownText text={reply.payload.text} />
       </div>
-      {isEditProposed && reply.payload.type === 'edit_proposed' ? (
-        <div className="mt-2 rounded border border-hairline bg-surface-3 p-2 text-[11px] font-mono text-ink-muted whitespace-pre-wrap">
-          {reply.payload.replacement}
-        </div>
-      ) : null}
-      {isEditProposed && reply.proposal_status === null ? (
-        <div className="mt-2 flex gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              void decide('accepted');
-            }}
-          >
-            Approve edit
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              void decide('rejected');
-            }}
-          >
-            Reject
-          </Button>
-        </div>
-      ) : null}
-      {reply.proposal_status === 'accepted' ? (
-        <p className="mt-1 text-[10px] text-success">Accepted</p>
-      ) : reply.proposal_status === 'rejected' ? (
-        <p className="mt-1 text-[10px] text-ink-tertiary">
-          Rejected{reply.rejection_reason ? `: ${reply.rejection_reason}` : ''}
-        </p>
-      ) : null}
     </div>
   );
 }

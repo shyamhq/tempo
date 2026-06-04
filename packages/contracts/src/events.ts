@@ -5,9 +5,7 @@ import {
   DiscussionMessage,
   EventId,
   IsoTimestamp,
-  ProposalStatus,
   Reply,
-  ReplyId,
   ThreadStatus,
 } from './primitives';
 
@@ -25,13 +23,6 @@ export const ReplyAddedEvent = eventBase.extend({
   kind: z.literal('reply_added'),
   comment_id: CommentId,
   reply: Reply,
-});
-
-export const ProposalDecidedEvent = eventBase.extend({
-  kind: z.literal('proposal_decided'),
-  reply_id: ReplyId,
-  decision: ProposalStatus,
-  rejection_reason: z.string().nullable(),
 });
 
 export const PlanEditedByDevEvent = eventBase.extend({
@@ -103,7 +94,6 @@ export const ThreadRenamedEvent = eventBase.extend({
 export const Event = z.discriminatedUnion('kind', [
   CommentAddedEvent,
   ReplyAddedEvent,
-  ProposalDecidedEvent,
   PlanEditedByDevEvent,
   PlanEditedByAgentEvent,
   StatusChangedEvent,
@@ -122,7 +112,6 @@ export type Event = z.infer<typeof Event>;
 export const EventKind = z.enum([
   'comment_added',
   'reply_added',
-  'proposal_decided',
   'plan_edited_by_dev',
   'plan_edited_by_agent',
   'status_changed',

@@ -100,35 +100,16 @@ export type QuestionInput = z.infer<typeof QuestionInput>;
 export const Question = z.intersection(QuestionInput, z.object({ id: z.string() }));
 export type Question = z.infer<typeof Question>;
 
-export const ReplyPayload = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('text'),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal('edit_done'),
-    text: z.string(),
-    section_ref: z.string(),
-  }),
-  z.object({
-    type: z.literal('edit_proposed'),
-    text: z.string(),
-    target_section: z.string(),
-    replacement: z.string(),
-  }),
-]);
+export const ReplyPayload = z.object({
+  text: z.string(),
+});
 export type ReplyPayload = z.infer<typeof ReplyPayload>;
-
-export const ProposalStatus = z.enum(['accepted', 'rejected']);
-export type ProposalStatus = z.infer<typeof ProposalStatus>;
 
 export const Reply = z.object({
   id: ReplyId,
   comment_id: CommentId,
   author: Actor,
   payload: ReplyPayload,
-  proposal_status: ProposalStatus.nullable(),
-  rejection_reason: z.string().nullable(),
   created_at: IsoTimestamp,
 });
 export type Reply = z.infer<typeof Reply>;

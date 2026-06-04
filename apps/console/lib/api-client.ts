@@ -10,8 +10,6 @@ import {
   CreateSpaceResponse,
   type CreateThreadRequest,
   CreateThreadResponse,
-  type DecideProposalRequest,
-  DecideProposalResponse,
   DeleteSpaceResponse,
   DeleteThreadResponse,
   GetConnectTokenResponse,
@@ -128,9 +126,6 @@ export const api = {
 
   createReply: (commentId: string, input: z.infer<typeof CreateReplyRequest>) =>
     request('POST', `/api/comments/${commentId}/replies`, input, CreateReplyResponse),
-
-  decideProposal: (replyId: string, input: z.infer<typeof DecideProposalRequest>) =>
-    request('POST', `/api/replies/${replyId}/decision`, input, DecideProposalResponse),
 
   approveThread: (threadId: string) =>
     request('POST', `/api/threads/${threadId}/approve`, {}, ApproveThreadResponse),

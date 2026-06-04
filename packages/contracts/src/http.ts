@@ -7,7 +7,6 @@ import {
   EventId,
   IsoTimestamp,
   Plan,
-  ProposalStatus,
   Reply,
   ReplyPayload,
   SessionId,
@@ -174,13 +173,6 @@ export const ResolveCommentResponse = z.object({ ok: z.literal(true) });
 // POST /api/comments/:id/unresolve
 export const UnresolveCommentRequest = z.object({});
 export const UnresolveCommentResponse = z.object({ ok: z.literal(true) });
-
-// POST /api/replies/:id/decision
-export const DecideProposalRequest = z.object({
-  decision: ProposalStatus,
-  rejection_reason: z.string().max(2_000).nullable().optional(),
-});
-export const DecideProposalResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/threads/:id/discussion/messages
 // Wire body is identical to the MCP tool's input — re-export so the two
