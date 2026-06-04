@@ -5,7 +5,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Space } from '@tempo/contracts';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, GripVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
@@ -83,10 +83,10 @@ export function SpaceRow({ space, spaces }: { space: Space; spaces: Space[] }) {
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
-          className="flex shrink-0 text-ink-tertiary/0 group-hover:text-ink-tertiary/80 cursor-grab active:cursor-grabbing"
+          className="flex shrink-0 items-center text-ink-tertiary/0 group-hover:text-ink-tertiary/80 cursor-grab active:cursor-grabbing"
           aria-label="Drag space"
         >
-          <ChevronRight className="h-3.5 w-3.5 rotate-0 opacity-0" />
+          <GripVertical className="h-3.5 w-3.5" />
         </span>
 
         <ChevronRight
