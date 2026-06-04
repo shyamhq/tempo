@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const ThreadId = z.string().regex(/^thr_[A-Z0-9]{26}$/);
+export const SpaceId = z.string().regex(/^spc_[A-Z0-9]{26}$/);
 export const SessionId = z.string().regex(/^ses_[A-Z0-9]{26}$/);
 export const PlanId = z.string().regex(/^pln_[A-Z0-9]{26}$/);
 export const CommentId = z.string().regex(/^cmt_[A-Z0-9]{26}$/);
@@ -10,6 +11,7 @@ export const EventId = z.string().regex(/^evt_[0-9]{14,}$/);
 export const ConnectToken = z.string().regex(/^tmp_[A-Za-z0-9_-]{32,}$/);
 
 export type ThreadId = z.infer<typeof ThreadId>;
+export type SpaceId = z.infer<typeof SpaceId>;
 export type SessionId = z.infer<typeof SessionId>;
 export type PlanId = z.infer<typeof PlanId>;
 export type CommentId = z.infer<typeof CommentId>;
@@ -53,6 +55,24 @@ export const ThreadSummary = z.object({
   description: z.string(),
 });
 export type ThreadSummary = z.infer<typeof ThreadSummary>;
+
+export const Space = z.object({
+  id: SpaceId,
+  name: z.string(),
+  thread_count: z.number().int().nonnegative(),
+  // Exposed so the sidebar can compute fractional-indexing midpoints
+  // (drop-between-neighbours) without a separate `before/after` endpoint.
+  sort_order: z.number(),
+});
+export type Space = z.infer<typeof Space>;
+
+export const SpaceThreadLite = z.object({
+  id: ThreadId,
+  title: z.string(),
+  status: ThreadStatus,
+  sort_order: z.number(),
+});
+export type SpaceThreadLite = z.infer<typeof SpaceThreadLite>;
 
 export const QuestionType = z.enum(['single_choice', 'multi_choice', 'open_text']);
 export type QuestionType = z.infer<typeof QuestionType>;

@@ -2,7 +2,7 @@
 
 import { Check, Copy, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError, api } from '@/lib/api-client';
 
-export function NewThreadDialog() {
+export function NewThreadDialog({ spaceId, trigger }: { spaceId: string; trigger?: ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -31,7 +31,11 @@ export function NewThreadDialog() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.createThread({ title: title.trim(), description });
+      const res = await api.createThread({
+        title: title.trim(),
+        description,
+        space_id: spaceId,
+      });
       setConnectCmd(`npx tempo-agent connect ${res.connect_token}`);
       setThreadId(res.thread.id);
     } catch (e) {
@@ -69,9 +73,11 @@ export function NewThreadDialog() {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="primary">
-          <Plus className="h-3.5 w-3.5" /> New Thread
-        </Button>
+        {trigger ?? (
+          <Button variant="primary">
+            <Plus className="h-3.5 w-3.5" /> New Thread
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent>
         {connectCmd ? (

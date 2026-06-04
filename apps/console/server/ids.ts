@@ -1,6 +1,7 @@
 import { ulid } from 'ulid';
 
 export const newThreadId = () => `thr_${ulid()}`;
+export const newSpaceId = () => `spc_${ulid()}`;
 export const newSessionId = () => `ses_${ulid()}`;
 export const newPlanId = () => `pln_${ulid()}`;
 export const newCommentId = () => `cmt_${ulid()}`;

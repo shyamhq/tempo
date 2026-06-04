@@ -6,17 +6,26 @@ import {
   CreateDiscussionMessageResponse,
   type CreateReplyRequest,
   CreateReplyResponse,
+  type CreateSpaceRequest,
+  CreateSpaceResponse,
   type CreateThreadRequest,
   CreateThreadResponse,
   type DecideProposalRequest,
   DecideProposalResponse,
+  DeleteSpaceResponse,
   DeleteThreadResponse,
   GetConnectTokenResponse,
   GetThreadResponse,
+  ListSpacesResponse,
+  ListSpaceThreadsResponse,
   ListThreadsResponse,
   ReopenThreadResponse,
   ResolveCommentResponse,
   UnresolveCommentResponse,
+  type UpdateSpaceRequest,
+  UpdateSpaceResponse,
+  type UpdateThreadRequest,
+  UpdateThreadResponse,
   type WritePlanRequest,
   WritePlanResponse,
 } from '@tempo/contracts/http';
@@ -70,10 +79,35 @@ export class ApiError extends Error {
 }
 
 export const api = {
-  listThreads: () => request('GET', '/api/threads', undefined, ListThreadsResponse),
+  listThreads: (spaceId?: string) =>
+    request(
+      'GET',
+      spaceId ? `/api/threads?space_id=${encodeURIComponent(spaceId)}` : '/api/threads',
+      undefined,
+      ListThreadsResponse,
+    ),
 
   createThread: (input: z.infer<typeof CreateThreadRequest>) =>
     request('POST', '/api/threads', input, CreateThreadResponse),
+
+  listSpaces: () => request('GET', '/api/spaces', undefined, ListSpacesResponse),
+
+  createSpace: (input: z.infer<typeof CreateSpaceRequest>) =>
+    request('POST', '/api/spaces', input, CreateSpaceResponse),
+
+  updateSpace: (spaceId: string, input: z.infer<typeof UpdateSpaceRequest>) =>
+    request('PATCH', `/api/spaces/${encodeURIComponent(spaceId)}`, input, UpdateSpaceResponse),
+
+  deleteSpace: (spaceId: string) =>
+    request('DELETE', `/api/spaces/${encodeURIComponent(spaceId)}`, undefined, DeleteSpaceResponse),
+
+  listSpaceThreads: (spaceId: string) =>
+    request(
+      'GET',
+      `/api/spaces/${encodeURIComponent(spaceId)}/threads`,
+      undefined,
+      ListSpaceThreadsResponse,
+    ),
 
   getThread: (id: string) => request('GET', `/api/threads/${id}`, undefined, GetThreadResponse),
 
@@ -106,6 +140,9 @@ export const api = {
 
   deleteThread: (threadId: string) =>
     request('DELETE', `/api/threads/${threadId}`, undefined, DeleteThreadResponse),
+
+  updateThread: (threadId: string, input: z.infer<typeof UpdateThreadRequest>) =>
+    request('PATCH', `/api/threads/${encodeURIComponent(threadId)}`, input, UpdateThreadResponse),
 
   postDiscussionMessage: (
     threadId: string,

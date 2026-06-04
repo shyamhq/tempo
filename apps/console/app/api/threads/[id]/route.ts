@@ -1,15 +1,17 @@
+import { UpdateThreadRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../../server/actor';
 import { listCommentsForThread } from '../../../../server/comments';
 import { listMessagesForThread } from '../../../../server/discussion';
 import { latestEventId } from '../../../../server/event-log';
-import { err, ok } from '../../../../server/http';
+import { err, ok, parseBody } from '../../../../server/http';
 import { getPlan } from '../../../../server/plan';
 import {
   deleteThread,
   getThread,
   latestAttachedRepo,
   latestSessionStatus,
+  updateThread,
 } from '../../../../server/threads';
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -23,6 +25,23 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     throw e;
   }
   return ok({ ok: true });
+}
+
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await authFromRequest(req);
+  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  const parsed = await parseBody(req, UpdateThreadRequest);
+  if (!parsed.ok) return parsed.response;
+  const { id } = await ctx.params;
+  try {
+    const thread = await updateThread(id, parsed.data);
+    return ok({ thread });
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (msg === 'thread_not_found') return err('thread_not_found', 404);
+    if (msg === 'space_workspace_mismatch') return err('space_workspace_mismatch', 400);
+    throw e;
+  }
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {

@@ -3,6 +3,7 @@ import {
   index,
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -14,17 +15,33 @@ export const workspaces = sqliteTable('workspaces', {
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const spaces = sqliteTable('spaces', {
+  id: text('id').primaryKey(),
+  workspace_id: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id),
+  name: text('name').notNull(),
+  // Drag-reorder uses fractional indexing: drop between siblings writes the
+  // midpoint of their sort_order values; no rebalance at this scale.
+  sort_order: real('sort_order').notNull().default(0),
+  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const threads = sqliteTable('threads', {
   id: text('id').primaryKey(),
   workspace_id: text('workspace_id')
     .notNull()
     .references(() => workspaces.id),
+  space_id: text('space_id')
+    .notNull()
+    .references(() => spaces.id),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   status: text('status', { enum: ['unapproved', 'approved'] })
     .notNull()
     .default('unapproved'),
   connect_token: text('connect_token').notNull(),
+  sort_order: real('sort_order').notNull().default(0),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   updated_at: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });

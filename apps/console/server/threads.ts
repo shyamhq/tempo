@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { ThreadSummary } from '@tempo/contracts';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { defaultWorkspaceId } from '../db/ids';
 import {
@@ -10,12 +10,14 @@ import {
   plans,
   replies,
   sessions,
+  spaces,
   threads,
 } from '../db/schema';
 import { newPlanId, newThreadId } from './ids';
 
 export async function createThread(
   workspaceId: string,
+  spaceId: string,
   title: string,
   description: string,
 ): Promise<{ thread: ThreadSummary; connect_token: string }> {
@@ -23,12 +25,19 @@ export async function createThread(
   const token = `tmp_${randomBytes(24).toString('base64url')}`;
   const id = newThreadId();
   await db.transaction(async (tx) => {
+    const [tail] = await tx
+      .select({ max: sql<number>`coalesce(max(${threads.sort_order}), 0)` })
+      .from(threads)
+      .where(eq(threads.space_id, spaceId));
+    const sort_order = (tail?.max ?? 0) + 1;
     await tx.insert(threads).values({
       id,
       workspace_id: workspaceId,
+      space_id: spaceId,
       title,
       description,
       connect_token: token,
+      sort_order,
     });
     await tx.insert(plans).values({ id: newPlanId(), thread_id: id });
   });
@@ -45,7 +54,10 @@ export async function getConnectToken(threadId: string): Promise<{ connect_token
   return { connect_token: row.connect_token };
 }
 
-export async function listThreads(workspaceId: string = defaultWorkspaceId) {
+export async function listThreads(workspaceId: string = defaultWorkspaceId, spaceId?: string) {
+  const where = spaceId
+    ? and(eq(threads.workspace_id, workspaceId), eq(threads.space_id, spaceId))
+    : eq(threads.workspace_id, workspaceId);
   const rows = await db
     .select({
       id: threads.id,
@@ -55,7 +67,7 @@ export async function listThreads(workspaceId: string = defaultWorkspaceId) {
       updated_at: threads.updated_at,
     })
     .from(threads)
-    .where(eq(threads.workspace_id, workspaceId))
+    .where(where)
     .orderBy(desc(threads.updated_at));
 
   const out = [];
@@ -113,6 +125,52 @@ export async function deleteThread(threadId: string): Promise<void> {
     await tx.delete(sessions).where(eq(sessions.thread_id, threadId));
     await tx.delete(plans).where(eq(plans.thread_id, threadId));
     await tx.delete(threads).where(eq(threads.id, threadId));
+  });
+}
+
+// Single mutation for title and/or space_id so the route handler doesn't have
+// to orchestrate two server calls. Both fields are optional but the caller
+// (validated upstream by `UpdateThreadRequest`) must supply at least one.
+// When `space_id` is present, we guard inside the transaction that the target
+// Space belongs to the same workspace — a forged PATCH must not re-parent a
+// Thread under a foreign workspace's Space.
+export async function updateThread(
+  threadId: string,
+  patch: { title?: string; space_id?: string; sort_order?: number },
+): Promise<ThreadSummary> {
+  return await db.transaction(async (tx) => {
+    const [t] = await tx
+      .select({
+        id: threads.id,
+        title: threads.title,
+        description: threads.description,
+        workspace_id: threads.workspace_id,
+      })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .limit(1);
+    if (!t) throw new Error('thread_not_found');
+
+    if (patch.space_id) {
+      const [sp] = await tx
+        .select({ id: spaces.id })
+        .from(spaces)
+        .where(and(eq(spaces.id, patch.space_id), eq(spaces.workspace_id, t.workspace_id)))
+        .limit(1);
+      if (!sp) throw new Error('space_workspace_mismatch');
+    }
+
+    const set: Record<string, string | number> = { updated_at: nowIso() };
+    if (patch.title !== undefined) set.title = patch.title;
+    if (patch.space_id !== undefined) set.space_id = patch.space_id;
+    if (patch.sort_order !== undefined) set.sort_order = patch.sort_order;
+    await tx.update(threads).set(set).where(eq(threads.id, threadId));
+
+    return {
+      id: t.id,
+      title: patch.title ?? t.title,
+      description: t.description,
+    };
   });
 }
 

@@ -1,11 +1,15 @@
-import { CreateThreadRequest } from '@tempo/contracts/http';
+import { CreateThreadRequest, ListThreadsQuery } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
 import { defaultWorkspaceId } from '../../../db/ids';
-import { ok, parseBody } from '../../../server/http';
+import { err, ok, parseBody } from '../../../server/http';
 import { createThread, listThreads } from '../../../server/threads';
 
-export async function GET() {
-  const rows = await listThreads();
+export async function GET(req: NextRequest) {
+  const parsed = ListThreadsQuery.safeParse({
+    space_id: req.nextUrl.searchParams.get('space_id') ?? undefined,
+  });
+  if (!parsed.success) return err('invalid_input', 400);
+  const rows = await listThreads(defaultWorkspaceId, parsed.data.space_id);
   return ok({ threads: rows });
 }
 
@@ -14,6 +18,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.ok) return parsed.response;
   const { thread, connect_token } = await createThread(
     defaultWorkspaceId,
+    parsed.data.space_id,
     parsed.data.title,
     parsed.data.description,
   );

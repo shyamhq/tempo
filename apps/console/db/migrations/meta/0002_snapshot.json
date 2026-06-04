@@ -65,12 +65,8 @@
           "name": "clarification_rounds_thread_id_threads_id_fk",
           "tableFrom": "clarification_rounds",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -139,12 +135,8 @@
           "name": "comments_thread_id_threads_id_fk",
           "tableFrom": "comments",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -196,10 +188,7 @@
       "indexes": {
         "idx_events_thread_id": {
           "name": "idx_events_thread_id",
-          "columns": [
-            "thread_id",
-            "id"
-          ],
+          "columns": ["thread_id", "id"],
           "isUnique": false
         }
       },
@@ -208,22 +197,15 @@
           "name": "events_thread_id_threads_id_fk",
           "tableFrom": "events",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "events_thread_id_id_pk": {
-          "columns": [
-            "thread_id",
-            "id"
-          ],
+          "columns": ["thread_id", "id"],
           "name": "events_thread_id_id_pk"
         }
       },
@@ -280,9 +262,7 @@
       "indexes": {
         "plans_thread_id_unique": {
           "name": "plans_thread_id_unique",
-          "columns": [
-            "thread_id"
-          ],
+          "columns": ["thread_id"],
           "isUnique": true
         }
       },
@@ -291,12 +271,8 @@
           "name": "plans_thread_id_threads_id_fk",
           "tableFrom": "plans",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -393,12 +369,8 @@
           "name": "replies_comment_id_comments_id_fk",
           "tableFrom": "replies",
           "tableTo": "comments",
-          "columnsFrom": [
-            "comment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["comment_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -466,9 +438,7 @@
       "indexes": {
         "idx_sessions_one_connected_per_thread": {
           "name": "idx_sessions_one_connected_per_thread",
-          "columns": [
-            "thread_id"
-          ],
+          "columns": ["thread_id"],
           "isUnique": true,
           "where": "\"sessions\".\"status\" = 'connected'"
         }
@@ -478,12 +448,8 @@
           "name": "sessions_thread_id_threads_id_fk",
           "tableFrom": "sessions",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -562,12 +528,8 @@
           "name": "threads_workspace_id_workspaces_id_fk",
           "tableFrom": "threads",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

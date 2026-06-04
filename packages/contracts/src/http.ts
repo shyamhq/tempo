@@ -12,6 +12,9 @@ import {
   ReplyPayload,
   SessionId,
   SessionStatus,
+  Space,
+  SpaceId,
+  SpaceThreadLite,
   ThreadId,
   ThreadStatus,
   ThreadSummary,
@@ -21,6 +24,7 @@ import {
 export const CreateThreadRequest = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(10_000),
+  space_id: SpaceId,
 });
 export const CreateThreadResponse = z.object({
   thread: ThreadSummary,
@@ -33,7 +37,10 @@ export const GetConnectTokenResponse = z.object({
   connect_token: ConnectToken,
 });
 
-// GET /api/threads
+// GET /api/threads?space_id=spc_…
+export const ListThreadsQuery = z.object({
+  space_id: SpaceId.optional(),
+});
 export const ListThreadsResponse = z.object({
   threads: z.array(
     ThreadSummary.extend({
@@ -42,6 +49,40 @@ export const ListThreadsResponse = z.object({
       updated_at: IsoTimestamp,
     }),
   ),
+});
+
+// GET /api/spaces
+export const ListSpacesResponse = z.object({
+  spaces: z.array(Space),
+});
+
+// POST /api/spaces
+export const CreateSpaceRequest = z.object({
+  name: z.string().min(1).max(80),
+});
+export const CreateSpaceResponse = z.object({ space: Space });
+
+// PATCH /api/spaces/:id  — rename and/or reorder. At least one of `name` /
+// `sort_order` must be present. Body returns `{ ok: true }`; the caller
+// invalidates the `['spaces']` query rather than reading from the response.
+export const UpdateSpaceRequest = z
+  .object({
+    name: z.string().min(1).max(80).optional(),
+    sort_order: z.number().finite().optional(),
+  })
+  .refine((d) => d.name !== undefined || d.sort_order !== undefined, {
+    message: 'at_least_one_of_name_or_sort_order_required',
+  });
+export const UpdateSpaceResponse = z.object({ ok: z.literal(true) });
+
+// DELETE /api/spaces/:id  — cascades to every Thread in the Space (+ their deps)
+export const DeleteSpaceResponse = z.object({ ok: z.literal(true) });
+
+// GET /api/spaces/:id/threads — lightweight list used by the sidebar (no
+// session-status, no updated_at). Avoids amplifying the existing N+1 in
+// listThreads when a Space is expanded in the rail.
+export const ListSpaceThreadsResponse = z.object({
+  threads: z.array(SpaceThreadLite),
 });
 
 // GET /api/threads/:id
@@ -152,6 +193,20 @@ export const ApproveThreadResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/threads/:id/reopen
 export const ReopenThreadResponse = z.object({ ok: z.literal(true) });
+
+// PATCH /api/threads/:id  — rename, move between Spaces, and/or reorder.
+// At least one of `title` / `space_id` / `sort_order` must be present.
+export const UpdateThreadRequest = z
+  .object({
+    title: z.string().min(1).max(200).optional(),
+    space_id: SpaceId.optional(),
+    sort_order: z.number().finite().optional(),
+  })
+  .refine(
+    (d) => d.title !== undefined || d.space_id !== undefined || d.sort_order !== undefined,
+    { message: 'at_least_one_of_title_or_space_id_or_sort_order_required' },
+  );
+export const UpdateThreadResponse = z.object({ thread: ThreadSummary });
 
 // DELETE /api/threads/:id
 export const DeleteThreadResponse = z.object({ ok: z.literal(true) });
