@@ -86,7 +86,8 @@ export function ThreadRow({
 
       <div className="relative pointer-events-none flex w-full items-center gap-2 px-2 py-1.5">
         {active ? (
-          <span className="absolute -left-[5px] top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent" />
+          // -left-px overlaps the gray guide-line on SpaceBody's bordered container.
+          <span className="absolute -left-px top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent" />
         ) : null}
 
         <button
