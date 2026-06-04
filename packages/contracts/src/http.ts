@@ -88,6 +88,7 @@ export const ListSpaceThreadsResponse = z.object({
 // GET /api/threads/:id
 export const GetThreadResponse = z.object({
   thread: ThreadSummary,
+  space_id: SpaceId,
   status: ThreadStatus,
   plan: Plan,
   comments: z.array(Comment),

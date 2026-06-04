@@ -14,7 +14,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { Plus, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
 import { useSidebar } from '@/hooks/use-sidebar-state';
 import { SpaceRow } from './space-row';
@@ -29,12 +29,26 @@ export function Sidebar({ initial }: { initial: Space[] }) {
   });
 
   const router = useRouter();
+  const pathname = usePathname();
+  const activeThreadId = pathname?.startsWith('/threads/') ? pathname.split('/')[2] : undefined;
+
   const { data } = useQuery({
     queryKey: ['spaces'],
     queryFn: () => api.listSpaces().then((r) => r.spaces),
     initialData: initial,
   });
   const spaces = data ?? initial;
+
+  // Auto-expand the Space that owns the active Thread on first load / reload,
+  // so the highlighted row is in view without the user clicking through.
+  const { data: activeThread } = useQuery({
+    queryKey: ['thread', activeThreadId],
+    queryFn: () => api.getThread(activeThreadId as string),
+    enabled: !!activeThreadId,
+  });
+  useEffect(() => {
+    if (activeThread?.space_id) useSidebar.getState().toggleExpanded(activeThread.space_id, true);
+  }, [activeThread?.space_id]);
 
   const [search, setSearch] = useState('');
   const filtered = useMemo(() => {

@@ -58,6 +58,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   ]);
   return ok({
     thread: { id: thread.id, title: thread.title, description: thread.description },
+    space_id: thread.space_id,
     status: thread.status,
     plan,
     comments,
