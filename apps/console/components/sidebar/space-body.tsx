@@ -36,29 +36,31 @@ export function SpaceBody({ space, spaces }: { space: Space; spaces: Space[] }) 
   const threads = data?.threads ?? [];
 
   return (
-    <div className="ml-[18px] mt-px mb-1.5 border-l border-hairline pl-1.5">
-      {isLoading ? (
-        <div className="px-2 py-1 text-[13px] text-ink-tertiary">Loading…</div>
-      ) : threads.length === 0 ? (
-        <div className="px-2.5 py-1 text-[13px] text-ink-tertiary">No threads yet.</div>
-      ) : (
-        <SortableContext items={threads.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          {threads.map((t) => (
-            <ThreadRow
-              key={t.id}
-              thread={t}
-              spaceId={space.id}
-              active={t.id === activeThreadId}
-              spaces={spaces}
-            />
-          ))}
-        </SortableContext>
-      )}
+    <div className="ml-[18px] mt-px mb-1.5">
+      <div className="border-l border-hairline pl-1.5">
+        {isLoading ? (
+          <div className="px-2 py-1 text-[13px] text-ink-tertiary">Loading…</div>
+        ) : threads.length === 0 ? (
+          <div className="px-2.5 py-1 text-[13px] text-ink-tertiary">No threads yet.</div>
+        ) : (
+          <SortableContext items={threads.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+            {threads.map((t) => (
+              <ThreadRow
+                key={t.id}
+                thread={t}
+                spaceId={space.id}
+                active={t.id === activeThreadId}
+                spaces={spaces}
+              />
+            ))}
+          </SortableContext>
+        )}
+      </div>
       <button
         type="button"
         onClick={() => newThread.mutate()}
         disabled={newThread.isPending}
-        className="mt-0.5 flex w-full items-center gap-1.5 rounded-[7px] px-2.5 py-1.5 text-[13px] text-ink-tertiary hover:bg-surface-2 hover:text-ink"
+        className="mt-0.5 flex w-full items-center gap-1.5 rounded-[7px] pl-[14px] pr-2 py-1.5 text-[13px] text-ink-tertiary hover:bg-surface-2 hover:text-ink"
       >
         <Plus className="h-3 w-3" strokeWidth={2.2} /> New Thread
       </button>
