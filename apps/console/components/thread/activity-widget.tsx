@@ -10,7 +10,7 @@ import { ActivityCard } from './activity-card';
 // toggles the mini-card and the expanded V2 card in the same corner;
 // outside-click and Escape collapse.
 export function ActivityWidget({ threadId }: { threadId: string }) {
-  const { todos, toolCalls, turnActive } = useLiveActivityGroup(threadId);
+  const { todos, entries, turnActive } = useLiveActivityGroup(threadId);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -40,7 +40,7 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
   const progress = todos?.length ? `${done} of ${todos.length}` : 'Agent activity';
   const topLine =
     active?.activeForm ?? active?.content ?? firstPending?.content ?? 'Agent working…';
-  const latestTool = toolCalls[0] ?? null;
+  const latestEntry = entries[0] ?? null;
 
   return (
     <div ref={containerRef} className="fixed bottom-5 right-5 z-10">
@@ -54,7 +54,7 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
           >
             <ChevronUp className="h-3.5 w-3.5" aria-hidden />
           </button>
-          <ActivityCard todos={todos} toolCalls={toolCalls} />
+          <ActivityCard todos={todos} entries={entries} />
         </div>
       ) : (
         <button
@@ -74,14 +74,23 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
             />
             <span className="truncate">{topLine}</span>
           </div>
-          {latestTool ? (
-            <div className="mt-1.5 flex items-center gap-1.5 font-mono text-micro text-ink-subtle">
-              <Loader2 className="h-[10px] w-[10px] shrink-0 animate-spin text-ink-tertiary" />
-              <span className="text-ink font-semibold truncate">{latestTool.tool}</span>
-              {latestTool.summary ? (
-                <span className="truncate text-ink-subtle">{latestTool.summary}</span>
-              ) : null}
-            </div>
+          {latestEntry ? (
+            latestEntry.kind === 'tool' ? (
+              <div className="mt-1.5 flex items-center gap-1.5 font-mono text-micro text-ink-subtle">
+                <Loader2 className="h-[10px] w-[10px] shrink-0 animate-spin text-ink-tertiary" />
+                <span className="text-ink font-semibold truncate">{latestEntry.tool}</span>
+                {latestEntry.summary ? (
+                  <span className="truncate text-ink-subtle">{latestEntry.summary}</span>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-1.5 flex items-center gap-1.5 text-micro text-ink-subtle">
+                <span aria-hidden className="shrink-0 text-ink-tertiary leading-none">
+                  ✎
+                </span>
+                <span className="truncate italic">{latestEntry.text}</span>
+              </div>
+            )
           ) : null}
         </button>
       )}

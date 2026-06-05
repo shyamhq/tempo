@@ -13,6 +13,11 @@ export async function recordAgentToolUse(
   await appendEvent(threadId, { kind: 'agent_tool_use', tool, summary });
 }
 
+export async function recordAgentNarration(sessionId: string, text: string): Promise<void> {
+  const threadId = await threadIdForSession(sessionId);
+  await appendEvent(threadId, { kind: 'agent_narration', text });
+}
+
 export async function recordAgentTodosUpdated(
   sessionId: string,
   todos: AgentTodo[],

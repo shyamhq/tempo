@@ -9,26 +9,30 @@ import type { z } from 'zod';
 
 type ThreadView = z.infer<typeof GetThreadResponse>;
 
-export type ToolCallEntry = { id: string; tool: string; summary: string };
+export type ActivityEntry =
+  | { kind: 'tool'; id: string; tool: string; summary: string }
+  | { kind: 'narration'; id: string; text: string };
+
 export type LiveActivity = {
   todos: AgentTodo[] | null;
-  toolCalls: ToolCallEntry[];
+  entries: ActivityEntry[];
   // True while Claude is mid-turn (a tool call has fired and no Stop hook has
   // landed since). The widget shows a spinner on the latest tool while
   // turnActive; on Stop it becomes a dot — the rest of the card stays.
   turnActive: boolean;
 };
 
-// Tool stream cap — keeps the in-memory list bounded if Claude bursts hundreds
-// of tool calls between Dev messages.
-const TOOL_CALLS_MAX = 100;
-const EMPTY_ACTIVITY: LiveActivity = { todos: null, toolCalls: [], turnActive: false };
+// Activity stream cap — keeps the in-memory list bounded if Claude bursts
+// hundreds of tool calls or narration blocks between Dev messages.
+const ACTIVITY_ENTRIES_MAX = 100;
+const EMPTY_ACTIVITY: LiveActivity = { todos: null, entries: [], turnActive: false };
 
 export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
 
 // Cache-only read of the current "Agent activity" group: latest TodoWrite plus
-// the tool calls accumulated since the most recent Dev Discussion Message.
-// SSE writes the value via `setQueryData`; this hook never fetches.
+// the activity entries (tool calls + narration) accumulated since the most
+// recent Dev Discussion Message. SSE writes the value via `setQueryData`;
+// this hook never fetches.
 export function useLiveActivityGroup(threadId: string): LiveActivity {
   const { data } = useQuery<LiveActivity>({
     queryKey: liveActivityKey(threadId),
@@ -204,10 +208,28 @@ function applyLiveActivity(
     case 'agent_tool_use':
       qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
         const base = prev ?? EMPTY_ACTIVITY;
-        const entry: ToolCallEntry = { id: ev.id, tool: ev.tool, summary: ev.summary };
+        const entry: ActivityEntry = {
+          kind: 'tool',
+          id: ev.id,
+          tool: ev.tool,
+          summary: ev.summary,
+        };
         return {
           ...base,
-          toolCalls: [entry, ...base.toolCalls].slice(0, TOOL_CALLS_MAX),
+          entries: [entry, ...base.entries].slice(0, ACTIVITY_ENTRIES_MAX),
+          turnActive: true,
+        };
+      });
+      return;
+    case 'agent_narration':
+      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
+        const base = prev ?? EMPTY_ACTIVITY;
+        const entry: ActivityEntry = { kind: 'narration', id: ev.id, text: ev.text };
+        return {
+          ...base,
+          entries: [entry, ...base.entries].slice(0, ACTIVITY_ENTRIES_MAX),
+          // Narration can arrive before any tool call (stream-json driver);
+          // flipping turnActive ensures the widget mounts.
           turnActive: true,
         };
       });
@@ -230,11 +252,29 @@ function applyLiveActivity(
       return;
     case 'discussion_message_posted':
       // Dev message starts a fresh Agent turn — drop the previous turn's todos
-      // and tool stream so the activity group doesn't render stale state above
-      // the new message.
+      // and tool stream, then flip turnActive so the widget mounts immediately
+      // with "Agent working…" instead of waiting on the Agent's first event.
       if (ev.message.author === 'dev') {
-        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), EMPTY_ACTIVITY);
+        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), DEV_TRIGGERED_ACTIVITY);
+      }
+      return;
+    case 'comment_added':
+      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), DEV_TRIGGERED_ACTIVITY);
+      return;
+    case 'reply_added':
+      if (ev.reply.author === 'dev') {
+        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), DEV_TRIGGERED_ACTIVITY);
       }
       return;
   }
 }
+
+// Dev-side trigger: clear stale Agent state and mount the widget right away.
+// Same shape as EMPTY_ACTIVITY but with turnActive flipped so the floating
+// card appears without waiting for the SSE round-trip on the Agent's first
+// emitted event.
+const DEV_TRIGGERED_ACTIVITY: LiveActivity = {
+  todos: null,
+  entries: [],
+  turnActive: true,
+};

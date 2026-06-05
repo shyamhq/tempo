@@ -13,6 +13,9 @@ import {
   CreateSessionResponse,
   EventsLongPollResponse,
   GetPlanResponse,
+  RecordAgentNarrationResponse,
+  RecordToolUseResponse,
+  RecordTurnEndedResponse,
   UpdateThreadResponse,
   WritePlanResponse,
 } from '@tempo/contracts/http';
@@ -82,6 +85,30 @@ export class ConsoleClient {
 
   updateThreadMeta(threadId: ThreadId, patch: { title: string; description?: string }) {
     return this.send('PATCH', `/api/threads/${threadId}`, patch, UpdateThreadResponse);
+  }
+
+  // stream-json driver only. The PTY driver's PreToolUse hook posts to
+  // /tool-use directly via fire-and-forget raw http; that path stays untouched.
+  postAgentToolUse(sessionId: SessionId, tool: string, summary: string) {
+    return this.send(
+      'POST',
+      `/api/sessions/${sessionId}/tool-use`,
+      { tool, summary },
+      RecordToolUseResponse,
+    );
+  }
+
+  postAgentNarration(sessionId: SessionId, text: string) {
+    return this.send(
+      'POST',
+      `/api/sessions/${sessionId}/narration`,
+      { text },
+      RecordAgentNarrationResponse,
+    );
+  }
+
+  postAgentTurnEnded(sessionId: SessionId) {
+    return this.send('POST', `/api/sessions/${sessionId}/turn-ended`, {}, RecordTurnEndedResponse);
   }
 
   private async send<T>(

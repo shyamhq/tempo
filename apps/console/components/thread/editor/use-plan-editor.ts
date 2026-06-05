@@ -181,12 +181,26 @@ export function usePlanEditor({
     const context = editor.state.doc.textBetween(ctxFrom, ctxTo, '\n');
     reapplyingMarks.current = true;
     try {
-      editor
-        .chain()
-        .setTextSelection({ from, to })
-        .setPendingCommentMark()
-        .setTextSelection(to)
-        .run();
+      // Clear any pending mark left over from a prior compose before
+      // applying the new one — otherwise a second compose stacks marks and
+      // the editor shows phantom highlights from earlier selections.
+      // Position invariant: `ranges` is collected against `state.doc` then
+      // applied through `chain()` synchronously, with `reapplyingMarks=true`
+      // blocking external dispatches via the `onUpdate` gate — so no
+      // transaction can mutate positions between collection and `run()`.
+      let chain = editor.chain();
+      const markType = editor.schema.marks.comment;
+      if (markType) {
+        const ranges: { from: number; to: number }[] = [];
+        editor.state.doc.descendants((node, pos) => {
+          if (!node.isText) return true;
+          const pending = node.marks.find((m) => m.type === markType && m.attrs.pending === true);
+          if (pending) ranges.push({ from: pos, to: pos + node.nodeSize });
+          return false;
+        });
+        for (const r of ranges) chain = chain.setTextSelection(r).unsetCommentMark();
+      }
+      chain.setTextSelection({ from, to }).setPendingCommentMark().setTextSelection(to).run();
     } finally {
       queueMicrotask(() => {
         reapplyingMarks.current = false;

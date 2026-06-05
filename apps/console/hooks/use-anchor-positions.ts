@@ -1,21 +1,26 @@
 'use client';
 
 import type { Editor } from '@tiptap/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useComposerStore } from '@/lib/stores/composer-store';
 
-// Reads anchor y-coordinates of every CommentMark span (saved + pending) in
-// the editor's DOM, normalised to a container element so the rail's canvas
-// can absolutely-position cards aligned with their text. Recomputes on
-// editor updates (debounced), editor-DOM resizes, and window resize.
+// Reads anchor y-coordinates for every saved Comment plus the composer's
+// pending selection, normalised to a container element so the rail can
+// absolutely-position cards aligned with their text.
+//
+// Saved comments come from CommentMark spans in the editor DOM
+// (`[data-comment-id]`). The pending composer's y comes from the canonical
+// `composerRange.from` via `editor.view.coordsAtPos` — NOT from a DOM
+// scan of `[data-pending="true"]`. A DOM scan was wrong whenever a
+// selection crossed a block boundary (ProseMirror splits the mark per
+// block, `querySelector` returned the topmost split — often near the top
+// of the doc) or when a stale pending span lingered from a prior compose.
 //
 // Scroll-invariance assumption (load-bearing): the editor and the container
-// share a single scroll context (the page). Both `anchor.top` and
-// `container.top` shift by the same delta under page scroll, so the stored
-// `anchor.top − container.top` doesn't change and no scroll listener is
-// needed. If you ever wrap the editor or the rail in an element with
-// `overflow: auto | scroll`, that breaks — positions will drift silently
-// because only one of the two rects will shift. In that case, re-add a
-// listener on the new scroll ancestor (or measure on every focus change).
+// share a single scroll context. Both rects shift by the same delta under
+// page scroll, so the stored `anchor.top − container.top` is scroll-stable
+// and no scroll listener is needed. Wrapping either in an `overflow: auto`
+// element breaks that — re-add a listener on the new scroll ancestor.
 export function useAnchorPositions(
   editor: Editor | null,
   containerEl: HTMLElement | null,
@@ -23,9 +28,16 @@ export function useAnchorPositions(
   const [positions, setPositions] = useState<Map<string, number>>(new Map());
   const [pendingY, setPendingY] = useState<number | null>(null);
   const [editorHeight, setEditorHeight] = useState(0);
+  const composerRangeFrom = useComposerStore((s) => s.range?.from ?? null);
+  const composerRangeFromRef = useRef(composerRangeFrom);
+  composerRangeFromRef.current = composerRangeFrom;
+  const measureRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (!editor || !containerEl) return;
+    if (!editor || !containerEl) {
+      measureRef.current = () => {};
+      return;
+    }
 
     let frame = 0;
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -34,16 +46,19 @@ export function useAnchorPositions(
     const measure = () => {
       const containerTop = containerEl.getBoundingClientRect().top;
       const next = new Map<string, number>();
-      let nextPending: number | null = null;
       root.querySelectorAll<HTMLElement>('[data-comment-id]').forEach((el) => {
         const id = el.getAttribute('data-comment-id');
-        if (!id) return;
-        if (next.has(id)) return;
+        if (!id || next.has(id)) return;
         next.set(id, el.getBoundingClientRect().top - containerTop);
       });
-      const pendingEl = root.querySelector<HTMLElement>('[data-pending="true"]');
-      if (pendingEl) {
-        nextPending = pendingEl.getBoundingClientRect().top - containerTop;
+      const from = composerRangeFromRef.current;
+      let nextPending: number | null = null;
+      if (from !== null && from <= editor.state.doc.content.size) {
+        try {
+          nextPending = editor.view.coordsAtPos(from).top - containerTop;
+        } catch {
+          // pos out of bounds (setContent reset mid-compose) — leave null
+        }
       }
       setPositions((prev) => (mapsEqual(prev, next) ? prev : next));
       setPendingY((prev) => (prev === nextPending ? prev : nextPending));
@@ -58,18 +73,17 @@ export function useAnchorPositions(
       frame = requestAnimationFrame(measure);
     };
 
+    measureRef.current = schedule;
+
     const onEditorUpdate = () => {
       if (updateTimer) clearTimeout(updateTimer);
       updateTimer = setTimeout(schedule, 100);
     };
 
     editor.on('update', onEditorUpdate);
-
     const resizeObserver = new ResizeObserver(schedule);
     resizeObserver.observe(root);
-
     window.addEventListener('resize', schedule, { passive: true });
-
     schedule();
 
     return () => {
@@ -78,8 +92,16 @@ export function useAnchorPositions(
       editor.off('update', onEditorUpdate);
       resizeObserver.disconnect();
       window.removeEventListener('resize', schedule);
+      measureRef.current = () => {};
     };
   }, [editor, containerEl]);
+
+  // Re-measure when the composer's range changes (new compose started, or
+  // compose closed). Cheaper than rebuilding the listener-heavy effect.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: composerRangeFrom IS the trigger; measureRef is intentionally a stable ref so adding it would force re-runs on listener-effect remounts.
+  useEffect(() => {
+    measureRef.current();
+  }, [composerRangeFrom]);
 
   return { positions, pendingY, editorHeight };
 }

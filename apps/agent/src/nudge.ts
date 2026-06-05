@@ -35,6 +35,7 @@ function shouldNotify(ev: Event): boolean {
     // need to hear about its own tool calls, plan writes, or session pings.
     case 'plan_edited_by_agent':
     case 'agent_tool_use':
+    case 'agent_narration':
     case 'agent_todos_updated':
     case 'agent_turn_ended':
     case 'session_connected':

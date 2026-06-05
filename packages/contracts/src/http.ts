@@ -126,6 +126,15 @@ export const RecordToolUseRequest = z.object({
 });
 export const RecordToolUseResponse = z.object({ ok: z.literal(true) });
 
+// POST /api/sessions/:id/narration
+// Recorded by the stream-json Agent driver when an assistant `text` content
+// block is observed between tool calls. Bounded at ~4 paragraphs; longer prose
+// is rare and would be drift, not signal.
+export const RecordAgentNarrationRequest = z.object({
+  text: z.string().min(1).max(8000),
+});
+export const RecordAgentNarrationResponse = z.object({ ok: z.literal(true) });
+
 // POST /api/sessions/:id/todos-updated
 // Recorded by the Agent's Claude Code PreToolUse hook when tool_name=TodoWrite
 // (fire-and-forget). Carries the full todo list — each call rewrites the slate.
@@ -154,9 +163,14 @@ export const WritePlanResponse = z.object({
 });
 
 // POST /api/threads/:id/comments
+// `first_reply_text` is the Dev's first message on the new comment. When
+// present, the server inserts the comment + reply atomically and emits a
+// single `comment_added` event with the reply already in `comment.replies` —
+// the UI never has to render an empty-comment intermediate state.
 export const CreateCommentRequest = z.object({
   plan_quote: z.string(),
   plan_context: z.string(),
+  first_reply_text: z.string().min(1).optional(),
 });
 export const CreateCommentResponse = Comment;
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 const Env = z.object({
   TEMPO_CONSOLE_URL: z.string().url().default('http://localhost:3000'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  TEMPO_AGENT_DRIVER: z.enum(['pty', 'stream-json']).default('pty'),
 });
 
 const parsed = Env.safeParse(process.env);

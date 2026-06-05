@@ -3,16 +3,27 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { comments, replies } from '../db/schema';
 import { appendEvent } from './event-log';
-import { newCommentId } from './ids';
+import { newCommentId, newReplyId } from './ids';
 import { toIso } from './threads';
 
 export async function createComment(
   threadId: string,
   plan_quote: string,
   plan_context: string,
+  first_reply_text?: string,
 ): Promise<Comment> {
   const id = newCommentId();
-  await db.insert(comments).values({ id, thread_id: threadId, plan_quote, plan_context });
+  // Wrap the two inserts so a reply-row failure can't leave an empty comment
+  // committed — without this the `comment_added` event would fire with an
+  // empty `replies` array and the Agent would get nudged for nothing.
+  await db.transaction(async (tx) => {
+    await tx.insert(comments).values({ id, thread_id: threadId, plan_quote, plan_context });
+    if (first_reply_text) {
+      await tx
+        .insert(replies)
+        .values({ id: newReplyId(), comment_id: id, author: 'dev', text: first_reply_text });
+    }
+  });
   const comment = await loadComment(id);
   await appendEvent(threadId, { kind: 'comment_added', comment });
   return comment;

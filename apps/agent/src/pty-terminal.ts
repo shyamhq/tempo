@@ -12,7 +12,7 @@ const CLAUDE_MISSING_MESSAGE =
 // loop heartbeat. tempo_poll *is* allowed because the Agent calls it to fetch
 // event payloads after Node nudges it. Edit/Write/MultiEdit are absent because
 // the Plan is written via tempo_write_plan, never to disk.
-const ALLOWED_TOOLS = [
+export const ALLOWED_TOOLS = [
   'mcp__tempo__tempo_attach',
   'mcp__tempo__tempo_pull_plan',
   'mcp__tempo__tempo_write_plan',
@@ -25,7 +25,7 @@ const ALLOWED_TOOLS = [
   'Bash',
 ];
 
-const INITIAL_PROMPT = 'Call tempo_attach to begin.';
+export const INITIAL_PROMPT = 'Call tempo_attach to begin.';
 
 const SIGINT_TO_SIGKILL_MS = 5_000;
 // Gap between nudge text and the trailing `\r`. Without it, Claude's ink

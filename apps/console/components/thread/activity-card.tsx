@@ -1,23 +1,23 @@
 'use client';
 
 import type { AgentTodo } from '@tempo/contracts';
-import { Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, Pencil } from 'lucide-react';
 import { useState } from 'react';
-import type { ToolCallEntry } from '@/hooks/use-thread-events';
+import type { ActivityEntry } from '@/hooks/use-thread-events';
 
 export function ActivityCard({
   todos,
-  toolCalls,
+  entries,
 }: {
   todos: AgentTodo[] | null;
-  toolCalls: ToolCallEntry[];
+  entries: ActivityEntry[];
 }) {
-  const hasTools = toolCalls.length > 0;
-  if (!todos && !hasTools) return null;
+  const hasEntries = entries.length > 0;
+  if (!todos && !hasEntries) return null;
   return (
     <div className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 shadow-[0_8px_22px_rgba(10,10,10,0.10)]">
       {todos ? <TodoCard todos={todos} /> : null}
-      {hasTools ? <ToolStack toolCalls={toolCalls} hasTodos={todos !== null} /> : null}
+      {hasEntries ? <ToolStack entries={entries} hasTodos={todos !== null} /> : null}
     </div>
   );
 }
@@ -106,16 +106,26 @@ function TodoMark({ status }: { status: AgentTodo['status'] }) {
   );
 }
 
-function ToolStack({ toolCalls, hasTodos }: { toolCalls: ToolCallEntry[]; hasTodos: boolean }) {
+function ToolStack({ entries, hasTodos }: { entries: ActivityEntry[]; hasTodos: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? toolCalls : toolCalls.slice(0, 3);
-  const hiddenCount = toolCalls.length - visible.length;
+  const visible = expanded ? entries : entries.slice(0, 3);
+  const hiddenCount = entries.length - visible.length;
   return (
     <div className={hasTodos ? 'mt-2.5 pt-2 border-t border-hairline' : ''}>
       <ul className="flex flex-col">
-        {visible.map((tc, idx) => (
-          <ToolRow key={tc.id} entry={tc} dim={idx >= 2 && !expanded} spinner={idx === 0} />
-        ))}
+        {visible.map((entry, idx) =>
+          entry.kind === 'tool' ? (
+            <ToolRow
+              key={entry.id}
+              entry={entry}
+              dim={idx >= 2 && !expanded}
+              // Only spin when the very first row is a tool entry.
+              spinner={idx === 0}
+            />
+          ) : (
+            <NarrationRow key={entry.id} entry={entry} dim={idx >= 2 && !expanded} />
+          ),
+        )}
       </ul>
       {hiddenCount > 0 ? (
         <button
@@ -135,7 +145,7 @@ function ToolRow({
   dim,
   spinner,
 }: {
-  entry: ToolCallEntry;
+  entry: ActivityEntry & { kind: 'tool' };
   dim: boolean;
   spinner: boolean;
 }) {
@@ -152,6 +162,25 @@ function ToolRow({
       )}
       <span className="text-ink font-semibold shrink-0">{entry.tool}</span>
       {entry.summary ? <span className="truncate text-ink-subtle">{entry.summary}</span> : null}
+    </li>
+  );
+}
+
+function NarrationRow({
+  entry,
+  dim,
+}: {
+  entry: ActivityEntry & { kind: 'narration' };
+  dim: boolean;
+}) {
+  return (
+    <li
+      className={`flex items-center gap-2 py-[3px] text-micro font-normal ${
+        dim ? 'opacity-50' : ''
+      }`}
+    >
+      <Pencil aria-hidden className="h-[10px] w-[10px] shrink-0 text-ink-tertiary" />
+      <span className="truncate italic text-ink-subtle">{entry.text}</span>
     </li>
   );
 }

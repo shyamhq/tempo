@@ -3,6 +3,7 @@ import { request as httpsRequest } from 'node:https';
 import { URL } from 'node:url';
 import { AgentTodo } from '@tempo/contracts';
 import { z } from 'zod';
+import { summarizeToolInput } from './tool-summary';
 
 // PreToolUse hook entry point.
 //
@@ -14,8 +15,6 @@ import { z } from 'zod';
 // Losing one event is acceptable; blocking the Agent is not. Errors here go to
 // stderr at debug-only verbosity (TEMPO_HOOK_DEBUG=1) so the relay is silent
 // inside `claude`'s rendered output by default.
-
-const SUMMARY_MAX = 200;
 
 type HookPayload = {
   tool_name?: unknown;
@@ -76,33 +75,6 @@ async function readJsonStdin(): Promise<HookPayload | null> {
   } catch {
     return null;
   }
-}
-
-function summarizeToolInput(input: unknown): string {
-  if (!input || typeof input !== 'object') return '';
-  const i = input as Record<string, unknown>;
-  // Per Claude Code's built-in tools: pick the field most useful to a human
-  // glancing at "what is the Agent doing right now".
-  const candidate =
-    pick(i, 'file_path') ??
-    pick(i, 'path') ??
-    pick(i, 'command') ??
-    pick(i, 'pattern') ??
-    pick(i, 'query') ??
-    pick(i, 'url') ??
-    pick(i, 'description') ??
-    '';
-  return clip(candidate, SUMMARY_MAX);
-}
-
-function pick(o: Record<string, unknown>, key: string): string | null {
-  const v = o[key];
-  return typeof v === 'string' && v.length > 0 ? v : null;
-}
-
-function clip(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max - 1)}…`;
 }
 
 function fireAndForget(

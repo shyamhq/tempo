@@ -57,6 +57,11 @@ export const AgentToolUseEvent = eventBase.extend({
   summary: z.string().max(200),
 });
 
+export const AgentNarrationEvent = eventBase.extend({
+  kind: z.literal('agent_narration'),
+  text: z.string().min(1).max(8000),
+});
+
 export const AgentTodo = z.object({
   content: z.string().max(500),
   status: z.enum(['pending', 'in_progress', 'completed']),
@@ -100,6 +105,7 @@ export const Event = z.discriminatedUnion('kind', [
   CommentResolvedEvent,
   CommentUnresolvedEvent,
   AgentToolUseEvent,
+  AgentNarrationEvent,
   AgentTodosUpdatedEvent,
   AgentTurnEndedEvent,
   SessionConnectedEvent,
@@ -118,6 +124,7 @@ export const EventKind = z.enum([
   'comment_resolved',
   'comment_unresolved',
   'agent_tool_use',
+  'agent_narration',
   'agent_todos_updated',
   'agent_turn_ended',
   'session_connected',
