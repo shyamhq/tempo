@@ -16,9 +16,10 @@ import {
 } from '@dnd-kit/sortable';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
-import { Plus, Search } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plus, Search } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { Tooltip } from '@/components/ui/tooltip';
 import { useSidebar } from '@/hooks/use-sidebar-state';
 import { api } from '@/lib/api-client';
 import { SpaceRow } from './space-row';
@@ -35,6 +36,30 @@ export function Sidebar({ initial }: { initial: Space[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const activeThreadId = pathname?.startsWith('/threads/') ? pathname.split('/')[2] : undefined;
+
+  const collapsed = useSidebar((s) => s.collapsed);
+  const toggleCollapsed = useSidebar((s) => s.toggleCollapsed);
+
+  // Hydrate persisted collapse state on mount (matches the pattern at
+  // thread-view.tsx:64–69 for `DISCUSSION_WIDTH_STORAGE`).
+  useEffect(() => {
+    useSidebar.getState().hydrateCollapsed();
+  }, []);
+
+  // ⌘\ toggles the sidebar. Skip when an editable surface is focused so the
+  // Plan editor / Compose textarea can still emit a literal backslash.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== '\\') return;
+      const t = e.target as HTMLElement | null;
+      const tag = (t?.tagName ?? '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || t?.isContentEditable) return;
+      e.preventDefault();
+      useSidebar.getState().toggleCollapsed();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const { data } = useQuery({
     queryKey: ['spaces'],
@@ -78,6 +103,35 @@ export function Sidebar({ initial }: { initial: Space[] }) {
 
   const onDragEnd = (e: DragEndEvent) => handleDragEnd(e, qc, spaces, router.refresh);
 
+  if (collapsed) {
+    return (
+      <aside className="flex h-dvh w-12 shrink-0 flex-col items-center border-r border-hairline bg-surface-2/40 pt-[18px] pb-3.5">
+        <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-ink text-caption font-bold text-on-primary">
+          T
+        </span>
+        <div className="my-auto flex flex-col items-center gap-3">
+          <Tooltip content="Expand sidebar  ⌘\" side="right">
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label="Expand sidebar"
+              className="flex h-10 w-10 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-2 hover:text-ink"
+            >
+              <PanelLeftOpen size={22} strokeWidth={2} />
+            </button>
+          </Tooltip>
+          <span
+            aria-hidden
+            className="text-micro-uppercase uppercase text-ink-tertiary select-none"
+            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          >
+            Tempo
+          </span>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="flex h-dvh w-sidebar shrink-0 flex-col border-r border-hairline bg-surface-2/40">
       <div className="px-[18px] pt-[18px] pb-3.5">
@@ -86,6 +140,16 @@ export function Sidebar({ initial }: { initial: Space[] }) {
             T
           </span>
           Tempo
+          <Tooltip content="Collapse sidebar  ⌘\" side="right">
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label="Collapse sidebar"
+              className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-2 hover:text-ink"
+            >
+              <PanelLeftClose size={20} strokeWidth={2} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 

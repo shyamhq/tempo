@@ -378,10 +378,14 @@ function ReplyRow({ reply }: { reply: Reply }) {
             reply.author === 'agent' ? 'bg-accent' : 'bg-ink-subtle'
           }`}
         />
-        <span className="text-body-sm font-semibold uppercase tracking-wide text-ink-subtle">
+        <span
+          className={`text-micro-uppercase uppercase font-semibold ${
+            reply.author === 'agent' ? 'text-accent-deep' : 'text-ink-subtle'
+          }`}
+        >
           {reply.author}
         </span>
-        <span className="text-body-sm text-ink-tertiary tabular-nums">
+        <span className="text-caption text-ink-tertiary tabular-nums">
           {`· ${formatReplyTime(reply.created_at)}`}
         </span>
       </div>

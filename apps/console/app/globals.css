@@ -26,6 +26,7 @@
   --color-muted: #cbd5e1;
   --color-on-dark: #ffffff;
   --color-on-dark-muted: rgba(255, 255, 255, 0.72);
+  --color-hairline-on-dark: rgba(255, 255, 255, 0.08);
 
   --color-hairline: #e5e7eb;
   --color-hairline-strong: #d1d5db;
@@ -238,47 +239,48 @@ body {
   color: var(--color-ink);
 }
 
-/* Plan editor — Confluence-like inline code and fenced blocks */
+/* Plan editor — inline code and fenced blocks, Mintlify-aligned.
+   Inline code: code-inline token on surface chip with hairline border.
+   Fenced blocks: code-md token on dark surface-code with on-dark text. */
 .plan-editor-dense .ProseMirror :not(pre) > code {
   font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 400;
-  color: #172b4d;
-  background: #f4f5f7;
-  border-radius: 3px;
-  padding: 0.1em 0.35em;
+  font-size: var(--text-code-inline);
+  font-weight: var(--text-code-inline--font-weight);
+  line-height: var(--text-code-inline--line-height);
+  color: var(--color-ink-muted);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
 }
 
 .plan-editor-dense .confluence-code-block {
-  margin: 0.5rem 0;
-  border: 1px solid #dfe1e6;
-  border-radius: 3px;
-  background: #f4f5f7;
+  margin: 0.75rem 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-code);
   overflow: hidden;
 }
 
 .plan-editor-dense .confluence-code-block__header {
-  padding: 0.35rem 0.75rem;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #5e6c84;
-  background: #ebecf0;
-  border-bottom: 1px solid #dfe1e6;
+  padding: 6px 12px;
+  font-size: var(--text-caption);
+  font-weight: var(--text-caption--font-weight);
+  line-height: var(--text-caption--line-height);
+  color: var(--color-on-dark-muted);
+  border-bottom: 1px solid var(--color-hairline-on-dark);
   font-family: var(--font-sans);
 }
 
 .plan-editor-dense .confluence-code-block__pre {
   margin: 0;
-  padding: 0.65rem 0.75rem;
+  padding: 12px 14px;
   background: transparent;
   border: none;
   border-radius: 0;
   font-family: var(--font-mono);
-  font-size: 13px;
-  line-height: 1.45;
-  color: #172b4d;
+  font-size: var(--text-code-md);
+  line-height: var(--text-code-md--line-height);
+  color: var(--color-on-dark);
   overflow-x: auto;
   white-space: pre;
 }
@@ -292,7 +294,7 @@ body {
 }
 
 .plan-editor-dense .confluence-code-block[data-rendered='true'] {
-  background: #ffffff;
+  background: var(--color-canvas);
 }
 
 .plan-editor-dense .confluence-code-block[data-rendered='true'] .confluence-code-block__chrome {
@@ -301,11 +303,11 @@ body {
 
 .plan-editor-dense .mermaid-preview {
   padding: 0.75rem;
-  background: #ffffff;
+  background: var(--color-canvas);
 }
 
 .plan-editor-dense .confluence-code-block:not([data-rendered='true']) .mermaid-preview {
-  border-bottom: 1px solid #dfe1e6;
+  border-bottom: 1px solid var(--color-hairline);
 }
 
 .plan-editor-dense .mermaid-preview__svg {
