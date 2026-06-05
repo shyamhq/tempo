@@ -7,11 +7,13 @@ type RenameTarget =
   | { kind: 'thread'; spaceId: string; id: string }
   | null;
 
-type PendingDeleteInput =
+export type PendingDeleteInput =
   | { kind: 'space'; id: string; name: string; threadCount: number }
   | { kind: 'thread'; id: string; title: string; spaceId: string };
 
 type PendingDelete = (PendingDeleteInput & { expiresAt: number }) | null;
+
+type CommitFn = (p: PendingDeleteInput) => void;
 
 export const UNDO_MS = 5000;
 
@@ -21,12 +23,14 @@ interface SidebarState {
   expanded: Set<string>;
   renaming: RenameTarget;
   pendingDelete: PendingDelete;
+  _commit: CommitFn | null;
   collapsed: boolean;
   toggleExpanded: (id: string, force?: boolean) => void;
   startRename: (target: RenameTarget) => void;
   clearRename: () => void;
   queueDelete: (d: PendingDeleteInput) => void;
   clearDelete: () => void;
+  registerCommit: (fn: CommitFn | null) => void;
   setCollapsed: (v: boolean) => void;
   toggleCollapsed: () => void;
   hydrateCollapsed: () => void;
@@ -41,6 +45,7 @@ export const useSidebar = create<SidebarState>((set) => ({
   expanded: new Set(),
   renaming: null,
   pendingDelete: null,
+  _commit: null,
   collapsed: false,
   toggleExpanded: (id, force) =>
     set((s) => {
@@ -52,8 +57,16 @@ export const useSidebar = create<SidebarState>((set) => ({
     }),
   startRename: (target) => set({ renaming: target }),
   clearRename: () => set({ renaming: null }),
-  queueDelete: (d) => set({ pendingDelete: { ...d, expiresAt: Date.now() + UNDO_MS } }),
+  queueDelete: (d) =>
+    set((s) => {
+      // A previous pending is still in flight; the user moved on, so commit it
+      // now rather than letting its network call get cancelled when the slot
+      // gets overwritten.
+      if (s.pendingDelete) s._commit?.(s.pendingDelete);
+      return { pendingDelete: { ...d, expiresAt: Date.now() + UNDO_MS } };
+    }),
   clearDelete: () => set({ pendingDelete: null }),
+  registerCommit: (fn) => set({ _commit: fn }),
   setCollapsed: (v) => {
     persistCollapsed(v);
     set({ collapsed: v });

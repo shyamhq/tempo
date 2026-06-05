@@ -1,48 +1,72 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
+import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { Undo2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef } from 'react';
-import { useSidebar } from '@/hooks/use-sidebar-state';
+import { useCallback, useEffect } from 'react';
+import { type PendingDeleteInput, useSidebar } from '@/hooks/use-sidebar-state';
 import { api } from '@/lib/api-client';
 
 export function UndoToast() {
   const pending = useSidebar((s) => s.pendingDelete);
   const clear = useSidebar((s) => s.clearDelete);
+  const registerCommit = useSidebar((s) => s.registerCommit);
   const qc = useQueryClient();
   const router = useRouter();
-  // Once the network call fires, undo becomes a no-op — otherwise a click that
-  // lands between setTimeout firing and the await resolving would re-fetch the
-  // (now actually deleted) item and silently restore an empty row.
-  const cancelled = useRef(false);
+
+  const commit = useCallback(
+    async (p: PendingDeleteInput) => {
+      // Optimistic cache removal. When commit fires via displacement (the slot
+      // moves to a new pending), the row is no longer hidden by `pendingDel`
+      // and would briefly reappear until the server confirmed the delete.
+      try {
+        if (p.kind === 'space') {
+          qc.setQueryData<Space[]>(['spaces'], (old) =>
+            old ? old.filter((s) => s.id !== p.id) : old,
+          );
+          await api.deleteSpace(p.id);
+          qc.invalidateQueries({ queryKey: ['spaces'] });
+        } else {
+          qc.setQueryData<{ threads: SpaceThreadLite[] }>(['space-threads', p.spaceId], (old) =>
+            old ? { threads: old.threads.filter((t) => t.id !== p.id) } : old,
+          );
+          await api.deleteThread(p.id);
+          qc.invalidateQueries({ queryKey: ['space-threads', p.spaceId] });
+        }
+        router.refresh();
+      } catch (err) {
+        // Roll back the optimistic removal by re-fetching truth from the server.
+        console.error('[undo-toast] commit failed', err);
+        qc.invalidateQueries({
+          queryKey: p.kind === 'space' ? ['spaces'] : ['space-threads', p.spaceId],
+        });
+      }
+    },
+    [qc, router],
+  );
+
+  useEffect(() => {
+    registerCommit(commit);
+    return () => registerCommit(null);
+  }, [commit, registerCommit]);
 
   useEffect(() => {
     if (!pending) return;
-    cancelled.current = false;
-    const remaining = Math.max(0, pending.expiresAt - Date.now());
+    const target = pending;
+    const remaining = Math.max(0, target.expiresAt - Date.now());
     const timer = setTimeout(async () => {
-      if (cancelled.current) return;
-      if (pending.kind === 'space') {
-        await api.deleteSpace(pending.id);
-        qc.invalidateQueries({ queryKey: ['spaces'] });
-      } else {
-        await api.deleteThread(pending.id);
-        qc.invalidateQueries({ queryKey: ['space-threads', pending.spaceId] });
-      }
-      router.refresh();
+      await commit(target);
       clear();
     }, remaining);
     return () => clearTimeout(timer);
-  }, [pending, qc, router, clear]);
+  }, [pending, commit, clear]);
 
   if (!pending) return null;
   const label =
     pending.kind === 'space' ? `Deleted "${pending.name}"` : `Deleted "${pending.title}"`;
 
   const undo = () => {
-    if (!pending) return;
-    cancelled.current = true;
     if (pending.kind === 'space') {
       qc.invalidateQueries({ queryKey: ['spaces'] });
     } else {
