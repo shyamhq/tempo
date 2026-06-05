@@ -69,13 +69,14 @@ export function NewThreadCompose({ space }: { space: Space }) {
   };
 
   const prefill = (lead: string) => {
-    setText(lead);
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.selectionStart = el.selectionEnd = lead.length;
-    });
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(0, 0);
+    // execCommand is the only API that participates in the textarea's native undo
+    // stack across Chromium/Firefox/WebKit, so Ctrl/Cmd+Z reverts the chip insert.
+    // The synthetic input event it fires flows through onChange to update `text`.
+    document.execCommand('insertText', false, lead);
   };
 
   const copy = async () => {
