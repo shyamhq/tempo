@@ -254,6 +254,16 @@ body {
   padding: 2px 6px;
 }
 
+/* Inline code inside a Comment range: drop the chip's opaque chrome so the
+   comment highlight reads as one continuous band across text and code. The
+   chip's gray fill would otherwise mask the bg-comment span beneath it,
+   making the code look excluded from the selection. */
+.plan-editor-dense .ProseMirror span[data-comment-id] code,
+.plan-editor-dense .ProseMirror :not(pre) > code:has(span[data-comment-id]) {
+  background: transparent;
+  border-color: transparent;
+}
+
 .plan-editor-dense .confluence-code-block {
   margin: 0.75rem 0;
   border-radius: var(--radius-md);
