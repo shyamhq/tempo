@@ -23,7 +23,15 @@ export function DiscussionButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="discussion-fab fixed bottom-5 left-5 z-40 inline-flex items-center justify-center h-11 w-11 rounded-full bg-primary text-on-primary shadow-card hover:bg-primary-hover transition-all active:scale-[0.97]"
+      className="discussion-fab fixed bottom-5 z-40 inline-flex items-center justify-center h-11 w-11 rounded-full bg-primary text-on-primary shadow-card hover:bg-primary-hover transition-all active:scale-[0.97]"
+      style={{
+        // Align with the left padding edge of the centered Plan container.
+        // --sidebar-w is written by Sidebar on every collapse-state change.
+        // max() ensures the 24px gutter is respected even when the container
+        // is narrower than the viewport (i.e. on smaller screens where the
+        // 1600px cap isn't reached, the FAB sits at sidebar + 24px).
+        left: 'calc(var(--sidebar-w, 48px) + max(24px, (100vw - var(--sidebar-w, 48px) - 1600px) / 2 + 24px))',
+      }}
     >
       <MessageSquare className="size-icon-md" strokeWidth={2} />
       {unreadCount > 0 ? (

@@ -271,7 +271,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      <DiscussionButton open={discussionOpen} unreadCount={unreadCount} onClick={openDiscussion} />
+      <DiscussionButton
+        open={discussionOpen}
+        unreadCount={unreadCount}
+        onClick={openDiscussion}
+      />
       {approved ? null : <PlanSaveBar isDirty={isDirty} save={save} discard={discard} />}
     </div>
   );

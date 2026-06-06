@@ -46,6 +46,16 @@ export function Sidebar({ initial }: { initial: Space[] }) {
     useSidebar.getState().hydrateCollapsed();
   }, []);
 
+  // Publish the sidebar's current pixel width as a CSS variable so that
+  // position:fixed children elsewhere (e.g. the Discussion FAB) can align
+  // to the content area without knowing the magic 48/300 px values.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sidebar-w',
+      collapsed ? '48px' : '300px',
+    );
+  }, [collapsed]);
+
   // ⌘\ toggles the sidebar. Skip when an editable surface is focused so the
   // Plan editor / Compose textarea can still emit a literal backslash.
   useEffect(() => {
