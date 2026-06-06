@@ -1,7 +1,12 @@
-import type { Comment, Reply } from '@tempo/contracts';
+import type { AttachmentRef, Comment, Reply } from '@tempo/contracts';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
 import { comments, replies } from '../db/schema';
+import {
+  insertAttachmentRows,
+  listAttachmentsForParents,
+  verifyAttachmentsInR2,
+} from './attachments';
 import { appendEvent } from './event-log';
 import { newCommentId, newReplyId } from './ids';
 import { toIso } from './threads';
@@ -11,17 +16,27 @@ export async function createComment(
   plan_quote: string,
   plan_context: string,
   first_reply_text?: string,
+  attachment_ids: string[] = [],
 ): Promise<Comment> {
   const id = newCommentId();
-  // Wrap the two inserts so a reply-row failure can't leave an empty comment
-  // committed — without this the `comment_added` event would fire with an
-  // empty `replies` array and the Agent would get nudged for nothing.
+  const replyId = first_reply_text || attachment_ids.length > 0 ? newReplyId() : null;
+  // Verify attachments outside the write tx (HEAD calls); the verified heads
+  // are then trusted inside.
+  const heads = replyId ? await verifyAttachmentsInR2(threadId, attachment_ids) : [];
+
+  // Wrap the two/three inserts so a reply-row failure can't leave an empty
+  // comment committed — without this the `comment_added` event would fire
+  // with an empty `replies` array and the Agent would get nudged for nothing.
   await db.transaction(async (tx) => {
     await tx.insert(comments).values({ id, thread_id: threadId, plan_quote, plan_context });
-    if (first_reply_text) {
-      await tx
-        .insert(replies)
-        .values({ id: newReplyId(), comment_id: id, author: 'dev', text: first_reply_text });
+    if (replyId) {
+      await tx.insert(replies).values({
+        id: replyId,
+        comment_id: id,
+        author: 'dev',
+        text: first_reply_text ?? '',
+      });
+      await insertAttachmentRows(tx, threadId, heads, { kind: 'reply', replyId });
     }
   });
   const comment = await loadComment(id);
@@ -37,7 +52,8 @@ async function loadComment(commentId: string): Promise<Comment> {
     .from(replies)
     .where(eq(replies.comment_id, commentId))
     .orderBy(asc(replies.created_at), asc(replies.id));
-  return shapeComment(row, replyRows);
+  const atts = await listAttachmentsForParents({ reply_ids: replyRows.map((r) => r.id) });
+  return shapeComment(row, replyRows, atts);
 }
 
 export async function listCommentsForThread(threadId: string): Promise<Comment[]> {
@@ -53,13 +69,14 @@ export async function listCommentsForThread(threadId: string): Promise<Comment[]
     .from(replies)
     .where(inArray(replies.comment_id, ids))
     .orderBy(asc(replies.created_at), asc(replies.id));
+  const atts = await listAttachmentsForParents({ reply_ids: replyRows.map((r) => r.id) });
   const grouped = new Map<string, typeof replyRows>();
   for (const r of replyRows) {
     const arr = grouped.get(r.comment_id) ?? [];
     arr.push(r);
     grouped.set(r.comment_id, arr);
   }
-  return rows.map((row) => shapeComment(row, grouped.get(row.id) ?? []));
+  return rows.map((row) => shapeComment(row, grouped.get(row.id) ?? [], atts));
 }
 
 export const resolveComment = (commentId: string) =>
@@ -86,6 +103,7 @@ async function setResolvedBy(
 function shapeComment(
   row: typeof comments.$inferSelect,
   replyRows: (typeof replies.$inferSelect)[],
+  attsByReply: Map<string, AttachmentRef[]>,
 ): Comment {
   return {
     id: row.id,
@@ -94,16 +112,17 @@ function shapeComment(
     plan_context: row.plan_context,
     resolved_by: row.resolved_by,
     created_at: toIso(row.created_at),
-    replies: replyRows.map(shapeReply),
+    replies: replyRows.map((r) => shapeReply(r, attsByReply.get(r.id) ?? [])),
   };
 }
 
-function shapeReply(row: typeof replies.$inferSelect): Reply {
+function shapeReply(row: typeof replies.$inferSelect, attachments: AttachmentRef[]): Reply {
   return {
     id: row.id,
     comment_id: row.comment_id,
     author: row.author,
     payload: { text: row.text ?? '' },
+    attachments,
     created_at: toIso(row.created_at),
   };
 }

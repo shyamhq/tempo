@@ -6,23 +6,36 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip } from '@/components/ui/tooltip';
+import { useAttachmentUploader } from '@/hooks/use-attachment-uploader';
 import { useUnreadAgentReplies } from '@/hooks/use-unread-agent-replies';
 import { api } from '@/lib/api-client';
 import { useComposerStore } from '@/lib/stores/composer-store';
+import { AttachmentStrip } from './attachments/attachment-strip';
+import {
+  AttachmentAddButton,
+  AttachmentDragOverlay,
+  AttachmentThumbnails,
+  useAttachmentSurface,
+} from './attachments/attachment-tray';
 import { MarkdownText } from './markdown-text';
 
 export function NewCommentCard({ threadId }: { threadId: string }) {
   const { plan_quote, plan_context, draft, setDraft, cancel } = useComposerStore();
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const uploader = useAttachmentUploader(threadId);
+  const { rootProps, isDragActive } = useAttachmentSurface(uploader, textareaRef, sending);
 
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
 
+  const hasContent = draft.trim().length > 0 || uploader.readyIds.length > 0;
+  const canSubmit = hasContent && !sending && !uploader.hasUploading;
+
   const submit = async () => {
+    if (!canSubmit) return;
     const first_reply_text = draft.trim();
-    if (!first_reply_text) return;
     setSending(true);
     try {
       // One atomic call: server inserts comment + first Dev reply in a
@@ -32,8 +45,10 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
       const c = await api.createComment(threadId, {
         plan_quote,
         plan_context,
-        first_reply_text,
+        ...(first_reply_text.length > 0 ? { first_reply_text } : {}),
+        attachments: uploader.readyIds,
       });
+      uploader.reset();
       // Single zustand set: close composer AND hand off the new id for the
       // editor's CommentMark effect. Two separate calls would produce two
       // renders and risk the comment anchoring a frame after it appears.
@@ -60,7 +75,16 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
   };
 
   return (
-    <div className="rounded-md border border-highlight/60 bg-surface-2 p-3 shadow-md">
+    <div
+      {...rootProps}
+      className="relative rounded-md border border-highlight/60 bg-surface-2 p-3 shadow-md"
+    >
+      <AttachmentDragOverlay active={isDragActive} />
+      {uploader.items.length > 0 ? (
+        <div className="mb-2">
+          <AttachmentThumbnails uploader={uploader} />
+        </div>
+      ) : null}
       <Textarea
         ref={textareaRef}
         placeholder="Comment…"
@@ -69,13 +93,16 @@ export function NewCommentCard({ threadId }: { threadId: string }) {
         onKeyDown={onKeyDown}
         rows={3}
       />
-      <div className="mt-2 flex justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={cancel} disabled={sending}>
-          Cancel
-        </Button>
-        <Button variant="primary" size="sm" disabled={sending || !draft.trim()} onClick={submit}>
-          {sending ? 'Sending…' : 'Comment'}
-        </Button>
+      <div className="mt-2 flex items-center justify-between">
+        <AttachmentAddButton uploader={uploader} disabled={sending} />
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={cancel} disabled={sending}>
+            Cancel
+          </Button>
+          <Button variant="primary" size="sm" disabled={!canSubmit} onClick={submit}>
+            {sending ? 'Sending…' : 'Comment'}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -96,6 +123,12 @@ export function CommentCard({
   const [submitting, setSubmitting] = useState(false);
   const [resolving, setResolving] = useState(false);
   const replyRef = useRef<HTMLTextAreaElement>(null);
+  const uploader = useAttachmentUploader(comment.thread_id);
+  const { rootProps: replyRoot, isDragActive: replyDrag } = useAttachmentSurface(
+    uploader,
+    replyRef,
+    submitting,
+  );
 
   const { unreadCount, markSeen } = useUnreadAgentReplies(comment.thread_id, comment);
 
@@ -134,14 +167,21 @@ export function CommentCard({
     return () => clearTimeout(t);
   }, [unreadCount, effectivelyExpanded]);
 
+  const canReply =
+    (replyDraft.trim().length > 0 || uploader.readyIds.length > 0) &&
+    !submitting &&
+    !uploader.hasUploading;
+
   const sendReply = async () => {
-    if (!replyDraft.trim()) return;
+    if (!canReply) return;
     setSubmitting(true);
     try {
       await api.createReply(comment.id, {
         payload: { text: replyDraft.trim() },
+        attachments: uploader.readyIds,
       });
       setReplyDraft('');
+      uploader.reset();
     } finally {
       setSubmitting(false);
     }
@@ -236,7 +276,18 @@ export function CommentCard({
             </div>
           ) : (
             <>
-              <div className="px-4 pt-1.5">
+              <div
+                {...replyRoot}
+                className="relative px-4 pt-1.5"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+              >
+                <AttachmentDragOverlay active={replyDrag} />
+                {uploader.items.length > 0 ? (
+                  <div className="mb-1.5">
+                    <AttachmentThumbnails uploader={uploader} />
+                  </div>
+                ) : null}
                 <Textarea
                   ref={replyRef}
                   placeholder="Reply…"
@@ -249,26 +300,31 @@ export function CommentCard({
                 />
               </div>
               <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-4">
-                <button
-                  type="button"
-                  disabled={resolving}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void toggleResolve();
-                  }}
-                  className="inline-flex items-center gap-1.5 text-body-sm font-medium text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:shadow-focus-soft rounded-md px-2 py-1.5"
-                >
-                  {resolving ? (
-                    <Loader2 className="size-icon-sm animate-spin" aria-hidden />
-                  ) : (
-                    <Check className="size-icon-sm" aria-hidden />
-                  )}
-                  Resolve
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={resolving}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void toggleResolve();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-body-sm font-medium text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:shadow-focus-soft rounded-md px-2 py-1.5"
+                  >
+                    {resolving ? (
+                      <Loader2 className="size-icon-sm animate-spin" aria-hidden />
+                    ) : (
+                      <Check className="size-icon-sm" aria-hidden />
+                    )}
+                    Resolve
+                  </button>
+                  <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+                    <AttachmentAddButton uploader={uploader} disabled={submitting} />
+                  </div>
+                </div>
                 <Button
                   variant="accent"
                   size="md"
-                  disabled={submitting || !replyDraft.trim()}
+                  disabled={!canReply}
                   onClick={(e) => {
                     e.stopPropagation();
                     void sendReply();
@@ -297,7 +353,10 @@ export function CommentCard({
             {firstReply?.author ?? 'dev'}
           </span>
           <span className="flex-1 min-w-0 truncate text-body-sm text-ink-muted">
-            {firstReply ? previewText(firstReply.payload.text) : ''}
+            {firstReply
+              ? previewText(firstReply.payload.text) ||
+                (firstReply.attachments.length > 0 ? 'Image' : '')
+              : ''}
           </span>
           {comment.replies.length > 1 ? (
             <span className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-surface-2 text-micro font-semibold text-ink-subtle tabular-nums">
@@ -390,7 +449,10 @@ function ReplyRow({ reply }: { reply: Reply }) {
         </span>
       </div>
       <div ref={bodyRef} className={clamped ? 'line-clamp-4' : undefined}>
-        <MarkdownText text={reply.payload.text} className="[&_p]:text-body-sm" />
+        {reply.payload.text.length > 0 ? (
+          <MarkdownText text={reply.payload.text} className="[&_p]:text-body-sm" />
+        ) : null}
+        <AttachmentStrip attachments={reply.attachments} />
       </div>
       {clampable ? (
         <button

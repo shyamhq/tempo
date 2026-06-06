@@ -1,8 +1,9 @@
-import type { Event } from '@tempo/contracts';
+import type { AttachmentRef, Event } from '@tempo/contracts';
 import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { newEventId } from '../db/ids';
 import { events } from '../db/schema';
+import { listAttachmentsForParents } from './attachments';
 
 // Per-thread monotonic counter source: COUNT(*) of existing event rows for the
 // thread at append time, inside a transaction. SQLite is single-writer so the
@@ -26,11 +27,16 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
     const id = newEventId(n + 1);
     const created_at = new Date().toISOString();
     const event = { id, created_at, ...payload } as Event;
+    // Strip signed URLs before persisting — the event log carries
+    // attachment ids only; signing happens at read time so URLs never
+    // go stale in storage. The live event the caller receives keeps the
+    // URLs it was given (caller's local handoff to whatever consumed
+    // the original write — e.g. the long-poll response stream).
     await tx.insert(events).values({
       id,
       thread_id: threadId,
       kind: event.kind,
-      payload_json: event as unknown as Record<string, unknown>,
+      payload_json: stripAttachmentUrls(event) as unknown as Record<string, unknown>,
       created_at,
     });
     return event;
@@ -43,7 +49,93 @@ export async function readEventsAfter(threadId: string, cursor: string): Promise
     .from(events)
     .where(and(eq(events.thread_id, threadId), gt(events.id, cursor)))
     .orderBy(asc(events.id));
-  return rows.map((r) => r.payload_json as unknown as Event);
+  const stored = rows.map((r) => r.payload_json as unknown as Event);
+  return resignAttachmentUrls(stored);
+}
+
+// Replace each AttachmentRef with an id-only stub so storage never holds a
+// usable signed URL. `url` and `expires_at` use sentinel values that still
+// satisfy the schema validators — empty strings would fail Zod's `.url()`
+// and `.datetime()` on the read path before resignAttachmentUrls runs.
+// resignAttachmentUrls drops stubs that no longer have a matching row.
+const STUB_URL = 'https://placeholder.invalid/' as const;
+const STUB_EXPIRES = '1970-01-01T00:00:00.000Z' as const;
+
+function stripAttachmentUrls(event: Event): Event {
+  const stub = (a: AttachmentRef): AttachmentRef => ({
+    ...a,
+    url: STUB_URL,
+    expires_at: STUB_EXPIRES,
+  });
+  if (event.kind === 'discussion_message_posted') {
+    return {
+      ...event,
+      message: { ...event.message, attachments: event.message.attachments.map(stub) },
+    };
+  }
+  if (event.kind === 'reply_added') {
+    return { ...event, reply: { ...event.reply, attachments: event.reply.attachments.map(stub) } };
+  }
+  if (event.kind === 'comment_added') {
+    return {
+      ...event,
+      comment: {
+        ...event.comment,
+        replies: event.comment.replies.map((r) => ({ ...r, attachments: r.attachments.map(stub) })),
+      },
+    };
+  }
+  return event;
+}
+
+async function resignAttachmentUrls(stored: Event[]): Promise<Event[]> {
+  const messageIds = new Set<string>();
+  const replyIds = new Set<string>();
+  for (const e of stored) {
+    if (e.kind === 'discussion_message_posted') messageIds.add(e.message.id);
+    else if (e.kind === 'reply_added') replyIds.add(e.reply.id);
+    else if (e.kind === 'comment_added') {
+      for (const r of e.comment.replies) replyIds.add(r.id);
+    }
+  }
+  if (messageIds.size === 0 && replyIds.size === 0) return stored;
+
+  const byParent = await listAttachmentsForParents({
+    message_ids: [...messageIds],
+    reply_ids: [...replyIds],
+  });
+  const fresh = (parentId: string, refs: AttachmentRef[]): AttachmentRef[] => {
+    const live = byParent.get(parentId) ?? [];
+    return refs.flatMap((r) => {
+      const match = live.find((a) => a.id === r.id);
+      return match ? [match] : [];
+    });
+  };
+
+  return stored.map((e) => {
+    if (e.kind === 'discussion_message_posted') {
+      return {
+        ...e,
+        message: { ...e.message, attachments: fresh(e.message.id, e.message.attachments) },
+      };
+    }
+    if (e.kind === 'reply_added') {
+      return { ...e, reply: { ...e.reply, attachments: fresh(e.reply.id, e.reply.attachments) } };
+    }
+    if (e.kind === 'comment_added') {
+      return {
+        ...e,
+        comment: {
+          ...e.comment,
+          replies: e.comment.replies.map((r) => ({
+            ...r,
+            attachments: fresh(r.id, r.attachments),
+          })),
+        },
+      };
+    }
+    return e;
+  });
 }
 
 export async function latestEventId(threadId: string): Promise<string> {

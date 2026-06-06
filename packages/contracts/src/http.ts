@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AgentTodo, Event } from './events';
 import {
+  AttachmentId,
   Comment,
   ConnectToken,
   DiscussionMessage,
@@ -171,12 +172,14 @@ export const CreateCommentRequest = z.object({
   plan_quote: z.string(),
   plan_context: z.string(),
   first_reply_text: z.string().min(1).optional(),
+  attachments: z.array(AttachmentId).max(8).default([]),
 });
 export const CreateCommentResponse = Comment;
 
 // POST /api/comments/:id/replies
 export const CreateReplyRequest = z.object({
   payload: ReplyPayload,
+  attachments: z.array(AttachmentId).max(8).default([]),
 });
 export const CreateReplyResponse = Reply;
 
@@ -187,6 +190,24 @@ export const ResolveCommentResponse = z.object({ ok: z.literal(true) });
 // POST /api/comments/:id/unresolve
 export const UnresolveCommentRequest = z.object({});
 export const UnresolveCommentResponse = z.object({ ok: z.literal(true) });
+
+// POST /api/threads/:id/attachments/init
+// Browser declares the file it's about to upload; server returns a signed PUT
+// URL into R2. No DB row yet — the row is written at message/reply create
+// time alongside the parent. 10 MB hard cap; R2 lifecycle sweeps orphans.
+export const InitAttachmentInput = z.object({
+  mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  byte_len: z
+    .number()
+    .int()
+    .positive()
+    .max(10 * 1024 * 1024),
+});
+export const InitAttachmentResult = z.object({
+  id: AttachmentId,
+  put_url: z.string().url(),
+  expires_at: IsoTimestamp,
+});
 
 // POST /api/threads/:id/discussion/messages
 // Wire body is identical to the MCP tool's input — re-export so the two

@@ -1,0 +1,37 @@
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    environment:
+      MINIO_ROOT_USER: tempo-local
+      MINIO_ROOT_PASSWORD: tempo-local-secret
+      # Wildcard CORS so the Console UI can PUT directly to MinIO during dev.
+      # In prod, R2's bucket-level CORS rule replaces this.
+      MINIO_API_CORS_ALLOW_ORIGIN: '*'
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ':9001'
+    healthcheck:
+      test: ['CMD-SHELL', 'mc ready local || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # One-shot bucket initializer: creates the tempo-attachments bucket on
+  # first up. Re-runs are idempotent — `mb --ignore-existing`.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      mc alias set tempo http://minio:9000 tempo-local tempo-local-secret &&
+      mc mb --ignore-existing tempo/tempo-attachments
+      "
+
+volumes:
+  minio-data: {}

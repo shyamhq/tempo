@@ -14,6 +14,8 @@ import {
   DeleteThreadResponse,
   GetConnectTokenResponse,
   GetThreadResponse,
+  type InitAttachmentInput,
+  InitAttachmentResult,
   ListSpacesResponse,
   ListSpaceThreadsResponse,
   ListThreadsResponse,
@@ -115,7 +117,7 @@ export const api = {
   writePlan: (threadId: string, input: z.infer<typeof WritePlanRequest>) =>
     request('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),
 
-  createComment: (threadId: string, input: z.infer<typeof CreateCommentRequest>) =>
+  createComment: (threadId: string, input: z.input<typeof CreateCommentRequest>) =>
     request('POST', `/api/threads/${threadId}/comments`, input, CreateCommentResponse),
 
   resolveComment: (commentId: string) =>
@@ -124,7 +126,7 @@ export const api = {
   unresolveComment: (commentId: string) =>
     request('POST', `/api/comments/${commentId}/unresolve`, {}, UnresolveCommentResponse),
 
-  createReply: (commentId: string, input: z.infer<typeof CreateReplyRequest>) =>
+  createReply: (commentId: string, input: z.input<typeof CreateReplyRequest>) =>
     request('POST', `/api/comments/${commentId}/replies`, input, CreateReplyResponse),
 
   approveThread: (threadId: string) =>
@@ -141,12 +143,20 @@ export const api = {
 
   postDiscussionMessage: (
     threadId: string,
-    input: z.infer<typeof CreateDiscussionMessageRequest>,
+    input: z.input<typeof CreateDiscussionMessageRequest>,
   ) =>
     request(
       'POST',
       `/api/threads/${threadId}/discussion/messages`,
       input,
       CreateDiscussionMessageResponse,
+    ),
+
+  initAttachment: (threadId: string, input: z.input<typeof InitAttachmentInput>) =>
+    request(
+      'POST',
+      `/api/threads/${threadId}/attachments/init`,
+      input,
+      InitAttachmentResult,
     ),
 };

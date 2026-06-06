@@ -11,10 +11,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = await parseBody(req, CreateReplyRequest);
   if (!parsed.ok) return parsed.response;
   try {
-    const reply = await postReply(id, parsed.data.payload, auth.actor);
+    const reply = await postReply(id, parsed.data.payload, auth.actor, parsed.data.attachments);
     return ok(reply, 201);
   } catch (e) {
-    if ((e as Error).message === 'comment_not_found') return err('comment_not_found', 404);
+    const msg = (e as Error).message;
+    if (msg === 'comment_not_found') return err('comment_not_found', 404);
+    if (msg.startsWith('attachment_')) return err(msg, 400);
     throw e;
   }
 }

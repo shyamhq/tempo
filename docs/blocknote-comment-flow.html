@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tempo · BlockNote comment data flow</title>
+  <style>
+    :root {
+      --ink: #16181d;
+      --ink-muted: #5a6273;
+      --ink-subtle: #8a93a3;
+      --hairline: #e6e8ec;
+      --hairline-soft: #f0f1f4;
+      --surface: #ffffff;
+      --surface-2: #f7f8fa;
+      --surface-code: #0e1116;
+      --on-dark: #d6dbe4;
+      --accent: #4f63ff;
+      --accent-deep: #2a3bd8;
+      --highlight: #ffd866;
+      --comment: #ff7e3a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 40px 80px;
+      background: var(--surface-2);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+    h1 + p {
+      color: var(--ink-muted);
+      margin: 0 0 28px;
+      max-width: 720px;
+    }
+    .legend {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 28px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .stage {
+      margin-bottom: 36px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .stage-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--hairline);
+      background: linear-gradient(180deg, #fcfcfd, #ffffff);
+    }
+    .stage-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-right: 10px;
+    }
+    .stage-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      display: inline;
+    }
+    .stage-desc {
+      margin: 8px 0 0;
+      color: var(--ink-muted);
+      max-width: 720px;
+    }
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1.4fr 1fr;
+      gap: 0;
+    }
+    .panel {
+      padding: 16px 20px 20px;
+      border-right: 1px solid var(--hairline-soft);
+    }
+    .panel:last-child { border-right: none; }
+    .panel-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-subtle);
+      margin-bottom: 8px;
+    }
+    .panel-sub {
+      font-size: 12px;
+      color: var(--ink-muted);
+      margin-bottom: 12px;
+    }
+    pre {
+      margin: 0;
+      padding: 12px 14px;
+      background: var(--surface-code);
+      color: var(--on-dark);
+      border-radius: 6px;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    pre.md {
+      background: var(--surface-2);
+      color: var(--ink);
+      border: 1px solid var(--hairline);
+      white-space: pre-wrap;
+    }
+    .mark {
+      background: rgba(255, 126, 58, 0.22);
+      border-bottom: 2px solid var(--comment);
+      padding: 0 2px;
+    }
+    .key   { color: #80a8ff; }
+    .str   { color: #c2e5b1; }
+    .num   { color: #d8b576; }
+    .kw    { color: #ff9e88; }
+    .com   { color: #6a7585; font-style: italic; }
+    .added { background: rgba(195, 235, 168, 0.18); }
+    .arrow {
+      text-align: center;
+      padding: 20px 0;
+      color: var(--ink-subtle);
+      font-size: 13px;
+    }
+    .arrow-line {
+      display: inline-block;
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px dashed var(--hairline);
+      border-radius: 6px;
+    }
+    .empty {
+      color: var(--ink-subtle);
+      font-style: italic;
+      padding: 12px 14px;
+      background: var(--surface-2);
+      border: 1px dashed var(--hairline);
+      border-radius: 6px;
+      font-size: 12.5px;
+    }
+    .callout {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: rgba(79, 99, 255, 0.07);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 6px 6px 0;
+      font-size: 12.5px;
+      color: var(--ink);
+    }
+    .callout strong { color: var(--accent-deep); }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--hairline);
+      color: var(--ink-muted);
+      font-size: 12.5px;
+      max-width: 760px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>BlockNote comment data flow</h1>
+<p>One Plan, one comment, four stages — what's in the database, what the cloud sees, what the Agent writes back, and how the server reconciles. Markdown is what the Agent reads; the block tree is what BlockNote renders; the thread store is the separate map of comment bodies + replies.</p>
+
+<div class="legend">
+  <span><span class="legend-dot" style="background:var(--accent)"></span>plan_doc (BlockNote JSON)</span>
+  <span><span class="legend-dot" style="background:var(--highlight)"></span>plan_md (derived markdown)</span>
+  <span><span class="legend-dot" style="background:var(--comment)"></span>thread_store (comments side-store)</span>
+  <span><span class="legend-dot" style="background:var(--ink-subtle)"></span>Agent payload (markdown + comments[])</span>
+</div>
+
+<!-- ============================================================ -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge">Stage 1</span>
+    <h2 class="stage-title">Plan exists. No comments.</h2>
+    <p class="stage-desc">The Agent drafted a Plan via <code>tempo_write_plan</code>. Server parsed the markdown into BlockNote blocks, stored both, threadStore is empty.</p>
+  </div>
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-label">plan_md</div>
+      <div class="panel-sub">derived from plan_doc via <code>blocksToMarkdownLossy</code></div>
+<pre class="md"># Image upload
+
+We need to support image uploads in the Discussion panel.
+
+## Approach
+
+Use multipart form upload with a presigned URL.</pre>
+    </div>
+    <div class="panel">
+      <div class="panel-label">plan_doc</div>
+      <div class="panel-sub">BlockNote block tree — canonical store</div>
+<pre>[
+  {
+    <span class="key">"id"</span>: <span class="str">"b1"</span>,
+    <span class="key">"type"</span>: <span class="str">"heading"</span>,
+    <span class="key">"props"</span>: { <span class="key">"level"</span>: <span class="num">1</span> },
+    <span class="key">"content"</span>: [
+      { <span class="key">"type"</span>: <span class="str">"text"</span>, <span class="key">"text"</span>: <span class="str">"Image upload"</span>, <span class="key">"styles"</span>: {} }
+    ]
+  },
+  {
+    <span class="key">"id"</span>: <span class="str">"b2"</span>,
+    <span class="key">"type"</span>: <span class="str">"paragraph"</span>,
+    <span class="key">"content"</span>: [
+      { <span class="key">"type"</span>: <span class="str">"text"</span>,
+        <span class="key">"text"</span>: <span class="str">"We need to support image uploads in the Discussion panel."</span>,
+        <span class="key">"styles"</span>: {} }
+    ]
+  },
+  {
+    <span class="key">"id"</span>: <span class="str">"b3"</span>,
+    <span class="key">"type"</span>: <span class="str">"heading"</span>,
+    <span class="key">"props"</span>: { <span class="key">"level"</span>: <span class="num">2</span> },
+    <span class="key">"content"</span>: [
+      { <span class="key">"type"</span>: <span class="str">"text"</span>, <span class="key">"text"</span>: <span class="str">"Approach"</span>, <span class="key">"styles"</span>: {} }
+    ]
+  },
+  {
+    <span class="key">"id"</span>: <span class="str">"b4"</span>,
+    <span class="key">"type"</span>: <span class="str">"paragraph"</span>,
+    <span class="key">"content"</span>: [
+      { <span class="key">"type"</span>: <span class="str">"text"</span>,
+        <span class="key">"text"</span>: <span class="str">"Use multipart form upload with a presigned URL."</span>,
+        <span class="key">"styles"</span>: {} }
+    ]
+  }
+]</pre>
+    </div>
+    <div class="panel">
+      <div class="panel-label">thread_store</div>
+      <div class="panel-sub">keyed by thread id — empty</div>
+      <div class="empty">{} — no threads yet</div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">
+  <span class="arrow-line">↓ &nbsp; Dev selects <em>"presigned URL"</em> in the Console and types a comment: <em>"specify lifetime ≤ 15 min"</em></span>
+</div>
+
+<!-- ============================================================ -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge">Stage 2</span>
+    <h2 class="stage-title">Comment added. plan_doc gains a mark; thread_store gains a thread.</h2>
+    <p class="stage-desc">BlockNote calls <code>threadStore.createThread</code> AND inserts a <code>commentThread</code> mark in the block tree. The mark only carries the thread id — the bodies live in the thread store. Markdown export is byte-identical to Stage 1 (markdown has no syntax for comment annotations).</p>
+  </div>
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-label">plan_md</div>
+      <div class="panel-sub">unchanged from Stage 1</div>
+<pre class="md"># Image upload
+
+We need to support image uploads in the Discussion panel.
+
+## Approach
+
+Use multipart form upload with a <span class="mark">presigned URL</span>.</pre>
+      <div class="callout">
+        <strong>Note:</strong> the highlight is editor-visual only. The markdown string the Agent reads has zero comment information until we ship it through the side-channel.
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-label">plan_doc</div>
+      <div class="panel-sub">block "b4" now has a sliced inline run carrying the thread mark</div>
+<pre>{
+  <span class="key">"id"</span>: <span class="str">"b4"</span>,
+  <span class="key">"type"</span>: <span class="str">"paragraph"</span>,
+  <span class="key">"content"</span>: [
+    { <span class="key">"type"</span>: <span class="str">"text"</span>,
+      <span class="key">"text"</span>: <span class="str">"Use multipart form upload with a "</span>,
+      <span class="key">"styles"</span>: {} },
+    <span class="added">{ <span class="key">"type"</span>: <span class="str">"text"</span>,
+      <span class="key">"text"</span>: <span class="str">"presigned URL"</span>,
+      <span class="key">"styles"</span>: {},
+      <span class="key">"marks"</span>: [
+        { <span class="key">"type"</span>: <span class="str">"commentThread"</span>,
+          <span class="key">"attrs"</span>: { <span class="key">"threadId"</span>: <span class="str">"t_abc"</span> } }
+      ] }</span>,
+    { <span class="key">"type"</span>: <span class="str">"text"</span>, <span class="key">"text"</span>: <span class="str">"."</span>, <span class="key">"styles"</span>: {} }
+  ]
+}</pre>
+    </div>
+    <div class="panel">
+      <div class="panel-label">thread_store</div>
+      <div class="panel-sub">new entry t_abc</div>
+<pre>{
+  <span class="str">"t_abc"</span>: {
+    <span class="key">"type"</span>: <span class="str">"thread"</span>,
+    <span class="key">"id"</span>: <span class="str">"t_abc"</span>,
+    <span class="key">"createdAt"</span>: <span class="str">"2026-06-06T16:18:01Z"</span>,
+    <span class="key">"resolved"</span>: <span class="kw">false</span>,
+    <span class="key">"comments"</span>: [
+      {
+        <span class="key">"id"</span>: <span class="str">"c_1"</span>,
+        <span class="key">"userId"</span>: <span class="str">"dev"</span>,
+        <span class="key">"createdAt"</span>: <span class="str">"2026-06-06T16:18:01Z"</span>,
+        <span class="key">"body"</span>: [
+          { <span class="key">"type"</span>: <span class="str">"paragraph"</span>,
+            <span class="key">"content"</span>: [
+              { <span class="key">"type"</span>: <span class="str">"text"</span>,
+                <span class="key">"text"</span>: <span class="str">"specify lifetime ≤ 15 min"</span>,
+                <span class="key">"styles"</span>: {} }
+            ] }
+        ]
+      }
+    ]
+  }
+}</pre>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">
+  <span class="arrow-line">↓ &nbsp; Agent calls <code>tempo_get_plan(thread_id)</code>. Server builds the payload below.</span>
+</div>
+
+<!-- ============================================================ -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge">Stage 3</span>
+    <h2 class="stage-title">What the cloud sees.</h2>
+    <p class="stage-desc">Server returns <code>plan_md</code> verbatim PLUS a flat <code>comments[]</code> side-channel. The Agent's Claude Code instance reads both; it never sees BlockNote JSON.</p>
+  </div>
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-label">tempo_get_plan response</div>
+      <div class="panel-sub">single MCP call result</div>
+<pre>{
+  <span class="key">"markdown"</span>: <span class="str">"# Image upload\n\nWe need to support image uploads in the Discussion panel.\n\n## Approach\n\nUse multipart form upload with a presigned URL.\n"</span>,
+  <span class="key">"comments"</span>: [
+    {
+      <span class="key">"id"</span>: <span class="str">"t_abc"</span>,
+      <span class="key">"anchor_text"</span>: <span class="str">"presigned URL"</span>,
+      <span class="key">"context"</span>: <span class="str">"Use multipart form upload with a presigned URL."</span>,
+      <span class="key">"resolved"</span>: <span class="kw">false</span>,
+      <span class="key">"thread"</span>: [
+        { <span class="key">"author"</span>: <span class="str">"dev"</span>,
+          <span class="key">"text"</span>: <span class="str">"specify lifetime ≤ 15 min"</span>,
+          <span class="key">"at"</span>: <span class="str">"2026-06-06T16:18:01Z"</span> }
+      ]
+    }
+  ]
+}</pre>
+    </div>
+    <div class="panel" style="grid-column: span 2;">
+      <div class="panel-label">how it's built</div>
+      <div class="panel-sub">server-side projection</div>
+<pre><span class="com">// apps/console/server/plan.ts (sketch)</span>
+<span class="kw">export</span> <span class="kw">async</span> <span class="kw">function</span> <span class="key">getPlanForAgent</span>(threadId) {
+  <span class="kw">const</span> { plan_doc, plan_md } = <span class="kw">await</span> getThread(threadId);
+  <span class="kw">const</span> threads = <span class="kw">await</span> threadStore.getThreads();
+
+  <span class="com">// Walk plan_doc, find every commentThread mark, collect its inline text</span>
+  <span class="com">// and the sentence it sits in.</span>
+  <span class="kw">const</span> anchors = <span class="key">extractAnchors</span>(plan_doc);
+  <span class="com">// → [{ threadId: "t_abc", anchor_text: "presigned URL",</span>
+  <span class="com">//      context: "Use multipart form upload with a presigned URL." }]</span>
+
+  <span class="kw">return</span> {
+    markdown: plan_md,
+    comments: anchors.<span class="key">map</span>((a) =&gt; {
+      <span class="kw">const</span> t = threads.<span class="key">get</span>(a.threadId);
+      <span class="kw">return</span> {
+        id: a.threadId,
+        anchor_text: a.anchor_text,
+        context: a.context,
+        resolved: t.resolved,
+        thread: t.comments.<span class="key">map</span>((c) =&gt; ({
+          author: c.userId,
+          text: <span class="key">bodyToText</span>(c.body),  <span class="com">// flatten BlockNote blocks → string</span>
+          at: c.createdAt,
+        })),
+      };
+    }),
+  };
+}</pre>
+      <div class="callout">
+        <strong>Why a side-channel and not inline markdown markers?</strong> Markdown has no comment syntax. Inlining markers (e.g. <code>{{comment:t_abc}}…{{/comment}}</code>) would force the Agent to write them back exactly — high foot-gun. A side-channel keeps the markdown clean and pushes anchor-matching to the server, where we can be deliberate.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="arrow">
+  <span class="arrow-line">↓ &nbsp; Agent decides: "good point — add the lifetime constraint to the line." Calls <code>tempo_write_plan(thread_id, new_markdown)</code>.</span>
+</div>
+
+<!-- ============================================================ -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge">Stage 4</span>
+    <h2 class="stage-title">Agent writes back. Server reconciles the comment anchor.</h2>
+    <p class="stage-desc">Agent ships fresh markdown. Server parses to a new block tree, walks every existing thread mark, and re-anchors by substring-matching <code>anchor_text</code> then <code>context</code>. The comment stays attached to the rewritten line; if the anchor text vanished entirely, the thread is flipped to <code>orphaned</code>.</p>
+  </div>
+  <div class="panels">
+    <div class="panel">
+      <div class="panel-label">incoming markdown</div>
+      <div class="panel-sub">tempo_write_plan body</div>
+<pre class="md"># Image upload
+
+We need to support image uploads in the Discussion panel.
+
+## Approach
+
+Use multipart form upload with a <span class="mark">presigned URL (lifetime ≤ 15 min)</span>.</pre>
+    </div>
+    <div class="panel">
+      <div class="panel-label">new plan_doc</div>
+      <div class="panel-sub">mark re-applied to the new anchor text</div>
+<pre>{
+  <span class="key">"id"</span>: <span class="str">"b4"</span>,
+  <span class="key">"type"</span>: <span class="str">"paragraph"</span>,
+  <span class="key">"content"</span>: [
+    { <span class="key">"type"</span>: <span class="str">"text"</span>,
+      <span class="key">"text"</span>: <span class="str">"Use multipart form upload with a "</span>,
+      <span class="key">"styles"</span>: {} },
+    <span class="added">{ <span class="key">"type"</span>: <span class="str">"text"</span>,
+      <span class="key">"text"</span>: <span class="str">"presigned URL (lifetime ≤ 15 min)"</span>,
+      <span class="key">"styles"</span>: {},
+      <span class="key">"marks"</span>: [
+        { <span class="key">"type"</span>: <span class="str">"commentThread"</span>,
+          <span class="key">"attrs"</span>: { <span class="key">"threadId"</span>: <span class="str">"t_abc"</span> } }
+      ] }</span>,
+    { <span class="key">"type"</span>: <span class="str">"text"</span>, <span class="key">"text"</span>: <span class="str">"."</span>, <span class="key">"styles"</span>: {} }
+  ]
+}</pre>
+    </div>
+    <div class="panel">
+      <div class="panel-label">thread_store</div>
+      <div class="panel-sub">untouched — only plan_doc was rewritten</div>
+<pre>{
+  <span class="str">"t_abc"</span>: {
+    ...same as Stage 2...
+    <span class="com">// resolved still false, comments still has c_1</span>
+  }
+}</pre>
+      <div class="callout">
+        <strong>Reconciliation rule.</strong> Match priority: (1) exact <code>anchor_text</code> substring in the new block tree → re-anchor; (2) <code>anchor_text</code> within a one-edit Levenshtein window of any inline run → re-anchor with a "soft" flag; (3) <code>context</code> substring anywhere → re-anchor at the closest containing block; (4) no match → set <code>thread.metadata.orphaned = true</code> and leave it visible in the sidebar. This is structurally the same logic as the existing <code>reconcileCommentAnchors</code> in <code>apps/console/server/comments.ts</code>, just operating on BlockNote inline runs instead of Tiptap CommentMark ranges.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <strong>Storage shape, when this leaves the playground:</strong> two columns on the existing <code>threads</code> row — <code>plan_doc</code> (BlockNote block-tree JSON, replaces today's Tiptap JSON) and <code>plan_md</code> (cached derived markdown). The threadStore is a new pair of tables — <code>plan_threads(thread_id, plan_id, resolved, metadata)</code> and <code>plan_thread_comments(comment_id, thread_id, user_id, body_blocks, created_at)</code> — with a small <code>ThreadStore</code> implementation that reads/writes those tables (this is what BlockNote calls a "custom ThreadStore" — they ship <code>YjsThreadStore</code>, <code>TiptapThreadStore</code>, <code>RESTYjsThreadStore</code>; we'd add <code>TempoThreadStore</code>). Comments and replies do not need a Yjs document at rest — only the playground uses Yjs because it's the path of least resistance for an in-memory single-user demo.
+</div>
+
+</body>
+</html>

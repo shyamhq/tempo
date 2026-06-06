@@ -1,14 +1,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { SessionId, ThreadId } from '@tempo/contracts';
+import type { AttachmentRef, Event, SessionId, ThreadId } from '@tempo/contracts';
 import {
+  type AttachOutput,
   PollInput,
+  type PollOutput,
   PostDiscussionMessageInput,
   PostReplyInput,
   SetThreadMetaInput,
   WritePlanInput,
 } from '@tempo/contracts/mcp';
+import type { z } from 'zod';
+import { env } from './env';
 import type { ConsoleClient } from './http-client';
+import { fetchAttachmentAsImageBlock } from './r2-fetcher';
+
+type AttachState = z.infer<typeof AttachOutput>;
+type PollState = z.infer<typeof PollOutput>;
 
 export async function runStdioMcpServer(args: {
   client: ConsoleClient;
@@ -22,10 +30,14 @@ export async function runStdioMcpServer(args: {
     'tempo_attach',
     {
       description:
-        'Always call first. Returns Thread state — title, description, status — plus Plan, open Comments, Discussion messages, and the workflow guide for this session. Call again after any session resume or context compact.',
+        'Always call first. Returns Thread state — title, description, status — plus Plan, open Comments, Discussion messages, and the workflow guide for this session. Call again after any session resume or context compact. Images attached to the last few Discussion messages are inlined as vision content.',
       inputSchema: {},
     },
-    async () => wrap(await client.getSessionState(sessionId)),
+    async () => {
+      const state = (await client.getSessionState(sessionId)) as AttachState;
+      const images = await fetchRecentMessageImages(state, env.ATTACH_INLINE_RECENT_MESSAGES);
+      return wrapWithImages(state, images);
+    },
   );
 
   server.registerTool(
@@ -43,10 +55,15 @@ export async function runStdioMcpServer(args: {
   server.registerTool(
     'tempo_poll',
     {
-      description: 'Long-poll the event stream for new events past cursor.',
+      description:
+        'Long-poll the event stream for new events past cursor. Images attached to new events arrive as vision content alongside the events JSON.',
       inputSchema: PollInput.shape,
     },
-    async (args) => wrap(await client.poll(threadId, args.cursor)),
+    async (args) => {
+      const poll = (await client.poll(threadId, args.cursor)) as PollState;
+      const images = await fetchEventImages(poll.events);
+      return wrapWithImages(poll, images);
+    },
   );
 
   server.registerTool(
@@ -98,4 +115,44 @@ export async function runStdioMcpServer(args: {
 
 function wrap(payload: unknown) {
   return { content: [{ type: 'text' as const, text: JSON.stringify(payload) }] };
+}
+
+type ImageBlock = { type: 'image'; data: string; mimeType: string };
+
+function wrapWithImages(payload: unknown, images: ImageBlock[]) {
+  return {
+    content: [
+      { type: 'text' as const, text: JSON.stringify(payload) },
+      ...images.map((img) => ({
+        type: 'image' as const,
+        data: img.data,
+        mimeType: img.mimeType,
+      })),
+    ],
+  };
+}
+
+async function fetchRecentMessageImages(state: AttachState, n: number): Promise<ImageBlock[]> {
+  const messages = state.discussion.messages;
+  const recent = messages.slice(-n);
+  const refs: AttachmentRef[] = recent.flatMap((m) => m.attachments);
+  return fetchImages(refs);
+}
+
+async function fetchEventImages(events: Event[]): Promise<ImageBlock[]> {
+  const refs: AttachmentRef[] = [];
+  for (const e of events) {
+    if (e.kind === 'discussion_message_posted') refs.push(...e.message.attachments);
+    else if (e.kind === 'reply_added') refs.push(...e.reply.attachments);
+    else if (e.kind === 'comment_added') {
+      for (const r of e.comment.replies) refs.push(...r.attachments);
+    }
+  }
+  return fetchImages(refs);
+}
+
+async function fetchImages(refs: AttachmentRef[]): Promise<ImageBlock[]> {
+  if (refs.length === 0) return [];
+  const out = await Promise.all(refs.map(fetchAttachmentAsImageBlock));
+  return out.flatMap((b) => (b ? [b] : []));
 }

@@ -7,6 +7,7 @@ export const PlanId = z.string().regex(/^pln_[A-Z0-9]{26}$/);
 export const CommentId = z.string().regex(/^cmt_[A-Z0-9]{26}$/);
 export const ReplyId = z.string().regex(/^rep_[A-Z0-9]{26}$/);
 export const MessageId = z.string().regex(/^msg_[A-Z0-9]{26}$/);
+export const AttachmentId = z.string().regex(/^att_[A-Z0-9]{26}$/);
 export const EventId = z.string().regex(/^evt_[0-9]{14,}$/);
 export const ConnectToken = z.string().regex(/^tmp_[A-Za-z0-9_-]{32,}$/);
 
@@ -17,6 +18,7 @@ export type PlanId = z.infer<typeof PlanId>;
 export type CommentId = z.infer<typeof CommentId>;
 export type ReplyId = z.infer<typeof ReplyId>;
 export type MessageId = z.infer<typeof MessageId>;
+export type AttachmentId = z.infer<typeof AttachmentId>;
 export type EventId = z.infer<typeof EventId>;
 export type ConnectToken = z.infer<typeof ConnectToken>;
 
@@ -105,11 +107,25 @@ export const ReplyPayload = z.object({
 });
 export type ReplyPayload = z.infer<typeof ReplyPayload>;
 
+// An Attachment is bound to a single parent (Message OR Reply). On the read
+// shape, `url` is a freshly signed GET URL with `expires_at` tracking its TTL;
+// the server re-signs at every read so signatures never escape into stored
+// payloads (notably the event log carries ids only).
+export const AttachmentRef = z.object({
+  id: AttachmentId,
+  mime: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+  byte_len: z.number().int().positive(),
+  url: z.string().url(),
+  expires_at: IsoTimestamp,
+});
+export type AttachmentRef = z.infer<typeof AttachmentRef>;
+
 export const Reply = z.object({
   id: ReplyId,
   comment_id: CommentId,
   author: Actor,
   payload: ReplyPayload,
+  attachments: z.array(AttachmentRef).default([]),
   created_at: IsoTimestamp,
 });
 export type Reply = z.infer<typeof Reply>;
@@ -135,6 +151,7 @@ export const DiscussionMessage = z.object({
   author: Actor,
   text: z.string().min(1).max(8_000).nullable(),
   questions: z.array(Question).nullable(),
+  attachments: z.array(AttachmentRef).default([]),
   created_at: IsoTimestamp,
 });
 export type DiscussionMessage = z.infer<typeof DiscussionMessage>;

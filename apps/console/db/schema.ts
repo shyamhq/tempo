@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   primaryKey,
@@ -115,6 +116,28 @@ export const discussion_messages = sqliteTable(
     created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [index('idx_discussion_messages_thread').on(t.thread_id, t.created_at, t.id)],
+);
+
+export const attachments = sqliteTable(
+  'attachments',
+  {
+    id: text('id').primaryKey(),
+    thread_id: text('thread_id')
+      .notNull()
+      .references(() => threads.id),
+    message_id: text('message_id').references(() => discussion_messages.id, {
+      onDelete: 'cascade',
+    }),
+    reply_id: text('reply_id').references(() => replies.id, { onDelete: 'cascade' }),
+    mime: text('mime').notNull(),
+    byte_len: integer('byte_len').notNull(),
+    created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [
+    check('one_parent', sql`(${t.message_id} IS NULL) <> (${t.reply_id} IS NULL)`),
+    index('idx_att_message').on(t.message_id),
+    index('idx_att_reply').on(t.reply_id),
+  ],
 );
 
 export const events = sqliteTable(

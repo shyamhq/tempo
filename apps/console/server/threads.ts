@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { defaultWorkspaceId } from '../db/ids';
 import {
+  attachments,
   comments,
   discussion_messages,
   events,
@@ -13,6 +14,8 @@ import {
   spaces,
   threads,
 } from '../db/schema';
+import { deletePrefix } from '../lib/r2';
+import { logger } from '../logger';
 import { appendEvent } from './event-log';
 import { newPlanId, newThreadId } from './ids';
 
@@ -120,6 +123,10 @@ export async function deleteThread(threadId: string): Promise<void> {
     if (commentIds.length > 0) {
       await tx.delete(replies).where(inArray(replies.comment_id, commentIds));
     }
+    // Cascade is silently unenforced (PRAGMA foreign_keys not set — see
+    // AGENTS.md "Spotted but not fixed"). Delete explicitly to be safe; the
+    // R2 prefix-delete below removes the underlying bytes.
+    await tx.delete(attachments).where(eq(attachments.thread_id, threadId));
     await tx.delete(comments).where(eq(comments.thread_id, threadId));
     await tx.delete(discussion_messages).where(eq(discussion_messages.thread_id, threadId));
     await tx.delete(events).where(eq(events.thread_id, threadId));
@@ -127,6 +134,14 @@ export async function deleteThread(threadId: string): Promise<void> {
     await tx.delete(plans).where(eq(plans.thread_id, threadId));
     await tx.delete(threads).where(eq(threads.id, threadId));
   });
+  // R2 prefix-delete runs after the DB commit so a failed delete leaves an
+  // orphan object that the 7-day lifecycle rule will sweep, not a dangling
+  // DB row.
+  try {
+    await deletePrefix(threadId);
+  } catch (e) {
+    logger.warn({ threadId, err: e }, 'attachment prefix-delete failed; lifecycle rule will sweep');
+  }
 }
 
 // Single mutation for title and/or space_id so the route handler doesn't have

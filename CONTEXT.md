@@ -45,6 +45,10 @@ A singleton (one per Thread) free-form channel between Dev and Agent for unancho
 ### Message
 One entry in a Discussion. Authored by Dev or Agent. Carries free-form `text`, an inline batch of structured `questions` (Agent-only — the Console renders these as a stepper card; the Dev's reply lands as the next text Message), or both. Rounds are not a separate entity — an Agent question batch is one Message that happens to carry `questions`. Append-only (D20). Rendered with the same markdown pipeline as Reply text (`MarkdownText`). Three question types: `single_choice`, `multi_choice`, `open_text`; choice questions may allow a `Other (specify)` write-in.
 
+### Attachment
+An image bound to a Discussion Message or a Reply, addressable by id, stored in an S3-compatible bucket under the key `<thread_id>/<id>`. Surfaces in the wire contract as an `AttachmentRef` (id + mime + byte length + signed read URL + expiry). Lives at: `apps/console/server/attachments.ts` (server-domain), `apps/console/lib/r2.ts` (storage adapter), `apps/console/components/thread/attachments/` (UI).
+**Avoid:** "file", "upload", "asset", "media", "blob".
+
 ### Agent Narration
 The Agent's inline prose within a single turn, emitted between tool calls (e.g. *"Plan looks right; let me verify the auth wiring."*). Distinct from a **Message** (Dev↔Agent dialog channel) and from a **Reply** (anchored follow-up on a Comment). Surfaced only by the `stream-json` driver (T?? D??); the PTY driver doesn't produce it because PreToolUse hooks can't see assistant text. Ephemeral by UX — shown in the floating Activity widget for the active turn — but persisted in the event log alongside `agent_tool_use`.
 

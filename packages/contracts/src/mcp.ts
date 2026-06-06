@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Event } from './events';
 import {
+  AttachmentId,
   Comment,
   CommentId,
   DiscussionMessage,
@@ -15,6 +16,11 @@ import {
 } from './primitives';
 
 export const AttachInput = z.object({});
+// `tempo_attach` returns the wire JSON in its first text content block. For
+// vision: every `AttachmentRef` on a Discussion Message or Reply that belongs
+// to one of the last N messages is also emitted as an MCP `image` content
+// block (base64 payload, mime preserved) so Claude sees the picture, not just
+// the ref. N is `ATTACH_INLINE_RECENT_MESSAGES` on the Agent.
 export const AttachOutput = z.object({
   thread: ThreadSummary,
   plan: Plan,
@@ -40,6 +46,10 @@ export const WritePlanOutput = z.object({
 export const PollInput = z.object({
   cursor: EventId,
 });
+// `tempo_poll` returns the events JSON in its first text content block, and
+// emits one MCP `image` content block per attachment found on a live event
+// (e.g. `discussion_message_posted`, `comment_added`, `reply_added`) so the
+// Agent sees each picture exactly once as it arrives.
 export const PollOutput = z.object({
   events: z.array(Event),
   cursor: EventId,
@@ -48,22 +58,24 @@ export const PollOutput = z.object({
 export const PostReplyInput = z.object({
   comment_id: CommentId,
   payload: ReplyPayload,
+  attachments: z.array(AttachmentId).max(8).default([]),
 });
 export const PostReplyOutput = z.object({
   reply_id: ReplyId,
 });
 
 // One Discussion Message — free-form prose, an inline batch of structured
-// questions (server assigns ids on insert), or both. Server-side rules:
-// `author='agent'` is required to set `questions`; an empty body (no `text`
-// and no `questions`) is rejected.
+// questions (server assigns ids on insert), attachments, or any combination.
+// Server-side rules: `author='agent'` is required to set `questions`; a
+// message with no text, no questions, and no attachments is rejected.
 export const PostDiscussionMessageInput = z
   .object({
     text: z.string().min(1).max(8_000).optional(),
     questions: z.array(QuestionInput).min(1).max(10).optional(),
+    attachments: z.array(AttachmentId).max(8).default([]),
   })
-  .refine((m) => m.text !== undefined || m.questions !== undefined, {
-    message: 'message must carry text, questions, or both',
+  .refine((m) => m.text !== undefined || m.questions !== undefined || m.attachments.length > 0, {
+    message: 'message must carry text, questions, attachments, or any combination',
   });
 export const PostDiscussionMessageOutput = z.object({
   message_id: MessageId,
