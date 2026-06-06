@@ -17,7 +17,11 @@ import { Lightbox } from './lightbox';
 // paste-into-textarea and drag-onto-the-card path land in the same
 // uploader hook.
 
-type Uploader = ReturnType<typeof useAttachmentUploader>;
+// The sub-components read only what they render. The full uploader return
+// (`readyIds`, `allReady`, `hasUploading`, `reset`) belongs to the composer.
+// Narrowing the alias lets the new-thread compose pass a small shim without
+// having to populate fields it doesn't use.
+type Uploader = Pick<ReturnType<typeof useAttachmentUploader>, 'items' | 'addFiles' | 'remove'>;
 
 export function useAttachmentSurface(
   uploader: Uploader,

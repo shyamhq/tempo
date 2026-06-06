@@ -5,7 +5,14 @@ import type { Space } from '@tempo/contracts';
 import { Bug, Check, Copy, RefreshCcw, Search, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AttachmentAddButton,
+  AttachmentDragOverlay,
+  AttachmentThumbnails,
+  useAttachmentSurface,
+} from '@/components/thread/attachments/attachment-tray';
+import type { PendingAttachment } from '@/hooks/use-attachment-uploader';
 import { ApiError, api } from '@/lib/api-client';
 
 type Phase =
@@ -20,6 +27,30 @@ const CHIPS: { label: string; lead: string; Icon: typeof Sparkles }[] = [
   { label: 'Investigate', lead: 'Investigate why ', Icon: Search },
 ];
 
+// Compose lives before any Thread exists. Bytes stay in the browser as
+// blob: URLs until submit; the upload pass runs inside `submit()` after
+// the Thread has been created so /init can resolve its thread_id.
+const ALLOWED_MIMES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+type AllowedMime = (typeof ALLOWED_MIMES)[number];
+const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_FILES = 8;
+
+type Pending = {
+  clientId: string;
+  file: File;
+  localUrl: string;
+  mime: AllowedMime;
+  byteLen: number;
+};
+
+function isAllowedMime(m: string): m is AllowedMime {
+  return (ALLOWED_MIMES as readonly string[]).includes(m);
+}
+
+function pendingClientId() {
+  return `c_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
 export function NewThreadCompose({ space }: { space: Space }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -27,11 +58,85 @@ export function NewThreadCompose({ space }: { space: Space }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'compose' });
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pending, setPending] = useState<Pending[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Track every blob: URL we mint so revoke runs on remove and on unmount.
+  const blobUrlsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    const urls = blobUrlsRef.current;
+    return () => {
+      for (const u of urls.values()) URL.revokeObjectURL(u);
+      urls.clear();
+    };
+  }, []);
+
+  const addPending = useCallback(async (files: File[]): Promise<void> => {
+    // Mint blob URLs and build the claim list outside `setPending` so a
+    // double-invoked updater (React strict mode / concurrent rendering)
+    // can't leave orphaned blob URLs that the ref never sees.
+    const claim: Pending[] = [];
+    for (const f of files) {
+      if (!isAllowedMime(f.type)) continue;
+      if (f.size > MAX_BYTES) continue;
+      const clientId = pendingClientId();
+      const localUrl = URL.createObjectURL(f);
+      blobUrlsRef.current.set(clientId, localUrl);
+      claim.push({ clientId, file: f, localUrl, mime: f.type, byteLen: f.size });
+    }
+    if (claim.length === 0) return;
+    setPending((prev) => {
+      const slotsLeft = MAX_FILES - prev.length;
+      const accepted = claim.slice(0, Math.max(slotsLeft, 0));
+      // Revoke anything that didn't fit so we don't leak.
+      for (const c of claim.slice(accepted.length)) {
+        URL.revokeObjectURL(c.localUrl);
+        blobUrlsRef.current.delete(c.clientId);
+      }
+      return [...prev, ...accepted];
+    });
+  }, []);
+
+  const removePending = useCallback((clientId: string) => {
+    setPending((prev) => prev.filter((p) => p.clientId !== clientId));
+    const url = blobUrlsRef.current.get(clientId);
+    if (url) {
+      URL.revokeObjectURL(url);
+      blobUrlsRef.current.delete(clientId);
+    }
+  }, []);
+
+  // Stable identity so `useAttachmentSurface`'s paste/drop listeners don't
+  // re-bind every render. The shim presents the trio the sub-components
+  // read; the composer reads `pending` directly for the submit gate.
+  const uploaderShim = useMemo(
+    () => ({
+      items: pending.map(
+        (p): PendingAttachment => ({
+          clientId: p.clientId,
+          serverId: null,
+          file: p.file,
+          localUrl: p.localUrl,
+          mime: p.mime,
+          byteLen: p.byteLen,
+          status: 'ready' as const,
+        }),
+      ),
+      addFiles: addPending,
+      remove: removePending,
+    }),
+    [pending, addPending, removePending],
+  );
+
+  const { rootProps, isDragActive } = useAttachmentSurface(
+    uploaderShim,
+    textareaRef,
+    phase.kind === 'submitting',
+  );
 
   const trimmed = text.trim();
   const isSubmitting = phase.kind === 'submitting';
@@ -47,7 +152,28 @@ export function NewThreadCompose({ space }: { space: Space }) {
         description: '',
         space_id: space.id,
       });
-      await api.postDiscussionMessage(res.thread.id, { text: trimmed });
+      // Sequential init + PUT per pending file. All-or-nothing for v1:
+      // a failure here surfaces as the same error toast as a failed
+      // createThread, leaving an orphan Thread with no message — the
+      // existing two-step orphan pattern, not worsened.
+      const attachmentIds: string[] = [];
+      for (const p of pending) {
+        const init = await api.initAttachment(res.thread.id, {
+          mime: p.mime,
+          byte_len: p.byteLen,
+        });
+        const putRes = await fetch(init.put_url, {
+          method: 'PUT',
+          headers: { 'Content-Type': p.mime },
+          body: p.file,
+        });
+        if (!putRes.ok) throw new Error(`upload failed: ${putRes.status}`);
+        attachmentIds.push(init.id);
+      }
+      await api.postDiscussionMessage(res.thread.id, {
+        text: trimmed,
+        attachments: attachmentIds,
+      });
       qc.invalidateQueries({ queryKey: ['space-threads', space.id] });
       qc.invalidateQueries({ queryKey: ['spaces'] });
       setPhase({
@@ -132,7 +258,16 @@ export function NewThreadCompose({ space }: { space: Space }) {
             />
           ) : (
             <>
-              <div className="w-full bg-canvas border border-hairline rounded-xl shadow-compose transition focus-within:border-accent focus-within:shadow-focus-soft overflow-hidden">
+              <div
+                {...rootProps}
+                className="relative w-full bg-canvas border border-hairline rounded-xl shadow-compose transition focus-within:border-accent focus-within:shadow-focus-soft overflow-hidden"
+              >
+                <AttachmentDragOverlay active={isDragActive} />
+                {pending.length > 0 ? (
+                  <div className="px-5 pt-5">
+                    <AttachmentThumbnails uploader={uploaderShim} />
+                  </div>
+                ) : null}
                 <textarea
                   ref={textareaRef}
                   value={text}
@@ -142,7 +277,8 @@ export function NewThreadCompose({ space }: { space: Space }) {
                   disabled={isSubmitting}
                   className="block w-full min-h-[132px] max-h-[280px] px-5 pt-5 pb-2 text-body-md leading-[1.6] text-ink placeholder:text-ink-tertiary bg-transparent border-0 resize-none focus:outline-none disabled:cursor-not-allowed"
                 />
-                <div className="flex items-center justify-end px-3 pb-3">
+                <div className="flex items-center justify-between px-3 pb-3">
+                  <AttachmentAddButton uploader={uploaderShim} disabled={isSubmitting} />
                   <StartButton
                     state={canSubmit ? 'on' : isSubmitting ? 'submitting' : 'off'}
                     onClick={submit}
