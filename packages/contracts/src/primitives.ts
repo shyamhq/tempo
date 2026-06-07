@@ -57,12 +57,9 @@ export const Plan = z.object({
 });
 export type Plan = z.infer<typeof Plan>;
 
-// The agent-facing projection of a Plan. Same `pm_json` shape as `PlanBody` —
-// the Agent reads and writes the editor's ProseMirror JSON directly so
-// BlockNote `comment` marks (which are `blocknoteIgnore: true` and therefore
-// stripped by any Markdown round-trip) survive untouched edits by construction.
-// Kept as a separate type from `PlanBody` so future agent-only fields don't
-// force a contract rewrite.
+// Agent-facing projection of a Plan. Structurally identical to `PlanBody`
+// today; kept as a separate name so the MCP contract can evolve agent-only
+// fields without rippling into Console types.
 export const AgentPlanBody = z.object({
   pm_json: z.unknown(),
   updated_at: IsoTimestamp,

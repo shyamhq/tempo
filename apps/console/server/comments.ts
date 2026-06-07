@@ -1,7 +1,7 @@
 import type { AttachmentRef, Comment, Reply } from '@tempo/contracts';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db';
-import { comments, replies } from '../db/schema';
+import { comments, replies, threads } from '../db/schema';
 import {
   insertAttachmentRows,
   listAttachmentsForParents,
@@ -87,16 +87,19 @@ export const unresolveComment = (commentId: string) =>
 
 export async function deleteComment(commentId: string): Promise<void> {
   const [row] = await db
-    .select({ thread_id: comments.thread_id })
+    .select({ thread_id: comments.thread_id, thread_status: threads.status })
     .from(comments)
+    .innerJoin(threads, eq(threads.id, comments.thread_id))
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!row) throw new CommentNotFoundError(commentId);
+  // D30: an approved Plan is frozen. Comment mutations on a frozen Thread
+  // would silently desynchronise the editor's `comment` marks from the DB.
+  if (row.thread_status === 'approved') throw new Error('thread_approved');
 
   // SQLite FKs are off in this project (AGENTS.md spotted-but-not-fixed),
-  // so cascades run manually. Replies go first inside the tx; attachment
-  // rows referencing those replies become orphans for the R2 lifecycle
-  // sweep to collect — matching the existing deleteThread cascade scope.
+  // so cascades run manually. Attachment rows on the deleted replies become
+  // orphans for the R2 lifecycle sweep — matching deleteThread's scope.
   await db.transaction(async (tx) => {
     await tx.delete(replies).where(eq(replies.comment_id, commentId));
     await tx.delete(comments).where(eq(comments.id, commentId));

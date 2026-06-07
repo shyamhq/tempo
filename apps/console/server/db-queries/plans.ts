@@ -31,11 +31,3 @@ export async function readPlanRow(threadId: string): Promise<PlanRow> {
     updated_by: row?.updated_by ?? null,
   };
 }
-
-export function parsePmJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}

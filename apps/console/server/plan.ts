@@ -1,8 +1,8 @@
-import type { Actor, AgentPlanState, Plan } from '@tempo/contracts';
+import type { Actor, Plan } from '@tempo/contracts';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import { plans, threads } from '../db/schema';
-import { parsePmJson, readPlanRow } from './db-queries/plans';
+import { readPlanRow } from './db-queries/plans';
 import { appendEvent } from './event-log';
 import { nowIso, toIso } from './threads';
 
@@ -19,6 +19,14 @@ export async function getPlan(threadId: string): Promise<Plan> {
       updated_by: row.updated_by,
     },
   };
+}
+
+function parsePmJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export async function writePlan(
@@ -82,33 +90,3 @@ export class InvalidPlanBodyError extends Error {
   }
 }
 
-// The Agent reads and writes the Plan as the same PM JSON the editor uses.
-// Comment marks (BlockNote's CommentsExtension stamps a `comment` mark with
-// `blocknoteIgnore: true` on every annotated text run) survive the round-trip
-// by construction — the Agent receives them in `marks` arrays, leaves them on
-// text it doesn't rewrite, and writes them back. The MCP tool description
-// tells the Agent that those arrays carry Dev annotations and must be
-// preserved verbatim on untouched runs.
-export async function getPlanForAgent(threadId: string): Promise<AgentPlanState> {
-  const row = await readPlanRow(threadId);
-  if (row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
-    return { status: row.status, body: null };
-  }
-  const pmJson = parsePmJson(row.body_pm_json);
-  if (pmJson === null) return { status: row.status, body: null };
-  return {
-    status: row.status,
-    body: {
-      pm_json: pmJson,
-      updated_at: toIso(row.updated_at),
-      updated_by: row.updated_by,
-    },
-  };
-}
-
-export async function writePlanFromAgent(
-  threadId: string,
-  pmJson: unknown,
-): Promise<{ updated_at: string }> {
-  return writePlan(threadId, pmJson, 'agent');
-}

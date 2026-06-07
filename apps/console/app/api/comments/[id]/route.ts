@@ -14,6 +14,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
     await deleteComment(id);
   } catch (e) {
     if (e instanceof CommentNotFoundError) return err('not_found', 404);
+    if (e instanceof Error && e.message === 'thread_approved') return err('thread_approved', 409);
     throw e;
   }
   return ok({ ok: true });

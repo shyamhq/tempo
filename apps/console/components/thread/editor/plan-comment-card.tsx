@@ -81,15 +81,17 @@ export function PlanCommentCard({
 
   const doDelete = async () => {
     if (deleting || !threadStore) return;
-    // window.confirm is the existing destructive-confirm pattern in this
-    // codebase (see DeleteThreadButton). A real toast/dialog can replace
-    // both at once when the Console gets a confirm primitive — filed in
-    // AGENTS.md spotted-but-not-fixed.
+    // window.confirm + window.alert are the existing destructive-action
+    // pattern in this codebase (see DeleteThreadButton). Both replaced when
+    // the Console grows a toast primitive — filed in AGENTS.md.
     const ok = window.confirm('Delete this comment and all replies? This cannot be undone.');
     if (!ok) return;
     setDeleting(true);
     try {
       await threadStore.deleteThread({ threadId: thread.id });
+    } catch {
+      // The bridge surfaces nothing; loud failure beats silent on delete.
+      window.alert('Delete failed. The comment is unchanged.');
     } finally {
       setDeleting(false);
     }

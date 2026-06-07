@@ -154,9 +154,9 @@ export const RecordTurnEndedResponse = z.object({ ok: z.literal(true) });
 export const GetPlanResponse = Plan;
 
 // POST /api/threads/:id/plan
-// Console (Dev) writes ProseMirror JSON — the editor's full document state.
-// The Agent path lives at /plan/agent and uses `AgentWritePlanRequest` below —
-// annotated Markdown that the server decodes into blocks before persisting.
+// Both Dev (Console) and Agent write through this single endpoint. PM JSON
+// is the wire format for both — the Agent no longer round-trips through
+// annotated Markdown, so BlockNote `comment` marks survive untouched edits.
 export const WritePlanRequest = z.object({
   pm_json: z.unknown(),
 });
