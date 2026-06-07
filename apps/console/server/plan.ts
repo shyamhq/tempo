@@ -1,21 +1,18 @@
 import type { Actor, AgentPlanState, Plan } from '@tempo/contracts';
 import { eq } from 'drizzle-orm';
-import type { PartialBlock } from '@blocknote/core';
 import { db } from '../db';
 import { plans, threads } from '../db/schema';
+import { parsePmJson, readPlanRow } from './db-queries/plans';
 import { appendEvent } from './event-log';
-import { decodeFromAgent } from './plan/decode';
-import { encodeForAgent } from './plan/encode';
-import { serverPlanEditor } from './plan/server-editor';
 import { nowIso, toIso } from './threads';
 
 export async function getPlan(threadId: string): Promise<Plan> {
-  const { status, row } = await readPlanRow(threadId);
-  if (!row || row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
-    return { status, body: null };
+  const row = await readPlanRow(threadId);
+  if (row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
+    return { status: row.status, body: null };
   }
   return {
-    status,
+    status: row.status,
     body: {
       pm_json: parsePmJson(row.body_pm_json),
       updated_at: toIso(row.updated_at),
@@ -85,30 +82,24 @@ export class InvalidPlanBodyError extends Error {
   }
 }
 
-// The agent variants wrap getPlan / writePlan with the sentinel encoder. The
-// MCP boundary is the only place these are reached from — every other caller
-// (the Console editor, the GET handler) goes through the PM-JSON-native pair
-// above. Stateless: the marker carries its own style payload, so nothing
-// flows between pull and write besides the markdown itself.
-//
-// `_prosemirrorJSONToBlocks` and `_blocksToProsemirrorNode` are BlockNote's
-// semi-internal escape hatch (verified against @blocknote/server-util
-// v0.51.4). Pin the version; revisit if the BlockNote upgrade touches these.
+// The Agent reads and writes the Plan as the same PM JSON the editor uses.
+// Comment marks (BlockNote's CommentsExtension stamps a `comment` mark with
+// `blocknoteIgnore: true` on every annotated text run) survive the round-trip
+// by construction — the Agent receives them in `marks` arrays, leaves them on
+// text it doesn't rewrite, and writes them back. The MCP tool description
+// tells the Agent that those arrays carry Dev annotations and must be
+// preserved verbatim on untouched runs.
 export async function getPlanForAgent(threadId: string): Promise<AgentPlanState> {
-  const { status, row } = await readPlanRow(threadId);
-  if (!row || row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
-    return { status, body: null };
+  const row = await readPlanRow(threadId);
+  if (row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
+    return { status: row.status, body: null };
   }
   const pmJson = parsePmJson(row.body_pm_json);
-  // Malformed row — treat the same as a missing body rather than crashing
-  // the Agent's poll path with an uncaught throw out of BlockNote.
-  if (pmJson === null) return { status, body: null };
-  const blocks = serverPlanEditor._prosemirrorJSONToBlocks(stripCommentMarks(pmJson));
-  const markdown = await encodeForAgent(blocks);
+  if (pmJson === null) return { status: row.status, body: null };
   return {
-    status,
+    status: row.status,
     body: {
-      markdown,
+      pm_json: pmJson,
       updated_at: toIso(row.updated_at),
       updated_by: row.updated_by,
     },
@@ -117,70 +108,7 @@ export async function getPlanForAgent(threadId: string): Promise<AgentPlanState>
 
 export async function writePlanFromAgent(
   threadId: string,
-  markdown: string,
+  pmJson: unknown,
 ): Promise<{ updated_at: string }> {
-  const { row } = await readPlanRow(threadId);
-  // The decoder's reconcileIds wants the previous blocks for id preservation.
-  // A malformed prior row drops the id-stability fallback (we start from
-  // empty) rather than crashing the agent's write.
-  const previousPmJson = row?.body_pm_json != null ? parsePmJson(row.body_pm_json) : null;
-  const previousBlocks =
-    previousPmJson !== null
-      ? serverPlanEditor._prosemirrorJSONToBlocks(stripCommentMarks(previousPmJson))
-      : [];
-  const blocks = await decodeFromAgent(markdown, previousBlocks);
-  const pmJson = serverPlanEditor
-    ._blocksToProsemirrorNode(blocks as PartialBlock[])
-    .toJSON();
   return writePlan(threadId, pmJson, 'agent');
-}
-
-async function readPlanRow(threadId: string) {
-  const [t] = await db
-    .select({ status: threads.status })
-    .from(threads)
-    .where(eq(threads.id, threadId))
-    .limit(1);
-  const [row] = await db
-    .select({
-      body_pm_json: plans.body_pm_json,
-      updated_at: plans.updated_at,
-      updated_by: plans.updated_by,
-    })
-    .from(plans)
-    .where(eq(plans.thread_id, threadId))
-    .limit(1);
-  return { status: t?.status ?? 'unapproved', row };
-}
-
-function parsePmJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-// The Console editor registers the BlockNote CommentsExtension, which adds a
-// `comment` ProseMirror mark not declared in `planSchema`. The server editor
-// is constructed from `planSchema` alone (no extensions), so `comment` marks
-// on saved docs make prosemirror-model throw `There is no mark type comment
-// in this schema` from `_prosemirrorJSONToBlocks`. Comment anchors are not
-// part of the agent's markdown view of the Plan anyway — they're pulled via
-// the comments API — so strip them at the agent boundary instead of trying
-// to register the extension server-side.
-function stripCommentMarks(pmJson: unknown): unknown {
-  if (pmJson === null || typeof pmJson !== 'object') return pmJson;
-  if (Array.isArray(pmJson)) return pmJson.map(stripCommentMarks);
-  const node = pmJson as Record<string, unknown>;
-  const next: Record<string, unknown> = { ...node };
-  if (Array.isArray(node.marks)) {
-    next.marks = (node.marks as Array<Record<string, unknown>>).filter(
-      (m) => m && m.type !== 'comment',
-    );
-  }
-  if (Array.isArray(node.content)) {
-    next.content = (node.content as unknown[]).map(stripCommentMarks);
-  }
-  return next;
 }
