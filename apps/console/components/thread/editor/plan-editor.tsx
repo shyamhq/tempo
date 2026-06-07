@@ -239,9 +239,10 @@ export function PlanEditor({
 // re-anchoring on a future edit, small enough to keep Comment rows compact.
 const CONTEXT_RADIUS = 80;
 
-function readAnchor(
-  editor: ReturnType<typeof useCreateBlockNote> | null,
-): { quote: string; context: string } {
+function readAnchor(editor: ReturnType<typeof useCreateBlockNote> | null): {
+  quote: string;
+  context: string;
+} {
   if (!editor) return { quote: '', context: '' };
   const state = editor._tiptapEditor.state;
   const { from, to } = state.selection;

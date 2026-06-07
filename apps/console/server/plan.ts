@@ -87,4 +87,3 @@ export class InvalidPlanBodyError extends Error {
     this.name = 'InvalidPlanBodyError';
   }
 }
-

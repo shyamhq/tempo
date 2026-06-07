@@ -192,9 +192,7 @@ function GutterIcon({
   );
 }
 
-function walkPmDocForCommentMarks(
-  editor: PlanEditorHandle['editor'],
-): Map<string, number> {
+function walkPmDocForCommentMarks(editor: PlanEditorHandle['editor']): Map<string, number> {
   const out = new Map<string, number>();
   // Tiptap's `descendants` callback is typed `any` once it lands in our
   // module graph (prosemirror-model isn't a direct dep). The Node API we

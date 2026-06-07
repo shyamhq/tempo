@@ -12,10 +12,7 @@ import { DiscussionButton } from '@/components/thread/discussion/discussion-butt
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanCommentGutter } from '@/components/thread/editor/plan-comment-gutter';
 import { PlanEditor, type PlanEditorHandle } from '@/components/thread/editor/plan-editor';
-import {
-  type SaveStatus,
-  usePlanAutoSave,
-} from '@/components/thread/editor/use-plan-auto-save';
+import { type SaveStatus, usePlanAutoSave } from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
 import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
@@ -152,7 +149,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   // The hook reads `getPmJson` through a ref it refreshes on every render,
   // so memoising here would only add noise without adding identity stability.
-  const { status: saveStatus, lastSavedAt, notifyEdit } = usePlanAutoSave({
+  const {
+    status: saveStatus,
+    lastSavedAt,
+    notifyEdit,
+  } = usePlanAutoSave({
     getPmJson: () => editorHandle?.getPmJson() ?? null,
     persist: persistPmJson,
     unloadBeacon,
@@ -243,9 +244,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </Link>
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="font-display text-sm font-semibold truncate">{view.thread.title}</h1>
-            {approved ? null : (
-              <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />
-            )}
+            {approved ? null : <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />}
           </div>
           <div className="flex-1" />
           <SessionPill status={view.session_status} />
