@@ -8,6 +8,9 @@ const config: NextConfig = {
   // The monorepo lockfile lives at the repo root; without this Next emits a
   // warning when it auto-detects a second lockfile inside `apps/console`.
   outputFileTracingRoot: process.cwd().replace(/\/apps\/console\/?$/, ''),
+  // ServerBlockNoteEditor pulls in jsdom + prosemirror at runtime; bundling
+  // them breaks construction. Required by @blocknote/server-util.
+  serverExternalPackages: ['@blocknote/server-util'],
 };
 
 export default config;

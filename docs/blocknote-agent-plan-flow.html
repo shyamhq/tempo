@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tempo · BlockNote plan ↔ Agent data flow</title>
+  <style>
+    :root {
+      --ink: #16181d;
+      --ink-muted: #5a6273;
+      --ink-subtle: #8a93a3;
+      --hairline: #e6e8ec;
+      --hairline-soft: #f0f1f4;
+      --surface: #ffffff;
+      --surface-2: #f7f8fa;
+      --surface-code: #0e1116;
+      --on-dark: #d6dbe4;
+      --accent: #4f63ff;
+      --accent-deep: #2a3bd8;
+      --pink: #d6336c;
+      --pink-soft: #ffe3ec;
+      --comment: #ff7e3a;
+      --comment-soft: #ffe7d4;
+      --sentinel: #2e7d32;
+      --sentinel-soft: #e3f3e4;
+      --sidecar: #6a48b8;
+      --sidecar-soft: #ece4ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 40px 80px;
+      background: var(--surface-2);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+    h1 + p {
+      color: var(--ink-muted);
+      margin: 0 0 24px;
+      max-width: 760px;
+    }
+    .scenario {
+      padding: 14px 18px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      margin-bottom: 24px;
+      max-width: 760px;
+    }
+    .scenario strong { color: var(--ink); }
+    .scenario span.pink {
+      background: var(--pink-soft);
+      color: var(--pink);
+      padding: 0 4px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+    .scenario span.comment {
+      background: var(--comment-soft);
+      color: var(--comment);
+      padding: 0 4px;
+      border-radius: 3px;
+      font-weight: 500;
+      border-bottom: 2px solid var(--comment);
+    }
+    .legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .stage {
+      margin-bottom: 24px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .stage-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--hairline);
+      background: linear-gradient(180deg, #fcfcfd, #ffffff);
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .stage-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .stage-badge.console { background: #2a3bd8; }
+    .stage-badge.mcp { background: #b8732f; }
+    .stage-badge.claude { background: #444; }
+    .stage-badge.storage { background: #5a6273; }
+    .stage-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin: 0;
+    }
+    .stage-actor {
+      font-size: 12px;
+      color: var(--ink-subtle);
+      margin-left: auto;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .stage-desc {
+      padding: 12px 20px 0;
+      color: var(--ink-muted);
+      max-width: 820px;
+    }
+    .panel {
+      padding: 14px 20px 18px;
+    }
+    .panel-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-subtle);
+      margin: 14px 0 8px;
+    }
+    .panel-label:first-child { margin-top: 0; }
+    .panel-sub {
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      margin-bottom: 10px;
+    }
+    pre {
+      margin: 0;
+      padding: 14px 16px;
+      background: var(--surface-code);
+      color: var(--on-dark);
+      border-radius: 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-x: auto;
+      white-space: pre;
+    }
+    pre.light {
+      background: #fafbfc;
+      color: var(--ink);
+      border: 1px solid var(--hairline);
+    }
+    .k { color: #b39ddb; }
+    .s { color: #c5e1a5; }
+    .n { color: #ffcc80; }
+    .c { color: #6c7891; font-style: italic; }
+    .punct { color: #8a93a3; }
+    .pink-text {
+      background: rgba(214, 51, 108, 0.18);
+      color: #ff9ec5;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+    .comment-text {
+      border-bottom: 1.5px solid var(--comment);
+      padding-bottom: 1px;
+    }
+    .sentinel {
+      color: #a5d6a7;
+      background: rgba(46, 125, 50, 0.18);
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+    .sidecar-key { color: #c4b1ff; }
+    .arrow {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 6px 0 14px;
+      color: var(--ink-subtle);
+      font-size: 13px;
+    }
+    .arrow-line {
+      flex: 0 0 auto;
+      width: 1px;
+      height: 22px;
+      background: var(--hairline);
+      margin-right: 12px;
+    }
+    .arrow-text {
+      font-size: 11.5px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--ink-subtle);
+    }
+    .note {
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border: 1px solid var(--hairline);
+      border-radius: 6px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+    }
+    .note strong { color: var(--ink); }
+    .twocol {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 880px) { .twocol { grid-template-columns: 1fr; } }
+    .diff-add { color: #a5d6a7; }
+    .diff-remove { color: #ef9a9a; text-decoration: line-through; }
+    .tag { color: #ffd54f; }
+  </style>
+</head>
+<body>
+
+<h1>Plan ↔ Agent data flow</h1>
+<p>How the Plan moves between BlockNote (Console) and the local Claude Code Agent over MCP. Storage is BlockNote's JSON blocks tree; the wire format the Agent sees is annotated Markdown with sentinel tags. A sidecar map kept server-side carries the inline styling and comment metadata that Markdown cannot express, and gets re-attached when the Agent's response is decoded back into blocks.</p>
+
+<div class="scenario">
+  Scenario throughout: the Plan contains the sentence
+  &ldquo;Anchoring on <span class="pink"><span class="comment">rock-solid</span></span> block IDs becomes the default&rdquo;.
+  The Dev coloured <em>rock-solid</em> <strong>pink</strong> and added a <strong>comment</strong> on the same range.
+  The Agent will rewrite the surrounding sentence but leave the styled phrase intact.
+</div>
+
+<div class="legend">
+  <span><span class="legend-dot" style="background:var(--accent)"></span>Console</span>
+  <span><span class="legend-dot" style="background:#b8732f"></span>MCP server</span>
+  <span><span class="legend-dot" style="background:#444"></span>Claude (Agent)</span>
+  <span><span class="legend-dot" style="background:var(--pink)"></span>Pink style</span>
+  <span><span class="legend-dot" style="background:var(--comment)"></span>Comment mark</span>
+  <span><span class="legend-dot" style="background:var(--sentinel)"></span>Sentinel tag</span>
+  <span><span class="legend-dot" style="background:var(--sidecar)"></span>Sidecar (server-only)</span>
+</div>
+
+<!-- STAGE 1 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge storage">Stage 1</span>
+    <h2 class="stage-title">At rest — BlockNote blocks JSON</h2>
+    <span class="stage-actor">SQLite · plans.body_blocks</span>
+  </div>
+  <p class="stage-desc">The canonical, lossless representation. Inline runs carry both built-in styles (<code>textColor</code>) and BlockNote's comment-thread mark. Block IDs are stable and travel through every later hop.</p>
+  <div class="panel">
+    <div class="panel-label">plans.body_blocks (text column, JSON)</div>
+<pre>[
+  {
+    <span class="k">"id"</span>: <span class="s">"blk_42"</span>,
+    <span class="k">"type"</span>: <span class="s">"paragraph"</span>,
+    <span class="k">"props"</span>: {},
+    <span class="k">"content"</span>: [
+      { <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">"Anchoring on "</span>, <span class="k">"styles"</span>: {} },
+      {
+        <span class="k">"type"</span>: <span class="s">"text"</span>,
+        <span class="k">"text"</span>: <span class="s">"rock-solid"</span>,
+        <span class="k">"styles"</span>: {
+          <span class="k">"textColor"</span>: <span class="s">"pink"</span>,
+          <span class="k">"commentThread"</span>: <span class="s">"cmt_h7q"</span>
+        }
+      },
+      { <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">" block IDs becomes the default. We fall back to quote+context only when the block is gone."</span>, <span class="k">"styles"</span>: {} }
+    ]
+  }
+]</pre>
+    <div class="note"><strong>Invariant.</strong> Every block has a stable <code>id</code>. Every inline run's <code>styles</code> are authoritative — anything that ends up in this column is what the Console renders.</div>
+  </div>
+</div>
+
+<div class="arrow"><div class="arrow-line"></div><span class="arrow-text">Dev reads / edits in Console</span></div>
+
+<!-- STAGE 2 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge console">Stage 2</span>
+    <h2 class="stage-title">Console — BlockNote editor</h2>
+    <span class="stage-actor">apps/console · React</span>
+  </div>
+  <p class="stage-desc">No transformation. The Console reads the blocks JSON, hands it to BlockNote as <code>initialContent</code>, edits flow back as the same shape. Comments and styling round-trip natively because BlockNote owns both ends.</p>
+  <div class="panel">
+    <div class="panel-label">Editor wiring</div>
+<pre class="light"><span class="k">const</span> { data } = useQuery({
+  queryKey: [<span class="s">'plan'</span>, threadId],
+  queryFn: () =&gt; api.getPlan(threadId),  <span class="c">// → blocks JSON</span>
+});
+
+<span class="k">const</span> editor = useCreateBlockNote({
+  initialContent: data.body.blocks,
+  schema: planSchema,                    <span class="c">// shared with server-util</span>
+  extensions: [CommentsExtension({ threadStore, resolveUsers })],
+});
+
+useEditorChange((e) =&gt; debouncedSave(e.document), editor);  <span class="c">// POST blocks JSON</span></pre>
+    <div class="note"><strong>What the Console never does.</strong> Markdown conversion. The Console talks blocks to the server in both directions. Markdown only appears when the <em>Agent</em> is on the other end (Stage 4).</div>
+  </div>
+</div>
+
+<div class="arrow"><div class="arrow-line"></div><span class="arrow-text">Agent calls tempo_pull_plan</span></div>
+
+<!-- STAGE 3 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge mcp">Stage 3</span>
+    <h2 class="stage-title">MCP server — encode blocks → annotated markdown + sidecar</h2>
+    <span class="stage-actor">apps/console/server/plan/encode.ts</span>
+  </div>
+  <p class="stage-desc">When the Agent asks for the Plan, the server walks the blocks tree and emits Markdown. Anything Markdown can't express (custom styles, comment marks, block-id stability we want to preserve) becomes an inline sentinel tag with a short id. A sidecar map keyed by those ids stays server-side and never leaves the process.</p>
+  <div class="panel">
+    <div class="panel-label">Encoder pseudocode</div>
+<pre class="light"><span class="k">function</span> encodeForAgent(blocks): { markdown: string; sidecar: Map } {
+  <span class="k">const</span> sidecar = <span class="k">new</span> Map();
+  <span class="k">const</span> mintId = shortIdFactory();        <span class="c">// 4-char base32</span>
+
+  <span class="k">for</span> (<span class="k">const</span> block <span class="k">of</span> blocks) {
+    sidecar.set(<span class="s">`b-${block.id}`</span>, { kind: <span class="s">'block'</span>, id: block.id, props: block.props, type: block.type });
+    <span class="c">// Walk inline content, wrapping runs whose styles include anything non-markdown.</span>
+    <span class="k">for</span> (<span class="k">const</span> run <span class="k">of</span> block.content) {
+      <span class="k">if</span> (hasNonMarkdownStyles(run.styles)) {
+        <span class="k">const</span> id = mintId();
+        sidecar.set(id, { kind: <span class="s">'inline'</span>, styles: run.styles });
+        emit(<span class="s">`&lt;x-mark id="${id}"&gt;${run.text}&lt;/x-mark&gt;`</span>);
+      } <span class="k">else</span> {
+        emit(run.text);                  <span class="c">// bold/italic/code → vanilla markdown</span>
+      }
+    }
+  }
+  <span class="k">return</span> { markdown: assembled, sidecar };
+}</pre>
+    <div class="note"><strong>Sentinel choice.</strong> <code>&lt;x-mark id="…"&gt;</code> is pseudo-XML — the model recognises it as structured markup and tends not to "tidy" it. The parser is tolerant: an unmatched tag drops its styling but never breaks the write.</div>
+  </div>
+</div>
+
+<!-- STAGE 4 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge claude">Stage 4</span>
+    <h2 class="stage-title">What Claude actually receives over MCP</h2>
+    <span class="stage-actor">tempo_pull_plan → JSON-RPC text content</span>
+  </div>
+  <p class="stage-desc">The Agent gets the Markdown (with sentinels) and a tool description that explains the contract. The sidecar map is <em>not</em> sent — only the markers and their ids. The Agent's mental model stays "I edit Markdown."</p>
+  <div class="twocol panel">
+    <div>
+      <div class="panel-label">tempo_pull_plan response</div>
+<pre>{
+  <span class="k">"status"</span>: <span class="s">"unapproved"</span>,
+  <span class="k">"body"</span>: {
+    <span class="k">"markdown"</span>: <span class="s">"Anchoring on <span class="sentinel">&lt;x-mark id=\"a3p\"&gt;</span>rock-solid<span class="sentinel">&lt;/x-mark&gt;</span> block IDs becomes the default. We fall back to quote+context only when the block is gone."</span>,
+    <span class="k">"updated_at"</span>: <span class="s">"2026-06-07T09:14:02Z"</span>,
+    <span class="k">"updated_by"</span>: <span class="s">"dev"</span>
+  }
+}</pre>
+    </div>
+    <div>
+      <div class="panel-label">tempo_write_plan tool description (excerpt)</div>
+<pre class="light">Replace the Plan markdown.
+
+The Plan you read may contain markers of the form
+  <span class="tag">&lt;x-mark id="XXX"&gt;…&lt;/x-mark&gt;</span>
+These mark inline ranges the Dev has styled or commented on.
+Rules:
+  1. Keep every <span class="tag">&lt;x-mark&gt;</span> paired. Open and close must match by id.
+  2. The marker wraps whatever text the styled range currently
+     contains. If you edit the text inside, the styling follows
+     the new wording — that is intentional.
+  3. Do not invent new ids. Do not split a single id across the
+     document.
+  4. You may move a marker's text inside the same block. Crossing
+     block boundaries: keep each block's portion as its own pair
+     with the same id (the server rejoins them by id).
+  5. If you delete the styled range entirely, drop both tags.
+
+Everything outside markers is ordinary chat-style markdown.</pre>
+    </div>
+  </div>
+  <div class="panel">
+    <div class="note"><strong>What Claude sees, rendered.</strong>
+      Anchoring on <code>&lt;x-mark id="a3p"&gt;</code>rock-solid<code>&lt;/x-mark&gt;</code> block IDs becomes the default. We fall back to quote+context only when the block is gone.
+    </div>
+  </div>
+</div>
+
+<div class="arrow"><div class="arrow-line"></div><span class="arrow-text">Claude rewrites the sentence around the marker</span></div>
+
+<!-- STAGE 5 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge claude">Stage 5</span>
+    <h2 class="stage-title">Claude's response — Markdown with the marker carried through</h2>
+    <span class="stage-actor">tempo_write_plan input</span>
+  </div>
+  <p class="stage-desc">The Agent edits the surrounding text and even the wording <em>inside</em> the marker (&ldquo;rock-solid&rdquo; → &ldquo;rock-solid block-id&rdquo;). The marker travels with the new text. The id is unchanged.</p>
+  <div class="panel">
+    <div class="panel-label">tempo_write_plan input</div>
+<pre>{
+  <span class="k">"markdown"</span>: <span class="s">"Anchoring on <span class="sentinel">&lt;x-mark id=\"a3p\"&gt;</span>rock-solid block-id<span class="sentinel">&lt;/x-mark&gt;</span> resolution is the default — the quote+context path only runs when a block has been deleted upstream."</span>
+}</pre>
+    <div class="note">
+      <strong>Diff in human terms.</strong>
+      <span class="diff-remove">block IDs becomes the default. We fall back to quote+context only when the block is gone.</span>
+      <span class="diff-add">block-id resolution is the default — the quote+context path only runs when a block has been deleted upstream.</span>
+      <br/>The marker's text changed from <em>rock-solid</em> to <em>rock-solid block-id</em>. The pink + comment styling will follow.
+    </div>
+  </div>
+</div>
+
+<!-- STAGE 6 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge mcp">Stage 6</span>
+    <h2 class="stage-title">MCP server — decode markdown + sidecar → blocks</h2>
+    <span class="stage-actor">apps/console/server/plan/decode.ts</span>
+  </div>
+  <p class="stage-desc">The server pulls every <code>&lt;x-mark&gt;</code> pair out of the incoming Markdown, records the text range each one covered, strips the tags, runs the clean Markdown through <code>tryParseMarkdownToBlocks</code>, then walks the resulting blocks and re-attaches styles from the sidecar at the recorded offsets.</p>
+  <div class="panel">
+    <div class="panel-label">Decoder pseudocode</div>
+<pre class="light"><span class="k">function</span> decodeFromAgent(markdown, sidecar): Block[] {
+  <span class="k">const</span> ranges = [];                      <span class="c">// { id, start, end }</span>
+  <span class="k">const</span> clean = stripSentinels(markdown, ranges);
+
+  <span class="k">const</span> blocks = <span class="k">await</span> serverEditor.tryParseMarkdownToBlocks(clean);
+
+  <span class="k">for</span> (<span class="k">const</span> { id, start, end } <span class="k">of</span> ranges) {
+    <span class="k">const</span> entry = sidecar.get(id);
+    <span class="k">if</span> (!entry) <span class="k">continue</span>;                <span class="c">// agent fabricated an id — ignore</span>
+    splitAndAttachStyles(blocks, start, end, entry.styles);
+  }
+
+  reconcileBlockIds(blocks, sidecar);          <span class="c">// keep stable IDs where text matches</span>
+  <span class="k">return</span> blocks;
+}</pre>
+    <div class="note"><strong>Graceful degradation.</strong> Unmatched open / close tags log a warning and lose just that range's styling. The Plan is never corrupted by a bad model response — at worst, one inline style drops and the comment re-anchors via the quote+context fallback.</div>
+  </div>
+</div>
+
+<!-- STAGE 7 -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge storage">Stage 7</span>
+    <h2 class="stage-title">Back at rest — blocks JSON with styling preserved on the edited text</h2>
+    <span class="stage-actor">SQLite · plans.body_blocks</span>
+  </div>
+  <p class="stage-desc">The pink + comment styling sit on the new wording <em>rock-solid block-id</em>. The block ID <code>blk_42</code> survives. Comments anchored to this thread still resolve, with the comment's <code>plan_quote</code> updated to the new text the next time the Console saves.</p>
+  <div class="panel">
+    <div class="panel-label">plans.body_blocks (after Agent write)</div>
+<pre>[
+  {
+    <span class="k">"id"</span>: <span class="s">"blk_42"</span>,
+    <span class="k">"type"</span>: <span class="s">"paragraph"</span>,
+    <span class="k">"props"</span>: {},
+    <span class="k">"content"</span>: [
+      { <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">"Anchoring on "</span>, <span class="k">"styles"</span>: {} },
+      {
+        <span class="k">"type"</span>: <span class="s">"text"</span>,
+        <span class="k">"text"</span>: <span class="s">"rock-solid block-id"</span>,           <span class="c">// new wording</span>
+        <span class="k">"styles"</span>: {
+          <span class="k">"textColor"</span>: <span class="s">"pink"</span>,                  <span class="c">// preserved</span>
+          <span class="k">"commentThread"</span>: <span class="s">"cmt_h7q"</span>             <span class="c">// preserved</span>
+        }
+      },
+      { <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">" resolution is the default — the quote+context path only runs when a block has been deleted upstream."</span>, <span class="k">"styles"</span>: {} }
+    ]
+  }
+]</pre>
+  </div>
+</div>
+
+<!-- EDGE CASES -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge" style="background:#444">Edge cases</span>
+    <h2 class="stage-title">How the protocol behaves under stress</h2>
+    <span class="stage-actor">Reference</span>
+  </div>
+  <div class="panel">
+    <div class="panel-label">A. Multi-block range (comment spans three paragraphs)</div>
+    <p class="panel-sub">Encoder splits the range into one matched pair per block, sharing the same id. Decoder rejoins them by id into one logical anchor. The Agent's job stays block-local.</p>
+<pre class="light">Block A: …end of paragraph one <span class="sentinel">&lt;x-mark id="k9w"&gt;</span>last sentence here.<span class="sentinel">&lt;/x-mark&gt;</span>
+
+Block B: <span class="sentinel">&lt;x-mark id="k9w"&gt;</span>An entire middle paragraph the comment covers.<span class="sentinel">&lt;/x-mark&gt;</span>
+
+Block C: <span class="sentinel">&lt;x-mark id="k9w"&gt;</span>The first sentence of three<span class="sentinel">&lt;/x-mark&gt;</span> and then the rest of C…</pre>
+
+    <div class="panel-label">B. Agent deletes the styled phrase entirely</div>
+    <p class="panel-sub">The Agent drops both tags. Sidecar entry is orphaned; decoder ignores it; the comment falls into the quote+context fallback (and likely surfaces as "Unanchored" in the UI).</p>
+
+    <div class="panel-label">C. Agent inserts new text outside any marker</div>
+    <p class="panel-sub">No sentinel was minted for the new range. It comes back as a fresh inline run with empty <code>styles</code>. Expected behaviour — new Agent text is unstyled.</p>
+
+    <div class="panel-label">D. Agent fabricates a marker id</div>
+    <p class="panel-sub">Sidecar lookup misses. Decoder logs a warning and drops the marker; the wrapped text becomes ordinary content. No data loss, only styling loss on that fabricated range.</p>
+
+    <div class="panel-label">E. Unmatched open or close tag</div>
+    <p class="panel-sub">Tolerant parser: unmatched halves are dropped silently with a warning. The Plan write still succeeds. Telemetry counts these so we can see model discipline over time.</p>
+
+    <div class="panel-label">F. Block-level customs (ConfluenceCodeBlock with mermaid)</div>
+    <p class="panel-sub">Encoded as a fenced code block in Markdown — the Agent already understands fences and leaves them alone. No sentinel needed.</p>
+  </div>
+</div>
+
+<!-- SUMMARY -->
+<div class="stage">
+  <div class="stage-header">
+    <span class="stage-badge" style="background:var(--accent-deep)">Summary</span>
+    <h2 class="stage-title">Who owns what</h2>
+    <span class="stage-actor">Boundaries</span>
+  </div>
+  <div class="panel">
+    <div class="panel-label">Console</div>
+    <p class="panel-sub">Reads and writes blocks JSON. Never sees Markdown. Never sees sentinels. Comments are BlockNote-native inline marks; no anchor math in client code.</p>
+
+    <div class="panel-label">MCP server</div>
+    <p class="panel-sub">Single source of truth for the encoder, decoder, and the sidecar map (per-request). Both <code>tempo_pull_plan</code> and <code>tempo_write_plan</code> exist in the same process; the sidecar lives in memory between them, keyed by the request that owns it.</p>
+
+    <div class="panel-label">Claude (Agent)</div>
+    <p class="panel-sub">Reads Markdown with inline <code>&lt;x-mark&gt;</code> markers. Writes Markdown back, preserving paired markers. Mental model unchanged from today.</p>
+
+    <div class="panel-label">Storage</div>
+    <p class="panel-sub">One column: <code>plans.body_blocks</code> (JSON text). The old <code>body_markdown</code> column is dropped in the same migration.</p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tempo · Comment persistence options A / B / C</title>
+  <style>
+    :root {
+      --ink: #16181d;
+      --ink-muted: #5a6273;
+      --ink-subtle: #8a93a3;
+      --hairline: #e6e8ec;
+      --hairline-soft: #f0f1f4;
+      --surface: #ffffff;
+      --surface-2: #f7f8fa;
+      --surface-code: #0e1116;
+      --on-dark: #d6dbe4;
+      --accent: #4f63ff;
+      --accent-deep: #2a3bd8;
+      --comment: #ff7e3a;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --fail: #dc2626;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 40px 80px;
+      background: var(--surface-2);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin: 0 0 6px;
+    }
+    h1 + p { color: var(--ink-muted); margin: 0 0 28px; max-width: 760px; }
+    h2 {
+      font-size: 17px;
+      font-weight: 600;
+      margin: 28px 0 10px;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    h2 .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: var(--accent);
+      color: white;
+    }
+    h2 .tag.b { background: #7c3aed; }
+    h2 .tag.c { background: #0891b2; }
+    h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 18px 0 6px;
+      color: var(--ink);
+    }
+    p { margin: 0 0 10px; }
+    code, pre { font-family: ui-monospace, 'JetBrains Mono', SFMono-Regular, Menlo, monospace; }
+    code { font-size: 12.5px; background: var(--surface); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--hairline); }
+    pre {
+      background: var(--surface-code);
+      color: var(--on-dark);
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      overflow-x: auto;
+      margin: 8px 0 14px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 22px;
+    }
+    .lede {
+      font-size: 13.5px;
+      color: var(--ink-muted);
+      margin: 0 0 14px;
+    }
+    .row { display: flex; gap: 16px; }
+    .row > div { flex: 1; }
+    .legend {
+      display: flex;
+      gap: 18px;
+      margin-bottom: 22px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      font-size: 12.5px;
+      color: var(--ink-muted);
+      flex-wrap: wrap;
+    }
+    .pill {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill.ok { background: #dcfce7; color: var(--ok); }
+    .pill.warn { background: #fef3c7; color: var(--warn); }
+    .pill.fail { background: #fee2e2; color: var(--fail); }
+    .stage {
+      display: grid;
+      grid-template-columns: 130px 1fr;
+      gap: 10px 16px;
+      align-items: start;
+      padding: 10px 0;
+      border-top: 1px dashed var(--hairline);
+    }
+    .stage:first-child { border-top: 0; padding-top: 0; }
+    .stage-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-subtle);
+      padding-top: 2px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 12px; border-bottom: 1px solid var(--hairline-soft); text-align: left; vertical-align: top; }
+    th { font-weight: 600; color: var(--ink); background: var(--surface-2); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.s { text-align: center; }
+    .scenario {
+      background: var(--surface-2);
+      border-left: 3px solid var(--accent);
+      padding: 12px 16px;
+      border-radius: 0 6px 6px 0;
+      margin: 10px 0 14px;
+    }
+    .scenario-title { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; color: var(--ink); }
+    .quote { background: rgba(255, 126, 58, 0.18); border-bottom: 2px solid var(--comment); padding: 1px 2px; }
+    .strike { text-decoration: line-through; color: var(--ink-subtle); }
+    .add { background: rgba(34, 197, 94, 0.15); padding: 1px 2px; }
+    .verdict {
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+    }
+    .verdict.warn { background: #fff7ed; border-color: #fed7aa; }
+    .verdict.fail { background: #fef2f2; border-color: #fecaca; }
+    .verdict-head { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+    .small { font-size: 12.5px; color: var(--ink-muted); }
+    .footnote { color: var(--ink-subtle); font-size: 12px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Comment persistence — Options A, B, C</h1>
+  <p>
+    The bug: Dev creates a comment, refreshes, comment disappears.
+    The root cause: BlockNote's CommentMark is tagged <code>blocknoteIgnore: true</code>,
+    so it never lands in the blocks-JSON we persist.
+    Three ways to fix it, with the trade-offs that matter.
+  </p>
+
+  <div class="legend">
+    <span><span class="pill ok">survives</span> the anchor still finds its text and renders</span>
+    <span><span class="pill warn">flaky</span> works most of the time but can mis-anchor</span>
+    <span><span class="pill fail">orphans</span> the row stays in the DB but the comment doesn't render</span>
+  </div>
+
+  <!-- ============ OPTION A ============ -->
+  <section class="card">
+    <h2><span class="tag">A</span> Quote + context re-anchor</h2>
+    <p class="lede">
+      Store the selected text and a ±60-char window of surrounding text alongside each Comment.
+      On every editor mount, walk through the comments and re-stamp the BlockNote mark by finding
+      the quote in the document.
+    </p>
+
+    <h3>Data model</h3>
+<pre>comments
+  id            cmt_…
+  thread_id     thr_…
+  <span style="color:#fbbf24">plan_quote    "the auth service"</span>   ← filled in
+  <span style="color:#fbbf24">plan_context  "We will rewrite the auth service before"</span>   ← filled in
+  replies[]     …</pre>
+
+    <h3>How the round-trip works</h3>
+    <div class="stage">
+      <div class="stage-label">Create</div>
+      <div>
+        Dev selects <span class="quote">the auth service</span> and writes a comment.
+        Composer reads ProseMirror selection → captures the quote + a ±60-char window of context →
+        sends to <code>POST /api/threads/:id/comments</code>.
+        BlockNote stamps the in-memory mark; auto-save persists the blocks JSON (mark is stripped — that's fine, we don't rely on it).
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage-label">Refresh</div>
+      <div>
+        Editor mounts with the saved blocks JSON. A <code>useEffect</code> walks <code>view.comments</code>,
+        and for each one searches the editor's text for <code>plan_quote</code>. If the quote appears once,
+        it uses that. If it appears multiple times, it picks the occurrence whose surroundings best match
+        <code>plan_context</code>. Then it stamps the mark via TipTap.
+      </div>
+    </div>
+
+    <h3>Scenarios</h3>
+
+    <div class="scenario">
+      <div class="scenario-title">1. Refresh, no other edits <span class="pill ok">survives</span></div>
+      <p class="small">Document unchanged. Quote found exactly once. Mark stamped. Same UX as the original Tempo build.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">2. Dev edits an unrelated paragraph and refreshes <span class="pill ok">survives</span></div>
+      <p class="small">The quote text is untouched, so it's still found in the doc. Surroundings don't matter — we don't need the context to be intact.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">3. Agent rewrites the surrounding sentence but keeps the quoted text <span class="pill ok">survives</span></div>
+      <pre>BEFORE  We will rewrite <span class="quote">the auth service</span> before shipping v2.
+AFTER   We're planning to upgrade <span class="quote">the auth service</span> in Q3.</pre>
+      <p class="small">Quote is still <span class="quote">the auth service</span>. Found. Anchored.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">4. The quote appears twice; context disambiguates <span class="pill ok">survives</span></div>
+      <pre>The <span class="quote">the auth service</span> needs rewriting before v2.
+Database migration depends on the auth service being stable.</pre>
+      <p class="small">Both occurrences. Context window says "rewriting before v2" — the first occurrence wins.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">5. The quote appears twice; surroundings change a lot <span class="pill warn">flaky</span></div>
+      <p class="small">Both surrounding contexts changed past the 60-char window's tolerance. The match falls back to the first occurrence found, which may or may not be the one the Dev meant. Mis-anchor is possible but rare in practice.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">6. Agent rewrites the quote itself <span class="pill fail">orphans</span></div>
+      <pre>BEFORE  We will rewrite <span class="quote">the auth service</span> before shipping v2.
+AFTER   We will rewrite <span class="strike">the auth service</span> <span class="add">the authentication module</span> before shipping v2.</pre>
+      <p class="small">Quote string isn't in the document anymore. Comment becomes orphan — row stays in the DB but isn't shown anywhere on the page.</p>
+    </div>
+
+    <div class="verdict">
+      <div class="verdict-head">verdict</div>
+      Smallest change to fix the reported bug. Covers refresh + most editing scenarios. Loses comments only when the
+      quoted text itself is rewritten — accepted trade-off in the original migration plan.
+    </div>
+  </section>
+
+  <!-- ============ OPTION B ============ -->
+  <section class="card">
+    <h2><span class="tag b">B</span> Store ProseMirror JSON instead of blocks JSON</h2>
+    <p class="lede">
+      Change what we persist. Instead of <code>editor.document</code> (blocks JSON, which strips marks),
+      save <code>editor._tiptapEditor.getJSON()</code> (full ProseMirror state, marks intact).
+      BlockNote's native round-trip carries the comment mark across save / load cycles.
+    </p>
+
+    <h3>Data model</h3>
+<pre>plans
+  thread_id     thr_…
+  <span style="color:#fbbf24">body_pm_json</span>  { "type":"doc", "content":[ ... marks: [{ type:"comment", attrs:{ threadId:"cmt_…" } }] ] }
+  updated_at    …</pre>
+
+    <h3>How the round-trip works</h3>
+    <div class="stage">
+      <div class="stage-label">Create</div>
+      <div>
+        Dev creates comment. BlockNote stamps mark on PM state. Auto-save writes the PM JSON (which includes the mark) to the DB.
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage-label">Refresh</div>
+      <div>
+        Editor loads PM JSON via <code>editor._tiptapEditor.commands.setContent(pmJson, false)</code>.
+        Marks are restored verbatim — no re-anchoring needed.
+        BlockNote sees the marks, asks the bridge for each thread's data, renders comments inline.
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage-label">Agent reads</div>
+      <div>
+        Server converts PM JSON → blocks → annotated Markdown (via <code>ServerBlockNoteEditor._prosemirrorJSONToBlocks</code>). Marks are dropped during the blocks step — agent sees clean Markdown.
+      </div>
+    </div>
+    <div class="stage">
+      <div class="stage-label">Agent writes</div>
+      <div>
+        Markdown → blocks → PM. The new PM has <i>no</i> comment marks (they were stripped on the way out and never came back).
+        We still need a re-anchor step here — same algorithm as Option A — to migrate the old marks onto the new PM tree by finding their quotes.
+      </div>
+    </div>
+
+    <h3>Scenarios</h3>
+
+    <div class="scenario">
+      <div class="scenario-title">1. Refresh, no other edits <span class="pill ok">survives</span></div>
+      <p class="small">Marks restored verbatim from PM JSON. No searching, no risk of mis-anchor.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">2. Dev edits anything (same session, before refresh) <span class="pill ok">survives</span></div>
+      <p class="small">PM state preserves mark positions across edits — text added before a marked region shifts the mark's PM position automatically (this is what TipTap and ProseMirror are designed to do). Saves capture the current PM positions. Loads restore them. Marks always land on the same text.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">3. Agent rewrites surrounding text <span class="pill ok">survives</span></div>
+      <p class="small">Same as Option A — the re-anchor algorithm finds the quote in the new PM tree and stamps the mark.</p>
+    </div>
+
+    <div class="scenario">
+      <div class="scenario-title">4. Agent rewrites the quoted text itself <span class="pill fail">orphans</span></div>
+      <p class="small">Same accepted limit as Option A. Storing PM JSON doesn't help here because the agent never sees the marks — it can't preserve them.</p>
+    </div>
+
+    <h3>Cost of the switch</h3>
+    <ul style="margin: 4px 0 12px; padding-left: 22px;">
+      <li>New DB column or repurpose <code>body_blocks</code> as <code>body_pm_json</code>. One migration.</li>
+      <li>Agent encoder changes: <code>getPlanForAgent</code> goes <code>PM → blocks → Markdown</code> instead of <code>blocks → Markdown</code>.</li>
+      <li>Agent decoder changes: <code>writePlanFromAgent</code> goes <code>Markdown → blocks → PM</code> instead of <code>Markdown → blocks</code>, plus the re-anchor step.</li>
+      <li>PM JSON is bigger on the wire than blocks JSON (≈1.5–2×).</li>
+      <li>We become coupled to <code>editor._tiptapEditor</code> internals (a private-ish escape hatch in BlockNote).</li>
+    </ul>
+
+    <div class="verdict warn">
+      <div class="verdict-head">verdict</div>
+      Biggest behavioural win for Dev-only round-trips (zero re-anchor risk, no flaky cases).
+      Doesn't help the agent path — that still needs A's algorithm.
+      Bigger change, more coupling to TipTap.
+    </div>
+  </section>
+
+  <!-- ============ OPTION C ============ -->
+  <section class="card">
+    <h2><span class="tag c">C</span> Both — PM JSON for storage <em>and</em> quote/context re-anchor for the agent path</h2>
+    <p class="lede">
+      Belt and braces. Store PM JSON so Dev round-trips are lossless.
+      Also save <code>plan_quote + plan_context</code> per comment so the agent rewrite path has a re-anchor fallback.
+      This is the "everything works" version.
+    </p>
+
+    <h3>Where each piece carries its weight</h3>
+    <table>
+      <thead>
+        <tr><th>Scenario</th><th class="s">A only</th><th class="s">B only</th><th class="s">C (both)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Refresh, no other edits</td>
+          <td class="s"><span class="pill ok">ok</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+        </tr>
+        <tr>
+          <td>Dev edits unrelated text + refresh</td>
+          <td class="s"><span class="pill ok">ok</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+        </tr>
+        <tr>
+          <td>Dev edits text near the comment</td>
+          <td class="s"><span class="pill ok">ok</span> <span class="small">(if quote intact)</span></td>
+          <td class="s"><span class="pill ok">ok</span> <span class="small">(PM tracks positions)</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+        </tr>
+        <tr>
+          <td>Quote appears twice, ambiguous</td>
+          <td class="s"><span class="pill warn">flaky</span></td>
+          <td class="s"><span class="pill ok">ok</span> <span class="small">(mark is positional)</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+        </tr>
+        <tr>
+          <td>Agent rewrites surrounding text</td>
+          <td class="s"><span class="pill ok">ok</span></td>
+          <td class="s"><span class="pill ok">ok</span> <span class="small">(via A's algorithm)</span></td>
+          <td class="s"><span class="pill ok">ok</span></td>
+        </tr>
+        <tr>
+          <td>Agent rewrites the quoted text itself</td>
+          <td class="s"><span class="pill fail">orphan</span></td>
+          <td class="s"><span class="pill fail">orphan</span></td>
+          <td class="s"><span class="pill fail">orphan</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Cost</h3>
+    <ul style="margin: 4px 0 12px; padding-left: 22px;">
+      <li>Everything in B (storage change, encoder/decoder seam, TipTap coupling).</li>
+      <li>Plus the capture-quote-and-context plumbing from A (composer reads selection, bridge forwards metadata).</li>
+      <li>Plus the re-anchor algorithm (used only on the agent-write path now, since Dev round-trip is covered by PM storage).</li>
+    </ul>
+
+    <div class="verdict">
+      <div class="verdict-head">verdict</div>
+      Strictly the most robust option. Strictly the most code.
+      Pays off if you expect heavy concurrent Dev + Agent editing of the same regions; overkill if Devs mostly comment on stable text and the Agent mostly edits other sections.
+    </div>
+  </section>
+
+  <!-- ============ SUMMARY ============ -->
+  <section class="card">
+    <h2>Pick one</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Concern</th>
+          <th class="s">A · quote+context</th>
+          <th class="s">B · PM JSON</th>
+          <th class="s">C · both</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Fixes the bug you reported (comment gone on refresh)</td>
+          <td class="s">yes</td>
+          <td class="s">yes</td>
+          <td class="s">yes</td>
+        </tr>
+        <tr>
+          <td>Lines of code to write</td>
+          <td class="s">~80</td>
+          <td class="s">~250</td>
+          <td class="s">~300</td>
+        </tr>
+        <tr>
+          <td>Storage format change</td>
+          <td class="s">no</td>
+          <td class="s">yes</td>
+          <td class="s">yes</td>
+        </tr>
+        <tr>
+          <td>Touches the agent encoder/decoder seam</td>
+          <td class="s">no</td>
+          <td class="s">yes</td>
+          <td class="s">yes</td>
+        </tr>
+        <tr>
+          <td>Couples us to <code>editor._tiptapEditor</code> internals</td>
+          <td class="s">slightly</td>
+          <td class="s">heavily</td>
+          <td class="s">heavily</td>
+        </tr>
+        <tr>
+          <td>Risk of mis-anchor on near-duplicate text</td>
+          <td class="s"><span class="pill warn">low</span></td>
+          <td class="s"><span class="pill ok">none<small> (Dev path)</small></span></td>
+          <td class="s"><span class="pill ok">none<small> (Dev path)</small></span></td>
+        </tr>
+        <tr>
+          <td>Survives agent rewriting the quoted text</td>
+          <td class="s"><span class="pill fail">no</span></td>
+          <td class="s"><span class="pill fail">no</span></td>
+          <td class="s"><span class="pill fail">no</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="footnote">
+      The "agent rewrites the quoted text itself" row is the same across all three options because comments fundamentally
+      anchor to specific text. The only way to survive a quote rewrite is to teach the agent that the text is anchored
+      (e.g. via the <code>⟦sty:…⟧</code> sentinel pattern from the original Plan encode/decode flow) — that lives in a
+      different layer and is orthogonal to A / B / C.
+    </p>
+  </section>
+</body>
+</html>

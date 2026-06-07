@@ -38,8 +38,14 @@ export type Actor = z.infer<typeof Actor>;
 export const IsoTimestamp = z.iso.datetime();
 export type IsoTimestamp = z.infer<typeof IsoTimestamp>;
 
+// The Plan body is the editor's ProseMirror JSON — the full document state
+// the BlockNote editor uses internally. Blocks JSON would be a lossy
+// projection (BlockNote drops `blocknoteIgnore` marks like `comment` during
+// the blocks projection), so we persist the deeper PM JSON layer instead.
+// We keep the shape as `z.unknown()` at the contract level because the
+// concrete shape comes from BlockNote/TipTap, not Tempo's contracts.
 export const PlanBody = z.object({
-  markdown: z.string(),
+  pm_json: z.unknown(),
   updated_at: IsoTimestamp,
   updated_by: Actor,
 });
@@ -50,6 +56,25 @@ export const Plan = z.object({
   body: PlanBody.nullable(),
 });
 export type Plan = z.infer<typeof Plan>;
+
+// The agent-facing projection of a Plan. The body is annotated Markdown —
+// Markdown plus inline `⟦sty:…⟧…⟦/sty:…⟧` sentinel pairs that carry the
+// styles Markdown cannot express (text colour, comment-thread anchors).
+// Distinct from `Plan` because the Console reads/writes blocks JSON and the
+// Agent reads/writes annotated Markdown; sharing a shape would force one
+// side to translate on every call.
+export const AgentPlanBody = z.object({
+  markdown: z.string(),
+  updated_at: IsoTimestamp,
+  updated_by: Actor,
+});
+export type AgentPlanBody = z.infer<typeof AgentPlanBody>;
+
+export const AgentPlanState = z.object({
+  status: ThreadStatus,
+  body: AgentPlanBody.nullable(),
+});
+export type AgentPlanState = z.infer<typeof AgentPlanState>;
 
 export const ThreadSummary = z.object({
   id: ThreadId,

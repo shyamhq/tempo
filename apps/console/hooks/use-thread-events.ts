@@ -129,11 +129,17 @@ function apply(
         if (next.comments.some((c) => c.id === ev.comment.id)) return next;
         return { ...next, comments: [...next.comments, ev.comment] };
       case 'reply_added': {
+        // Dedup by reply id, same shape as `comment_added` above. The Dev's
+        // own POST races the SSE event against the invalidate-refetch — if
+        // the refetch returns first the new reply is already in the cache,
+        // and the SSE event would otherwise append a second copy.
         return {
           ...next,
-          comments: next.comments.map((c) =>
-            c.id === ev.comment_id ? { ...c, replies: [...c.replies, ev.reply] } : c,
-          ),
+          comments: next.comments.map((c) => {
+            if (c.id !== ev.comment_id) return c;
+            if (c.replies.some((r) => r.id === ev.reply.id)) return c;
+            return { ...c, replies: [...c.replies, ev.reply] };
+          }),
         };
       }
       case 'plan_edited_by_dev':

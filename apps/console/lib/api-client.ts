@@ -19,6 +19,7 @@ import {
   ListSpacesResponse,
   ListSpaceThreadsResponse,
   ListThreadsResponse,
+  RecheckPlanResponse,
   ReopenThreadResponse,
   ResolveCommentResponse,
   UnresolveCommentResponse,
@@ -117,6 +118,9 @@ export const api = {
   writePlan: (threadId: string, input: z.infer<typeof WritePlanRequest>) =>
     request('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),
 
+  recheckPlan: (threadId: string) =>
+    request('POST', `/api/threads/${threadId}/plan/recheck`, {}, RecheckPlanResponse),
+
   createComment: (threadId: string, input: z.input<typeof CreateCommentRequest>) =>
     request('POST', `/api/threads/${threadId}/comments`, input, CreateCommentResponse),
 
@@ -153,10 +157,5 @@ export const api = {
     ),
 
   initAttachment: (threadId: string, input: z.input<typeof InitAttachmentInput>) =>
-    request(
-      'POST',
-      `/api/threads/${threadId}/attachments/init`,
-      input,
-      InitAttachmentResult,
-    ),
+    request('POST', `/api/threads/${threadId}/attachments/init`, input, InitAttachmentResult),
 };

@@ -1,5 +1,6 @@
 import { RecordToolUseRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
+import { logger } from '../../../../../logger';
 import { authFromRequest } from '../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../server/http';
 import { recordAgentToolUse } from '../../../../../server/status';
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     await recordAgentToolUse(id, parsed.data.tool, parsed.data.summary);
   } catch (e) {
     if ((e as Error).message === 'session_not_found') return err('session_not_found', 404);
+    logger.error({ err: e, sessionId: id, tool: parsed.data.tool }, 'tool-use 500');
     throw e;
   }
   return ok({ ok: true });

@@ -468,8 +468,653 @@ Use multipart form upload with a <span class="mark">presigned URL (lifetime ≤ 
   }
 }</pre>
       <div class="callout">
-        <strong>Reconciliation rule.</strong> Match priority: (1) exact <code>anchor_text</code> substring in the new block tree → re-anchor; (2) <code>anchor_text</code> within a one-edit Levenshtein window of any inline run → re-anchor with a "soft" flag; (3) <code>context</code> substring anywhere → re-anchor at the closest containing block; (4) no match → set <code>thread.metadata.orphaned = true</code> and leave it visible in the sidebar. This is structurally the same logic as the existing <code>reconcileCommentAnchors</code> in <code>apps/console/server/comments.ts</code>, just operating on BlockNote inline runs instead of Tiptap CommentMark ranges.
+        <strong>That callout is the <em>strawman</em>.</strong> Substring matching is the simplest reconciler and the most brittle. The next section walks four real options, with a worked example for each on the same Plan + comment.
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ============================================================ -->
+<!--                                                              -->
+<!--   PART 2 — Four reconciliation strategies, side by side      -->
+<!--                                                              -->
+<!-- ============================================================ -->
+<!-- ============================================================ -->
+
+<h1 style="margin-top:48px">Reconciliation, four ways</h1>
+<p>Stage 4 is where strategy matters. The Agent rewrites markdown; the server has to decide what happens to the comment anchor. Four real options, ordered cheapest-and-brittlest to richest-and-safest. The first is what Notion does inside the editor (and what Tempo cannot do over the markdown wire today). The third is what I'd build for Tempo.</p>
+
+<div class="legend">
+  <span><span class="legend-dot" style="background:#4ade80"></span>Lossless / correct</span>
+  <span><span class="legend-dot" style="background:#facc15"></span>Soft anchor — comment survives with shrunk/expanded range</span>
+  <span><span class="legend-dot" style="background:#f87171"></span>Orphan / wrong-anchor</span>
+</div>
+
+<style>
+  .strat {
+    margin-bottom: 28px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .strat-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: linear-gradient(180deg, #fcfcfd, #ffffff);
+  }
+  .strat-letter {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .strat-letter.b { background: #f97316; }
+  .strat-letter.c { background: #22c55e; }
+  .strat-letter.d { background: #a855f7; }
+  .strat-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .strat-sub {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--ink-muted);
+  }
+  .strat-body { padding: 18px 20px 20px; }
+  .strat-mech {
+    margin-bottom: 14px;
+    color: var(--ink);
+  }
+  .strat-mech strong { color: var(--accent-deep); }
+  .verdict {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    margin-right: 8px;
+  }
+  .verdict.green { background: rgba(74, 222, 128, 0.18); color: #166534; }
+  .verdict.yellow { background: rgba(250, 204, 21, 0.22); color: #854d0e; }
+  .verdict.red { background: rgba(248, 113, 113, 0.18); color: #991b1b; }
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 0;
+    font-size: 13px;
+  }
+  table.matrix th, table.matrix td {
+    border: 1px solid var(--hairline);
+    padding: 12px 14px;
+    vertical-align: top;
+    text-align: left;
+  }
+  table.matrix th {
+    background: var(--surface-2);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  table.matrix td.case-head {
+    background: var(--surface-2);
+    font-weight: 600;
+    color: var(--ink);
+    width: 220px;
+  }
+  table.matrix td .verdict { display: inline-block; margin-bottom: 4px; }
+  table.matrix td p { margin: 4px 0 0; font-size: 12px; color: var(--ink-muted); }
+  .diffbox {
+    margin-top: 14px;
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    overflow: hidden;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  .diffbox .row { padding: 6px 14px; display: flex; gap: 12px; }
+  .diffbox .row + .row { border-top: 1px solid var(--hairline-soft); }
+  .diffbox .gutter { color: var(--ink-subtle); width: 24px; flex-shrink: 0; text-align: right; }
+  .diffbox .del { background: rgba(248, 113, 113, 0.10); }
+  .diffbox .add { background: rgba(74, 222, 128, 0.10); }
+  .diffbox .ctx { background: var(--surface); }
+  .mark-old { background: rgba(255, 126, 58, 0.30); border-bottom: 2px solid var(--comment); padding: 0 2px; }
+  .mark-new { background: rgba(74, 222, 128, 0.25); border-bottom: 2px solid #16a34a; padding: 0 2px; }
+  .offset-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .offset-grid > div {
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11.5px;
+  }
+  .offset-grid > div b { display: block; color: var(--ink-subtle); font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 3px; }
+</style>
+
+<!-- The three example rewrites we'll grade each strategy on -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter" style="background:var(--ink-subtle)">EX</div>
+    <div>
+      <h3 class="strat-title">The three rewrites we'll grade each strategy against</h3>
+      <p class="strat-sub">Same Plan, same comment on "presigned URL", three different things the Agent might write back.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <table class="matrix">
+      <tr>
+        <td class="case-head">
+          <strong>Easy — in-range insert</strong>
+          <p>Agent appends a constraint inside the same sentence; "presigned URL" still present, position roughly preserved.</p>
+        </td>
+        <td>
+<pre class="md" style="margin:0">Use multipart form upload with a <span class="mark">presigned URL</span>.</pre>
+          <p>↓</p>
+<pre class="md" style="margin:0">Use multipart form upload with a <span class="mark">presigned URL</span> (lifetime ≤ 15 min).</pre>
+        </td>
+      </tr>
+      <tr>
+        <td class="case-head">
+          <strong>Medium — rephrase</strong>
+          <p>Agent rewords; the substring "presigned URL" no longer exists verbatim, but the meaning is intact.</p>
+        </td>
+        <td>
+<pre class="md" style="margin:0">Use multipart form upload with a <span class="mark">presigned URL</span>.</pre>
+          <p>↓</p>
+<pre class="md" style="margin:0">Use multipart upload with a <span class="mark">signed URL</span>.</pre>
+        </td>
+      </tr>
+      <tr>
+        <td class="case-head">
+          <strong>Hard — replace sentence</strong>
+          <p>Agent throws out the approach entirely. Nothing of the original anchor or sentence survives.</p>
+        </td>
+        <td>
+<pre class="md" style="margin:0">Use multipart form upload with a <span class="mark">presigned URL</span>.</pre>
+          <p>↓</p>
+<pre class="md" style="margin:0">We'll use the S3 SDK directly so the client never holds credentials.</pre>
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- Strategy A -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter">A</div>
+    <div>
+      <h3 class="strat-title">In-place ProseMirror transaction</h3>
+      <p class="strat-sub">What Notion's AI does inside the editor. The wire format is a transaction, not new markdown.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <p class="strat-mech">
+      The Agent emits a <strong>position-scoped transaction</strong> against the doc:
+    </p>
+<pre>tr.<span class="key">delete</span>(<span class="num">40</span>, <span class="num">53</span>)           <span class="com">// "presigned URL"</span>
+tr.<span class="key">insert</span>(<span class="num">40</span>, <span class="str">"presigned URL (lifetime ≤ 15 min)"</span>)</pre>
+    <p class="strat-mech" style="margin-top:14px">
+      ProseMirror's mark inheritance does the work for free: the insertion sits inside the existing <code>commentThread</code> mark range, so the new text inherits the mark. No reconciliation logic on the server; no offset bookkeeping; no edge cases. The mark survives any edit that happens <em>inside</em> its range.
+    </p>
+    <table class="matrix" style="margin-top:14px">
+      <tr><th>Easy</th><th>Medium</th><th>Hard</th></tr>
+      <tr>
+        <td><span class="verdict green">Lossless</span><p>Insertion inside the mark range; mark wraps the longer text automatically.</p></td>
+        <td><span class="verdict green">Lossless</span><p>If the Agent's transaction targets the exact mark range, mark inheritance wraps "signed URL" — same as the in-Notion test you just ran.</p></td>
+        <td><span class="verdict red">Orphan</span><p>The Agent replaces the wider sentence range that contains the mark. The mark falls outside the replacement; ProseMirror drops it. Notion sends this to "All comments" without a visible anchor.</p></td>
+      </tr>
+    </table>
+    <div class="callout" style="margin-top:14px">
+      <strong>Why Tempo can't use it.</strong> Two reasons: (1) the MCP protocol gives the Agent markdown, not ProseMirror positions — an LLM emitting <code>tr.delete(40, 53)</code> against an unseen doc is a foot-gun; (2) every Plan revision would have to fit into a single transaction shape, which doesn't compose with multi-region edits. Markdown wins for the LLM-author surface; Tempo accepts the cost of reconciling afterward.
+    </div>
+  </div>
+</div>
+
+<!-- Strategy B -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter b">B</div>
+    <div>
+      <h3 class="strat-title">Substring matching (the strawman)</h3>
+      <p class="strat-sub">Server searches new markdown for the saved <code>anchor_text</code>; if found, applies the mark. This is what I drew in Stage 4 above.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <p class="strat-mech">
+      For each existing thread, the server runs <code>new_md.indexOf(anchor_text)</code>. Hit → apply mark there. Miss → fall back to the <code>context</code> substring. Miss again → orphan.
+    </p>
+    <table class="matrix" style="margin-top:14px">
+      <tr><th>Easy</th><th>Medium</th><th>Hard</th></tr>
+      <tr>
+        <td><span class="verdict green">Re-anchored</span><p>"presigned URL" still appears verbatim. Wins.</p></td>
+        <td><span class="verdict red">Orphan</span><p>"presigned URL" is gone (now "signed URL"). Fallback to <code>context</code> ("Use multipart form upload with a presigned URL.") also misses. Comment falls off into the orphan list even though the meaning is intact.</p></td>
+        <td><span class="verdict red">Orphan</span><p>No substring match anywhere. Correct outcome — the comment should orphan — but for the wrong reason (luck, not logic).</p></td>
+      </tr>
+    </table>
+    <p class="strat-mech" style="margin-top:14px">
+      <strong>The two real failure modes</strong> beyond what the table shows:
+    </p>
+    <ul style="margin:6px 0 0 18px; color: var(--ink-muted); font-size: 13px">
+      <li><strong>Ambiguity.</strong> If "presigned URL" appears twice in the new Plan, indexOf finds the wrong one. No way to disambiguate from a string alone.</li>
+      <li><strong>Position drift.</strong> If the Agent moved the discussion of presigned URLs to a different section, the mark follows the substring — anchoring on the wrong sentence.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Strategy C -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter c">C</div>
+    <div>
+      <h3 class="strat-title">Markdown-diff alignment (recommended)</h3>
+      <p class="strat-sub">Save the mark's character offset in the old markdown; on rewrite, diff old → new and map each offset through the diff. Same algorithm GitHub uses for PR review comments across force-pushes.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <p class="strat-mech">
+      When the mark is placed, store <code>{ thread_id, start_offset, end_offset }</code> against the markdown that existed at that moment. On rewrite, run a text diff (Myers or patience — pick a library), then for each mark walk the diff hunks and translate its offsets to the new document.
+    </p>
+    <p class="strat-mech" style="margin-top:10px">
+      <strong>Worked example on the medium case</strong> ("presigned URL" → "signed URL"). The old markdown's relevant line:
+    </p>
+<pre class="md" style="margin:0">Use multipart form upload with a <span class="mark-old">presigned URL</span>.
+                                  ^ offset 33    ^ offset 46</pre>
+    <p class="strat-mech" style="margin-top:10px">The diff between the lines:</p>
+    <div class="diffbox">
+      <div class="row ctx"><span class="gutter">  </span><span>Use multipart </span></div>
+      <div class="row del"><span class="gutter">−</span><span>form </span></div>
+      <div class="row ctx"><span class="gutter">  </span><span>upload with a </span></div>
+      <div class="row del"><span class="gutter">−</span><span>pre</span></div>
+      <div class="row ctx"><span class="gutter">  </span><span>signed URL.</span></div>
+    </div>
+    <p class="strat-mech" style="margin-top:14px">
+      Offset translation per hunk:
+    </p>
+    <div class="offset-grid">
+      <div><b>old start</b>33</div>
+      <div><b>old end</b>46</div>
+      <div><b>shift −5</b>(prefix "form" removed)</div>
+      <div><b>shift −3</b>(prefix "pre" removed within range)</div>
+      <div><b>new start</b>25</div>
+      <div><b>new end</b>35</div>
+      <div><b>new text</b>"signed URL"</div>
+    </div>
+    <p class="strat-mech" style="margin-top:14px">Result on the new markdown:</p>
+<pre class="md" style="margin:0">Use multipart upload with a <span class="mark-new">signed URL</span>.</pre>
+    <table class="matrix" style="margin-top:14px">
+      <tr><th>Easy</th><th>Medium</th><th>Hard</th></tr>
+      <tr>
+        <td><span class="verdict green">Lossless</span><p>Diff sees a pure insertion outside the mark; offsets unchanged.</p></td>
+        <td><span class="verdict yellow">Soft anchor</span><p>Mark range shrinks to surviving text — the comment now anchors "signed URL" and the Console flags it <code>soft-reanchored</code> so the Dev can confirm.</p></td>
+        <td><span class="verdict red">Orphan (correct)</span><p>The entire mark range is inside a deletion hunk → no surviving offsets → thread goes orphaned. The Dev sees it in the sidebar with the original anchor text, "presigned URL", so they know what was being discussed.</p></td>
+      </tr>
+    </table>
+    <div class="callout" style="margin-top:14px">
+      <strong>Why this is the right choice for Tempo.</strong> It gives us Notion-equivalent stickiness without changing the wire format. The Agent keeps writing markdown; the server keeps the position bookkeeping. Failure modes are honest: shrinking is visible (soft flag), orphaning surfaces the original anchor so the Dev can react. No silent wrong-anchoring like Strategy B.
+    </div>
+  </div>
+</div>
+
+<!-- A vs C clarification -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter" style="background:#0ea5e9">≠</div>
+    <div>
+      <h3 class="strat-title">A vs C — they share verdicts, not mechanisms</h3>
+      <p class="strat-sub">Both come out lossless on Easy and Medium, but the path is fundamentally different. The cleanest framing is temporal.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <table class="matrix">
+      <tr>
+        <th></th>
+        <th>A — In-place transaction</th>
+        <th>C — Diff alignment</th>
+      </tr>
+      <tr>
+        <td class="case-head">When the mark moves</td>
+        <td>During the edit, in the same operation</td>
+        <td>After the edit, as a second pass</td>
+      </tr>
+      <tr>
+        <td class="case-head">Where the logic lives</td>
+        <td>ProseMirror's mark-inheritance plugin (already shipped)</td>
+        <td>Custom server code — Myers diff + offset translator</td>
+      </tr>
+      <tr>
+        <td class="case-head">Wire input from the Agent</td>
+        <td>A position-scoped op: <code>tr.delete(40,53); tr.insert(40, …)</code></td>
+        <td>A full markdown string</td>
+      </tr>
+      <tr>
+        <td class="case-head">Doc state without the mark</td>
+        <td>Never exists — the transaction carries the mark forward atomically</td>
+        <td>Briefly exists, between markdown-parse and offset-reapply — must wrap in a DB tx so no reader sees it</td>
+      </tr>
+      <tr>
+        <td class="case-head">Ambiguity if anchor text repeats</td>
+        <td>Impossible — positions are unique</td>
+        <td>Impossible — saved offset identifies a specific occurrence</td>
+      </tr>
+      <tr>
+        <td class="case-head">Soft-anchor middle state</td>
+        <td>Not a thing — marks are atomic</td>
+        <td>First-class — offset map produces a sub-range, Dev sees a "soft" flag</td>
+      </tr>
+      <tr>
+        <td class="case-head">What you'd need to build</td>
+        <td>Nothing on the server — but Agent has to emit ProseMirror positions</td>
+        <td>Diff library, offset translator, reapply pass — all server-side</td>
+      </tr>
+    </table>
+    <div class="callout" style="margin-top:14px">
+      <strong>The pithy version.</strong> A is "the edit and the mark-move are one transaction." C is "the edit happens, marks are gone, then we recompute where they should be." A would be lossless-by-construction if the Agent could speak ProseMirror. C is lossless-by-reconstruction over markdown. Same destination, different vehicles — and C has one feature A can't offer (the soft-anchor middle state).
+    </div>
+  </div>
+</div>
+
+<!-- Strategy D -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter d">D</div>
+    <div>
+      <h3 class="strat-title">Block-tree wire format</h3>
+      <p class="strat-sub">Skip markdown entirely — Agent reads and writes BlockNote JSON, with marks already inline.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <p class="strat-mech">
+      The MCP tools change: <code>tempo_get_plan</code> returns the raw <code>plan_doc</code> (block tree + marks) instead of markdown; <code>tempo_write_plan</code> accepts a block tree back. No reconciliation needed — marks travel with their inline runs through the round-trip.
+    </p>
+    <table class="matrix" style="margin-top:14px">
+      <tr><th>Easy</th><th>Medium</th><th>Hard</th></tr>
+      <tr>
+        <td><span class="verdict green">Lossless</span><p>Trivially — Agent edits the marked inline run in place.</p></td>
+        <td><span class="verdict green">Lossless</span><p>Agent keeps the mark on the new inline run when rewriting; mark survives.</p></td>
+        <td><span class="verdict red">Orphan</span><p>Agent deletes the marked run as part of a wider replacement. Same fate as Strategy A — the mark has no host.</p></td>
+      </tr>
+    </table>
+    <div class="callout" style="margin-top:14px">
+      <strong>Why we don't pick this today.</strong> LLMs are bad at producing well-formed structured JSON that round-trips through a strict schema. They hallucinate block IDs, malform marks, drop required fields. To make this safe we'd need: (a) a Zod schema for every block type, (b) a server-side validate-and-repair pass, (c) probably a retry loop with the validation errors fed back. Markdown sidesteps all of that — and we still get correct reconciliation via Strategy C. Revisit if/when Tempo grows a typed-tool surface where the Agent edits via targeted operations (e.g. <code>tempo_edit_block(id, newContent)</code>) rather than wholesale-rewriting the Plan.
+    </div>
+  </div>
+</div>
+
+<!-- Summary matrix -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter" style="background:var(--ink-muted)">Σ</div>
+    <div>
+      <h3 class="strat-title">Summary matrix</h3>
+      <p class="strat-sub">Strategies × rewrite cases, all at once.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <table class="matrix">
+      <tr>
+        <th></th>
+        <th>Easy<br>(in-range insert)</th>
+        <th>Medium<br>(rephrase)</th>
+        <th>Hard<br>(replace sentence)</th>
+        <th>Tempo today?</th>
+      </tr>
+      <tr>
+        <td class="case-head"><strong>A — In-place transaction</strong><br><span style="color:var(--ink-muted); font-size: 12px">Notion's mode</span></td>
+        <td><span class="verdict green">Lossless</span></td>
+        <td><span class="verdict green">Lossless</span></td>
+        <td><span class="verdict red">Orphan</span></td>
+        <td>No — wire format is markdown.</td>
+      </tr>
+      <tr>
+        <td class="case-head"><strong>B — Substring match</strong><br><span style="color:var(--ink-muted); font-size: 12px">Strawman</span></td>
+        <td><span class="verdict green">Re-anchored</span></td>
+        <td><span class="verdict red">Orphan</span></td>
+        <td><span class="verdict red">Orphan</span></td>
+        <td>Tempt­ing but brittle. Skip.</td>
+      </tr>
+      <tr style="background: rgba(34, 197, 94, 0.05)">
+        <td class="case-head"><strong>C — Diff alignment</strong><br><span style="color:var(--accent-deep); font-size: 12px">Recommended</span></td>
+        <td><span class="verdict green">Lossless</span></td>
+        <td><span class="verdict yellow">Soft anchor</span></td>
+        <td><span class="verdict red">Orphan (correct)</span></td>
+        <td><strong>Yes.</strong> Same diff lib used for the markdown export anyway.</td>
+      </tr>
+      <tr>
+        <td class="case-head"><strong>D — Block-tree wire</strong><br><span style="color:var(--ink-muted); font-size: 12px">Future</span></td>
+        <td><span class="verdict green">Lossless</span></td>
+        <td><span class="verdict green">Lossless</span></td>
+        <td><span class="verdict red">Orphan</span></td>
+        <td>Not without typed-tool surface + JSON validation layer.</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- ============================================================ -->
+<!--                                                              -->
+<!--   PART 3 — Accept / deny for Agent edits                     -->
+<!--                                                              -->
+<!-- ============================================================ -->
+<!-- ============================================================ -->
+
+<h1 style="margin-top:48px">Reviewing Agent edits — Accept / Deny</h1>
+<p>Right now Tempo's loop is "Agent rewrites → Plan visibly changes → Dev reads new version." There's no review gate, so a bad rewrite goes live and the Dev's only recourse is to leave a new comment. Thin trust for a product whose pitch is "the Agent edits your Plan." Three patterns to choose from, then the one I'd build and how it threads through the data model.</p>
+
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter" style="background:var(--ink-subtle)">Σ</div>
+    <div>
+      <h3 class="strat-title">Three product patterns</h3>
+      <p class="strat-sub">Each one is a real pattern from a real tool. Trade-offs differ in surface area, not in difficulty.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <table class="matrix">
+      <tr><th>Pattern</th><th>How it feels</th><th>Trade-off</th></tr>
+      <tr>
+        <td class="case-head"><strong>1 — Live + revert</strong><br><span style="color:var(--ink-muted); font-size:12px">Git-style undo</span></td>
+        <td>Agent edits land immediately. A sidebar lists recent revisions; Dev can revert a paragraph back.</td>
+        <td>Quick to build. Weak review surface — easy to miss bad edits if the Dev wasn't watching.</td>
+      </tr>
+      <tr>
+        <td class="case-head"><strong>2 — Pending changes panel</strong><br><span style="color:var(--ink-muted); font-size:12px">Cursor's "Apply" flow</span></td>
+        <td>Agent's edits collect in a side panel. Dev opens it, sees a list of proposed changes, clicks Apply or Discard per change.</td>
+        <td>Discoverable. But changes are reviewed out-of-context — Dev sees the snippet, not the surrounding Plan.</td>
+      </tr>
+      <tr style="background: rgba(34,197,94,0.05)">
+        <td class="case-head"><strong>3 — Inline suggestion mode</strong><br><span style="color:var(--accent-deep); font-size:12px">Recommended — Google Docs' Suggesting mode</span></td>
+        <td>Agent's edits appear as colored insertions / strike-through deletions <em>in the Plan itself</em>. Per-change hover affordances: ✓ Accept, ✗ Reject. Top-of-Plan banner with Accept-all / Reject-all.</td>
+        <td>Highest implementation cost (custom marks + UI affordances), highest review fidelity. Composes with comments — the Dev can leave a comment on a proposed change <em>before</em> accepting it.</td>
+      </tr>
+    </table>
+    <div class="callout" style="margin-top:14px">
+      <strong>Why Option 3.</strong> Tempo's editor is the Dev's primary surface. Pattern 3 keeps review in the same view where the Plan is being read — the Dev evaluates a change against its context, not against a panel snippet. It also gives comments a natural relationship to proposed edits ("here's why I'm rejecting"). Patterns 1 and 2 are easier to ship but trade away Tempo's core promise.
+    </div>
+  </div>
+</div>
+
+<!-- The data model for Option 3 -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter c">✓</div>
+    <div>
+      <h3 class="strat-title">Data model for inline suggestions</h3>
+      <p class="strat-sub">A new mark type, two endpoints, one SSE event. The canonical Plan never changes until the Dev decides.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <p class="strat-mech">
+      BlockNote supports custom marks. We add a <code>suggestion</code> mark with shape:
+    </p>
+<pre>{
+  <span class="key">"type"</span>: <span class="str">"suggestion"</span>,
+  <span class="key">"attrs"</span>: {
+    <span class="key">"op"</span>: <span class="str">"insert"</span> | <span class="str">"delete"</span>,
+    <span class="key">"changeId"</span>: <span class="str">"ch_xyz"</span>,
+    <span class="key">"author"</span>: <span class="str">"agent"</span>,
+    <span class="key">"proposedAt"</span>: <span class="str">"2026-06-06T16:42:00Z"</span>
+  }
+}</pre>
+    <p class="strat-mech" style="margin-top:14px">
+      When the Agent calls <code>tempo_write_plan(threadId, new_md)</code>, the server doesn't replace <code>plan_doc</code>. It runs a diff <code>old_md → new_md</code>, walks the hunks, and encodes them into the existing <code>plan_doc</code> as suggestion marks:
+    </p>
+    <ul style="margin:6px 0 0 18px; color: var(--ink-muted); font-size: 13px">
+      <li>Each <em>insertion</em> hunk → new inline run added at the old position, wrapped in <code>suggestion-insert</code>.</li>
+      <li>Each <em>deletion</em> hunk → the existing inline run is wrapped in <code>suggestion-delete</code> (not removed yet).</li>
+      <li>Each <em>replacement</em> hunk → one delete + one insert at the same position.</li>
+    </ul>
+    <p class="strat-mech" style="margin-top:14px">
+      Result: a single <code>plan_doc</code> where both the original prose and the Agent's proposed prose co-exist, marked. Server fires SSE <code>plan_changes_proposed</code> with the list of <code>changeId</code>s.
+    </p>
+  </div>
+</div>
+
+<!-- Worked example: inline suggestion render -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter" style="background:#0ea5e9">👁</div>
+    <div>
+      <h3 class="strat-title">What the Dev sees</h3>
+      <p class="strat-sub">Same medium-difficulty rewrite from Part 2 ("presigned URL" → "signed URL"), now rendered as a suggestion.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <div class="panels">
+      <div class="panel">
+        <div class="panel-label">canonical text (before)</div>
+<pre class="md" style="margin:0">Use multipart form upload with a <span class="mark">presigned URL</span>.</pre>
+      </div>
+      <div class="panel">
+        <div class="panel-label">plan_doc with suggestion marks</div>
+<pre class="md" style="margin:0">Use multipart <span style="text-decoration: line-through; background: rgba(248,113,113,0.18); padding: 0 2px">form </span>upload with a <span style="text-decoration: line-through; background: rgba(248,113,113,0.18); padding: 0 2px">pre</span><span style="background: rgba(74,222,128,0.18); padding: 0 2px">signed URL</span><span style="background: rgba(248,113,113,0.18); padding: 0 2px; text-decoration: line-through">presigned URL</span>.</pre>
+        <div class="panel-sub" style="margin-top:8px; font-size: 11.5px">
+          <span style="background: rgba(74,222,128,0.18); padding: 1px 4px">green</span> = <code>suggestion-insert</code>, <span style="background: rgba(248,113,113,0.18); padding: 1px 4px; text-decoration: line-through">red strike</span> = <code>suggestion-delete</code>. Comment mark from Stage 2 is still anchored on "presigned URL" — the proposal hasn't touched it yet.
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-label">per-change controls</div>
+<pre style="font-family: -apple-system, sans-serif; font-size: 13px">┌─ Change ch_001 ──────────┐
+│  delete "form "         │
+│  [✓ Accept] [✗ Reject]  │
+└──────────────────────────┘
+
+┌─ Change ch_002 ──────────┐
+│  "presigned URL"        │
+│  → "signed URL"         │
+│  [✓ Accept] [✗ Reject]  │
+└──────────────────────────┘
+
+┌─ Banner ─────────────────┐
+│  Agent proposed 2 changes│
+│  [Accept all] [Reject all]│
+└──────────────────────────┘</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Accept / reject endpoints -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter c">→</div>
+    <div>
+      <h3 class="strat-title">Accept / reject flow + comment interaction</h3>
+      <p class="strat-sub">Two endpoints. The comment-reconciler from Part 2 (Strategy C) only runs on accepted ops.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <p class="strat-mech">
+      <strong>Accept</strong> <code>POST /api/threads/:id/plan/changes/:changeId/accept</code> → server reads the suggestion mark and:
+    </p>
+    <ul style="margin:4px 0 0 18px; color: var(--ink-muted); font-size: 13px">
+      <li><code>suggestion-insert</code> → strip the mark, keep the wrapped text.</li>
+      <li><code>suggestion-delete</code> → strip the mark and remove the wrapped text.</li>
+    </ul>
+    <p class="strat-mech" style="margin-top:14px">
+      <strong>Reject</strong> <code>POST /api/threads/:id/plan/changes/:changeId/reject</code> → server reads the suggestion mark and:
+    </p>
+    <ul style="margin:4px 0 0 18px; color: var(--ink-muted); font-size: 13px">
+      <li><code>suggestion-insert</code> → strip the mark and remove the wrapped text.</li>
+      <li><code>suggestion-delete</code> → strip the mark, keep the wrapped text.</li>
+    </ul>
+    <p class="strat-mech" style="margin-top:14px">
+      After an accept, the comment reconciler (Strategy C) runs against just the accepted op. The diff is small — usually a single inline range — so offset translation is cheap. The comment either rides along, soft-anchors, or orphans, as in Part 2.
+    </p>
+    <div class="callout" style="margin-top:14px">
+      <strong>Comment-on-change.</strong> Because suggestions are encoded as marks in the Plan, a Dev can highlight a proposed insertion and leave a normal comment on it — anchored to the suggestion mark range. The reply chain becomes the discussion of "should we accept this change?" Reject → suggestion mark is gone and the comment auto-orphans (correctly — the thing being discussed was withdrawn). Accept → the suggestion mark is stripped but the comment mark stays, anchored to what's now canonical text. Same Strategy C reconciliation handles both.
+    </div>
+  </div>
+</div>
+
+<!-- MCP wire change -->
+<div class="strat">
+  <div class="strat-head">
+    <div class="strat-letter d">⇄</div>
+    <div>
+      <h3 class="strat-title">What changes in the MCP wire</h3>
+      <p class="strat-sub">From the Agent's perspective: nothing. From the Console's perspective: one new event + two new endpoints.</p>
+    </div>
+  </div>
+  <div class="strat-body">
+    <table class="matrix">
+      <tr><th>Surface</th><th>Before</th><th>After</th></tr>
+      <tr>
+        <td class="case-head">Agent calls <code>tempo_get_plan</code></td>
+        <td>Returns markdown + comments[]</td>
+        <td>Unchanged. Reads <em>canonical</em> markdown (excluding pending suggestions) so the Agent never sees its own pending proposals as ground truth.</td>
+      </tr>
+      <tr>
+        <td class="case-head">Agent calls <code>tempo_write_plan</code></td>
+        <td>Replaces <code>plan_doc</code> immediately</td>
+        <td>Diffs old vs new, encodes changes as <code>suggestion</code> marks in <code>plan_doc</code>, fires <code>plan_changes_proposed</code> SSE.</td>
+      </tr>
+      <tr>
+        <td class="case-head">Console UI</td>
+        <td>Renders <code>plan_doc</code> verbatim</td>
+        <td>Renders <code>plan_doc</code> with custom rendering for <code>suggestion-insert</code> (green underline) and <code>suggestion-delete</code> (red strike), plus inline ✓ / ✗ affordances per <code>changeId</code>.</td>
+      </tr>
+      <tr>
+        <td class="case-head">New endpoints</td>
+        <td>—</td>
+        <td>
+          <code>POST /api/threads/:id/plan/changes/:changeId/accept</code><br>
+          <code>POST /api/threads/:id/plan/changes/:changeId/reject</code><br>
+          <code>POST /api/threads/:id/plan/changes/accept-all</code><br>
+          <code>POST /api/threads/:id/plan/changes/reject-all</code>
+        </td>
+      </tr>
+      <tr>
+        <td class="case-head">New event</td>
+        <td>—</td>
+        <td><code>plan_changes_proposed { changeIds: string[], byAgent: true }</code></td>
+      </tr>
+    </table>
+    <div class="callout" style="margin-top:14px">
+      <strong>The Agent doesn't change.</strong> It keeps reading and writing markdown. The "proposals don't auto-apply" semantic is enforced entirely on the Console side. The Agent doesn't even know its writes are pending until the next <code>tempo_get_plan</code> reads canonical-only state.
     </div>
   </div>
 </div>

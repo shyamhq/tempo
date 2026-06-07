@@ -154,11 +154,29 @@ export const RecordTurnEndedResponse = z.object({ ok: z.literal(true) });
 export const GetPlanResponse = Plan;
 
 // POST /api/threads/:id/plan
-// Actor (dev | agent) derived from auth: bearer token = agent, session cookie = dev.
+// Console (Dev) writes ProseMirror JSON — the editor's full document state.
+// The Agent path lives at /plan/agent and uses `AgentWritePlanRequest` below —
+// annotated Markdown that the server decodes into blocks before persisting.
 export const WritePlanRequest = z.object({
-  markdown: z.string(),
+  pm_json: z.unknown(),
 });
 export const WritePlanResponse = z.object({
+  ok: z.literal(true),
+  updated_at: IsoTimestamp,
+});
+
+// POST /api/threads/:id/plan/agent — Agent-only. Body is annotated Markdown
+// (Markdown plus inline `⟦sty:TOKEN⟧…⟦/sty:TOKEN⟧` sentinels carrying the
+// styles Markdown cannot express).
+export const AgentWritePlanRequest = z.object({
+  markdown: z.string(),
+});
+
+// POST /api/threads/:id/plan/recheck — Dev-initiated nudge. Appends a
+// `plan_edited_by_dev` event without touching the Plan body. The Plan body
+// itself is no longer auto-nudged on Dev writes (auto-save runs constantly);
+// the Dev hits Recheck when they want the Agent to re-read.
+export const RecheckPlanResponse = z.object({
   ok: z.literal(true),
   updated_at: IsoTimestamp,
 });

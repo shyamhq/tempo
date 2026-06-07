@@ -4,10 +4,15 @@ import { Check, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 
-export function HandoffBanner({ planMarkdown }: { planMarkdown: string }) {
+// The Plan is the artifact; this banner is the bridge between the Console
+// review surface and a fresh Claude Code session. We render via a Markdown
+// projection rather than the BlockNote block tree because the destination is
+// a Markdown-native prompt, not another BlockNote editor.
+export function HandoffBanner({ getPlanMarkdown }: { getPlanMarkdown: () => Promise<string> }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
-    await navigator.clipboard.writeText(planMarkdown);
+    const markdown = await getPlanMarkdown();
+    await navigator.clipboard.writeText(markdown);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

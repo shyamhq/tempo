@@ -75,7 +75,7 @@ export const plans = sqliteTable('plans', {
     .notNull()
     .unique()
     .references(() => threads.id),
-  body_markdown: text('body_markdown'),
+  body_pm_json: text('body_pm_json'),
   updated_by: text('updated_by', { enum: ['dev', 'agent'] }),
   updated_at: text('updated_at'),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),

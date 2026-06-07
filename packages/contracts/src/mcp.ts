@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Event } from './events';
 import {
+  AgentPlanState,
   AttachmentId,
   Comment,
   CommentId,
@@ -8,7 +9,6 @@ import {
   EventId,
   IsoTimestamp,
   MessageId,
-  Plan,
   QuestionInput,
   ReplyId,
   ReplyPayload,
@@ -23,7 +23,7 @@ export const AttachInput = z.object({});
 // the ref. N is `ATTACH_INLINE_RECENT_MESSAGES` on the Agent.
 export const AttachOutput = z.object({
   thread: ThreadSummary,
-  plan: Plan,
+  plan: AgentPlanState,
   comments: z.array(Comment),
   discussion: z.object({
     messages: z.array(DiscussionMessage),
@@ -33,7 +33,7 @@ export const AttachOutput = z.object({
 });
 
 export const PullPlanInput = z.object({});
-export const PullPlanOutput = Plan;
+export const PullPlanOutput = AgentPlanState;
 
 export const WritePlanInput = z.object({
   markdown: z.string(),

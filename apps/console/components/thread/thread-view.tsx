@@ -2,21 +2,22 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetThreadResponse } from '@tempo/contracts/http';
-import type { Editor } from '@tiptap/core';
-import { ArrowLeft, GitBranch, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { ActivityWidget } from '@/components/thread/activity-widget';
-import { CommentsRail } from '@/components/thread/comments-rail';
 import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
-import { PlanEditor } from '@/components/thread/editor/editor';
-import { PlanSaveBar } from '@/components/thread/editor/plan-save-bar';
-import { usePlanSave } from '@/components/thread/editor/use-plan-save';
+import { PlanEditor, type PlanEditorHandle } from '@/components/thread/editor/plan-editor';
+import {
+  type SaveStatus,
+  usePlanAutoSave,
+} from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
+import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
 import { Button } from '@/components/ui/button';
 import { useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
@@ -27,6 +28,7 @@ const DEFAULT_DISCUSSION_WIDTH = 360;
 const MIN_DISCUSSION_WIDTH = 320;
 const MAX_DISCUSSION_WIDTH = 720;
 const DISCUSSION_WIDTH_STORAGE = 'tempo:discussion_width';
+const SAVED_PILL_FADE_MS = 2000;
 
 function clampWidth(w: number): number {
   return Math.max(MIN_DISCUSSION_WIDTH, Math.min(MAX_DISCUSSION_WIDTH, Math.round(w)));
@@ -41,20 +43,35 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     staleTime: 30_000,
   });
 
-  const [editor, setEditor] = useState<Editor | null>(null);
-  const [focusedCommentId, setFocusedCommentId] = useState<string | null>(null);
-  const [showResolved, setShowResolved] = useState(false);
+  const [editorHandle, setEditorHandle] = useState<PlanEditorHandle | null>(null);
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
-  // Open the Discussion by default on a fresh Thread (no Plan yet) — the Agent
-  // and Dev will be talking before there's any Plan to read. After mount the
-  // Dev controls it via the FAB or ⌘/.
   const [discussionOpen, setDiscussionOpen] = useState(initial.plan.body === null);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
   const [discussionWidth, setDiscussionWidth] = useState(DEFAULT_DISCUSSION_WIDTH);
 
-  useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id, () =>
-    setPlanUpdatedAt(Date.now()),
-  );
+  // `pmJsonApplied` doubles as the "first apply happened" gate. It controls
+  // editor visibility (kept hidden during the two-step init to avoid an
+  // empty-doc flash) and short-circuits the initial-load effect once the
+  // SSE callback has already pushed content into the editor.
+  const [pmJsonApplied, setPmJsonApplied] = useState(false);
+  const editorHandleRef = useRef<PlanEditorHandle | null>(null);
+  editorHandleRef.current = editorHandle;
+
+  // Agent live-reload runs imperatively: refetch the thread, then push the
+  // fresh pm_json into the editor. Decoupling "apply pm_json to the editor"
+  // from "pm_json reference changed in the cache" is the load-bearing fix
+  // — Dev auto-saves and bridge invalidates no longer reach the live editor,
+  // so they can't wipe selection mid-`setMark` from a comment-create.
+  useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id, async () => {
+    setPlanUpdatedAt(Date.now());
+    await qc.refetchQueries({ queryKey: ['thread', threadId] });
+    const fresh = qc.getQueryData<View>(['thread', threadId]);
+    const pmJson = fresh?.plan.body?.pm_json;
+    if (pmJson != null && editorHandleRef.current) {
+      editorHandleRef.current.applyPmJson(pmJson);
+      setPmJsonApplied(true);
+    }
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -68,8 +85,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     if (Number.isFinite(parsed)) setDiscussionWidth(clampWidth(parsed));
   }, []);
 
-  // Debounce the localStorage write — pointermove fires ~60×/s during a drag;
-  // committing the final value at ~5Hz keeps state live while sparing the disk.
   const widthPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -94,25 +109,17 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   }, [planUpdatedAt]);
 
   const view = data ?? initial;
-  const markdown = view.plan.body?.markdown ?? '';
+  const approved = view.status === 'approved';
 
-  const onSave = useCallback(
-    async (md: string) => {
-      // Optimistic local update — server will emit plan_edited_by_dev and the
-      // SSE hook reconciles by invalidating (D6 last-write-wins).
+  const persistPmJson = useCallback(
+    async (pmJson: unknown) => {
       qc.setQueryData<View>(['thread', threadId], (prev) =>
-        prev && prev.plan.body
-          ? {
-              ...prev,
-              plan: {
-                ...prev.plan,
-                body: { ...prev.plan.body, markdown: md },
-              },
-            }
+        prev?.plan.body
+          ? { ...prev, plan: { ...prev.plan, body: { ...prev.plan.body, pm_json: pmJson } } }
           : prev,
       );
       try {
-        await api.writePlan(threadId, { markdown: md });
+        await api.writePlan(threadId, { pm_json: pmJson });
       } catch (e) {
         qc.invalidateQueries({ queryKey: ['thread', threadId] });
         throw e;
@@ -121,7 +128,48 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     [threadId, qc],
   );
 
-  const { isDirty, save, discard, discardKey, notifyEdit } = usePlanSave(editor, onSave);
+  const unloadBeacon = useCallback(
+    (pmJson: unknown) => {
+      // keepalive=true lets the request survive page unload. 64 KB body cap
+      // per origin is the trade-off — Chrome silently drops keepalive
+      // requests that exceed it. PM JSON is ~50% larger than blocks JSON, so
+      // check the serialised size and skip the beacon for oversized plans.
+      // The regular auto-save path (no keepalive) has no cap; an in-flight
+      // save may still survive unload on some browsers.
+      const body = JSON.stringify({ pm_json: pmJson });
+      if (body.length > 60_000) return;
+      fetch(`/api/threads/${threadId}/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Tempo-Dev': '1' },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    },
+    [threadId],
+  );
+
+  // The hook reads `getPmJson` through a ref it refreshes on every render,
+  // so memoising here would only add noise without adding identity stability.
+  const { status: saveStatus, lastSavedAt, notifyEdit } = usePlanAutoSave({
+    getPmJson: () => editorHandle?.getPmJson() ?? null,
+    persist: persistPmJson,
+    unloadBeacon,
+    readOnly: approved,
+  });
+
+  // Initial load — one-shot when the editor handle becomes available. Reads
+  // pm_json from the server-rendered `initial` prop (stable across renders),
+  // NOT from `view.plan.body.pm_json` — the latter re-evaluates on every
+  // refetch and would re-fire the apply on every cache refresh. If the SSE
+  // callback already applied first (the SSR-empty + Agent-drafts case),
+  // `pmJsonApplied` short-circuits this so we don't double-apply.
+  useEffect(() => {
+    if (!editorHandle || pmJsonApplied) return;
+    const pmJson = initial.plan.body?.pm_json ?? null;
+    if (pmJson === null) return;
+    editorHandle.applyPmJson(pmJson);
+    setPmJsonApplied(true);
+  }, [editorHandle, initial, pmJsonApplied]);
 
   const approve = async () => {
     await api.approveThread(threadId);
@@ -130,7 +178,10 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     await api.reopenThread(threadId);
   };
 
-  const approved = view.status === 'approved';
+  const getPlanMarkdown = useCallback(async (): Promise<string> => {
+    if (!editorHandle) return '';
+    return editorHandle.toMarkdown();
+  }, [editorHandle]);
 
   const unreadCount = useMemo(() => {
     if (discussionOpen) return 0;
@@ -143,7 +194,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   }, [view.discussion.messages, discussionSeenAt, discussionOpen]);
 
   const openDiscussion = useCallback(() => setDiscussionOpen(true), []);
-  // Closing unmounts the focused X button; pin scroll across the focus→body reflow.
   const closeDiscussion = useCallback(() => {
     const y = window.scrollY;
     setDiscussionOpen(false);
@@ -156,14 +206,14 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     setDiscussionSeenAt(now);
   }, [threadId]);
 
-  const gridClass = discussionOpen
-    ? 'grid-cols-[var(--discussion-w)_1fr] 2xl:grid-cols-[var(--discussion-w)_1fr_360px]'
-    : 'grid-cols-1 lg:grid-cols-[1fr_360px]';
+  // The CommentsRail is gone with the BlockNote migration — comments render
+  // inline via the FloatingThread card next to the anchored text. The grid
+  // collapses to a 1-column main + (optional) Discussion side panel.
+  const gridClass = discussionOpen ? 'grid-cols-[var(--discussion-w)_1fr]' : 'grid-cols-1';
   const gridStyle = discussionOpen
     ? ({ ['--discussion-w' as string]: `${discussionWidth}px` } as CSSProperties)
     : undefined;
 
-  // ⌘/ toggles the panel.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
@@ -182,12 +232,19 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           <Link href="/" className="text-ink-subtle hover:text-ink" aria-label="Back to Threads">
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
             <h1 className="font-display text-sm font-semibold truncate">{view.thread.title}</h1>
+            {approved ? null : (
+              <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />
+            )}
           </div>
+          <div className="flex-1" />
           <SessionPill status={view.session_status} />
           <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
+          {approved ? null : (
+            <RecheckPlanButton threadId={threadId} sessionStatus={view.session_status} />
+          )}
           <ConnectButton threadId={threadId} />
           {approved ? (
             <Button variant="ghost" onClick={reopen}>
@@ -220,7 +277,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         ) : null}
 
         <section>
-          {approved ? <HandoffBanner planMarkdown={markdown} /> : null}
+          {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
           {view.plan.body === null ? (
             <EmptyPlanState />
           ) : (
@@ -229,34 +286,23 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
                 planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
               }`}
             >
-              <PlanEditor
-                key={discardKey}
-                markdown={markdown}
-                comments={view.comments}
-                showResolved={showResolved}
-                focusedCommentId={focusedCommentId}
-                onUserEdit={notifyEdit}
-                onFocusComment={setFocusedCommentId}
-                onEditorReady={setEditor}
-                readOnly={approved}
-              />
+              {/* The editor is mounted unconditionally so onReady can fire
+                  and we can call applyPmJson — but we hide it visually until
+                  the initial PM JSON has been applied. Avoids the empty-doc
+                  flash that would otherwise appear during the two-step init. */}
+              <div className={pmJsonApplied ? '' : 'invisible'}>
+                <PlanEditor
+                  threadId={threadId}
+                  comments={view.comments}
+                  onUserEdit={notifyEdit}
+                  onReady={setEditorHandle}
+                  readOnly={approved}
+                />
+              </div>
+              {pmJsonApplied ? null : <EmptyPlanState />}
             </div>
           )}
         </section>
-
-        {/* Comments rail visible at all viewports when Discussion is closed; on
-            ≥1600px it stays visible alongside an open Discussion. */}
-        <aside className={`self-start ${discussionOpen ? 'hidden 2xl:block' : ''}`}>
-          <CommentsRail
-            threadId={threadId}
-            comments={view.comments}
-            editor={editor}
-            showResolved={showResolved}
-            onShowResolvedChange={setShowResolved}
-            focusedCommentId={focusedCommentId}
-            onFocusChange={setFocusedCommentId}
-          />
-        </aside>
 
         <ActivityWidget threadId={threadId} />
       </div>
@@ -271,13 +317,57 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      <DiscussionButton
-        open={discussionOpen}
-        unreadCount={unreadCount}
-        onClick={openDiscussion}
-      />
-      {approved ? null : <PlanSaveBar isDirty={isDirty} save={save} discard={discard} />}
+      <DiscussionButton open={discussionOpen} unreadCount={unreadCount} onClick={openDiscussion} />
     </div>
+  );
+}
+
+function PlanSaveStatus({
+  status,
+  lastSavedAt,
+}: {
+  status: SaveStatus;
+  lastSavedAt: number | null;
+}) {
+  // Briefly show "Saved" after a successful write, then fade to invisible.
+  // The hook stays in 'saved' until the next edit; we add a local fade
+  // timer so the pill isn't permanently visible after one save.
+  const [showSaved, setShowSaved] = useState(false);
+  useEffect(() => {
+    if (status !== 'saved' || lastSavedAt === null) {
+      setShowSaved(false);
+      return;
+    }
+    setShowSaved(true);
+    const t = setTimeout(() => setShowSaved(false), SAVED_PILL_FADE_MS);
+    return () => clearTimeout(t);
+  }, [status, lastSavedAt]);
+
+  if (status === 'idle') return null;
+  if (status === 'saved' && !showSaved) return null;
+
+  if (status === 'saving') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-caption text-ink-subtle tabular-nums">
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+        Saving…
+      </span>
+    );
+  }
+  if (status === 'saved') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-caption text-ink-subtle tabular-nums">
+        <Check className="h-3 w-3 text-success" aria-hidden />
+        Saved
+      </span>
+    );
+  }
+  // error
+  return (
+    <span className="inline-flex items-center gap-1.5 text-caption text-danger tabular-nums">
+      <RefreshCcw className="h-3 w-3 animate-spin" aria-hidden />
+      Save failed — retrying
+    </span>
   );
 }
 
