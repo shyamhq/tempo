@@ -10,6 +10,7 @@ import { ActivityWidget } from '@/components/thread/activity-widget';
 import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
+import { PlanCommentGutter } from '@/components/thread/editor/plan-comment-gutter';
 import { PlanEditor, type PlanEditorHandle } from '@/components/thread/editor/plan-editor';
 import {
   type SaveStatus,
@@ -44,6 +45,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   });
 
   const [editorHandle, setEditorHandle] = useState<PlanEditorHandle | null>(null);
+  const editorRootRef = useRef<HTMLDivElement>(null);
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
   const [discussionOpen, setDiscussionOpen] = useState(initial.plan.body === null);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
@@ -206,10 +208,17 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     setDiscussionSeenAt(now);
   }, [threadId]);
 
-  // The CommentsRail is gone with the BlockNote migration — comments render
-  // inline via the FloatingThread card next to the anchored text. The grid
-  // collapses to a 1-column main + (optional) Discussion side panel.
-  const gridClass = discussionOpen ? 'grid-cols-[var(--discussion-w)_1fr]' : 'grid-cols-1';
+  // grid: [discussion?] | main | gutter? — the gutter column appears only
+  // when there is a Plan body to anchor comments against; without it the
+  // rail has nothing to render anyway.
+  const planVisible = view.plan.body !== null;
+  const gridClass = discussionOpen
+    ? planVisible
+      ? 'grid-cols-[var(--discussion-w)_1fr_auto]'
+      : 'grid-cols-[var(--discussion-w)_1fr]'
+    : planVisible
+      ? 'grid-cols-[1fr_auto]'
+      : 'grid-cols-1';
   const gridStyle = discussionOpen
     ? ({ ['--discussion-w' as string]: `${discussionWidth}px` } as CSSProperties)
     : undefined;
@@ -276,7 +285,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </aside>
         ) : null}
 
-        <section>
+        <section ref={editorRootRef}>
           {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
           {view.plan.body === null ? (
             <EmptyPlanState />
@@ -303,6 +312,10 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             </div>
           )}
         </section>
+
+        {planVisible ? (
+          <PlanCommentGutter editorHandle={editorHandle} rootRef={editorRootRef} />
+        ) : null}
 
         <ActivityWidget threadId={threadId} />
       </div>

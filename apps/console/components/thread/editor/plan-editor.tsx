@@ -67,6 +67,14 @@ export type PlanEditorHandle = {
   /** Lossy Markdown export of the current document. Used for the Copy Plan
    * handoff card; not for round-trip persistence. */
   toMarkdown: () => Promise<string>;
+  /** Escape hatch for the comment gutter only — gives it the live BlockNote
+   * editor so it can walk the PM doc and convert mark positions to viewport
+   * Y via coordsAtPos. Do not consume from anywhere else; if another caller
+   * needs this, lift the dependent logic into the editor module. */
+  editor: ReturnType<typeof useCreateBlockNote>;
+  /** Escape hatch for the comment gutter only — same caveat as `editor`.
+   * The gutter subscribes to it for thread set changes. */
+  bridge: CommentThreadBridge;
 };
 
 export function PlanEditor({
@@ -152,8 +160,10 @@ export function PlanEditor({
         editor._tiptapEditor.commands.setContent(pmJson as never, { emitUpdate: false });
       },
       toMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
+      editor,
+      bridge,
     });
-  }, [editor, onReady]);
+  }, [editor, bridge, onReady]);
 
   // Document identity changes on every edit; the effect re-scans the rendered
   // DOM for mermaid blocks and refreshes any out-of-date previews. The doc
