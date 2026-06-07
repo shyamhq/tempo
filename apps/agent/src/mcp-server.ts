@@ -42,13 +42,21 @@ export async function runStdioMcpServer(args: {
 
   server.registerTool(
     'tempo_pull_plan',
-    { description: 'Read the current Plan.', inputSchema: {} },
+    {
+      description:
+        'Read the current Plan as annotated Markdown. The markdown is the Plan, edit it like a normal document. You may also see inline sentinel pairs of the form `⟦sty:TOKEN⟧…⟦/sty:TOKEN⟧` wrapping styled text (e.g. a Dev colour, a comment-thread anchor). The TOKEN is opaque — never modify or invent one. Keep paired markers balanced: every opener has its matching closer with the same TOKEN, and the markers travel with the wrapped text. If you rewrite the wrapped text, keep both markers around the new wording so the style follows. If you delete the wrapped text entirely, delete both markers with it. Half-deletions (opener without closer) are dropped silently when the Plan is saved.',
+      inputSchema: {},
+    },
     async () => wrap(await client.getPlan(threadId)),
   );
 
   server.registerTool(
     'tempo_write_plan',
-    { description: 'Replace the Plan markdown.', inputSchema: WritePlanInput.shape },
+    {
+      description:
+        'Replace the Plan with this annotated Markdown. Same `⟦sty:TOKEN⟧…⟦/sty:TOKEN⟧` rules apply: keep markers balanced and traveling with their wrapped text. Pull the latest Plan with tempo_pull_plan immediately before each write so you do not stomp Dev edits — Tempo is last-write-wins.',
+      inputSchema: WritePlanInput.shape,
+    },
     async (args) => wrap(await client.writePlan(threadId, args.markdown)),
   );
 

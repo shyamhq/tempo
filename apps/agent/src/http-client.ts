@@ -7,12 +7,12 @@ import type {
   SessionId,
   ThreadId,
 } from '@tempo/contracts';
+import { AgentPlanState } from '@tempo/contracts';
 import {
   CreateDiscussionMessageResponse,
   CreateReplyResponse,
   CreateSessionResponse,
   EventsLongPollResponse,
-  GetPlanResponse,
   RecordAgentNarrationResponse,
   RecordToolUseResponse,
   RecordTurnEndedResponse,
@@ -44,11 +44,16 @@ export class ConsoleClient {
   }
 
   getPlan(threadId: ThreadId) {
-    return this.send('GET', `/api/threads/${threadId}/plan`, null, GetPlanResponse);
+    return this.send('GET', `/api/threads/${threadId}/plan/agent`, null, AgentPlanState);
   }
 
   writePlan(threadId: ThreadId, markdown: string) {
-    return this.send('POST', `/api/threads/${threadId}/plan`, { markdown }, WritePlanResponse);
+    return this.send(
+      'POST',
+      `/api/threads/${threadId}/plan/agent`,
+      { markdown },
+      WritePlanResponse,
+    );
   }
 
   poll(threadId: ThreadId, cursor: EventId, waitSeconds = 25, signal?: AbortSignal) {
