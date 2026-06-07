@@ -13,7 +13,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import DOMPurify from 'isomorphic-dompurify';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { planSchema } from '@/lib/plan-schema';
 import { CommentThreadBridge } from './comment-thread-bridge';
 import { PlanCommentCard } from './plan-comment-card';
@@ -75,6 +75,12 @@ export type PlanEditorHandle = {
   /** Escape hatch for the comment gutter only — same caveat as `editor`.
    * The gutter subscribes to it for thread set changes. */
   bridge: CommentThreadBridge;
+  /** Open a `PlanCommentCard` for an orphan thread, positioned at the given
+   * viewport anchor (the gutter icon's bounding rect). The card renders
+   * inside `BlockNoteView`'s React tree so its hooks (`useBlockNoteEditor`,
+   * `useUsers`) resolve correctly — the gutter cannot render the card itself
+   * because it lives outside that context. */
+  openOrphan: (threadId: string, anchor: { top: number; right: number }) => void;
 };
 
 export function PlanEditor({
@@ -97,6 +103,15 @@ export function PlanEditor({
   const rootRef = useRef<HTMLDivElement>(null);
   const commentsRef = useRef(comments);
   commentsRef.current = comments;
+
+  // Orphan thread popover. The gutter triggers this via the handle; the
+  // popover renders PlanCommentCard inside BlockNoteView (below) so the
+  // card's hooks see the right context.
+  const [orphanOpen, setOrphanOpen] = useState<{
+    threadId: string;
+    top: number;
+    right: number;
+  } | null>(null);
 
   // Editor identity is needed by `captureAnchor` inside the bridge. The
   // bridge is constructed before `useCreateBlockNote` runs, so we thread the
@@ -162,8 +177,19 @@ export function PlanEditor({
       toMarkdown: async () => editor.blocksToMarkdownLossy(editor.document),
       editor,
       bridge,
+      openOrphan: (threadId, anchor) => setOrphanOpen({ threadId, ...anchor }),
     });
   }, [editor, bridge, onReady]);
+
+  // Drop the popover the moment the underlying thread disappears (delete
+  // from inside the card, or external delete via SSE). `comments` is the
+  // trigger — bridge.getThreads() reads through the snapshot ref, so the
+  // effect needs to re-run when the snapshot changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: comments is the trigger
+  useEffect(() => {
+    if (orphanOpen === null) return;
+    if (!bridge.getThreads().has(orphanOpen.threadId)) setOrphanOpen(null);
+  }, [orphanOpen, bridge, comments]);
 
   // Document identity changes on every edit; the effect re-scans the rendered
   // DOM for mermaid blocks and refreshes any out-of-date previews. The doc
@@ -218,6 +244,8 @@ export function PlanEditor({
     };
   }, [document]);
 
+  const orphanThread = orphanOpen ? bridge.getThreads().get(orphanOpen.threadId) : null;
+
   return (
     <div ref={rootRef} className="plan-editor-dense">
       <BlockNoteView
@@ -230,7 +258,61 @@ export function PlanEditor({
       >
         <FloatingComposerController floatingComposer={PlanCommentComposer} />
         <FloatingThreadController floatingThread={PlanCommentCard} />
+        {orphanOpen && orphanThread ? (
+          <OrphanCardPopover
+            top={orphanOpen.top}
+            right={orphanOpen.right}
+            onDismiss={() => setOrphanOpen(null)}
+          >
+            <PlanCommentCard thread={orphanThread} selected={true} orphaned={true} />
+          </OrphanCardPopover>
+        ) : null}
       </BlockNoteView>
+    </div>
+  );
+}
+
+// Positions PlanCommentCard at the gutter icon's viewport coordinates.
+// Dismisses on Escape and on outside click; click-inside is contained by
+// the card's own DOM, so its action buttons still work.
+function OrphanCardPopover({
+  top,
+  right,
+  onDismiss,
+  children,
+}: {
+  top: number;
+  right: number;
+  onDismiss: () => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onDismiss();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onDismiss();
+    };
+    window.addEventListener('keydown', onKey);
+    // mousedown over click so a drag-from-inside that releases outside doesn't
+    // accidentally dismiss; click would fire post-mouseup at the release point.
+    window.addEventListener('mousedown', onClick);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('mousedown', onClick);
+    };
+  }, [onDismiss]);
+
+  // Open to the left of the icon; right anchor is the icon's screen-x, so the
+  // card's right edge sits flush against it.
+  return (
+    <div
+      ref={ref}
+      style={{ position: 'fixed', top, right: window.innerWidth - right + 8, zIndex: 30 }}
+    >
+      {children}
     </div>
   );
 }

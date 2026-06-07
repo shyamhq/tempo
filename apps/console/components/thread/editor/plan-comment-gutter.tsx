@@ -95,9 +95,17 @@ export function PlanCommentGutter({
       if (!editorHandle) return;
       // `selectThread` flips the CommentsExtension's `selectedThreadId` —
       // FloatingThreadController watches that flag to render the card —
-      // and scrolls the anchored block into view. setTextSelection +
-      // focus() alone do not open the card.
+      // and scrolls the anchored block into view.
       editorHandle.editor.getExtension(CommentsExtension)?.selectThread(threadId);
+    },
+    [editorHandle],
+  );
+
+  const openOrphan = useCallback(
+    (threadId: string, e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!editorHandle) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      editorHandle.openOrphan(threadId, { top: rect.top, right: rect.left });
     },
     [editorHandle],
   );
@@ -150,7 +158,12 @@ export function PlanCommentGutter({
               Orphaned
             </span>
             {orphaned.map(({ threadId, thread }) => (
-              <GutterIcon key={threadId} thread={thread} orphaned />
+              <GutterIcon
+                key={threadId}
+                thread={thread}
+                orphaned
+                onClick={(e) => openOrphan(threadId, e)}
+              />
             ))}
           </div>
         )}
@@ -168,7 +181,7 @@ function GutterIcon({
   thread: ThreadData;
   style?: React.CSSProperties;
   orphaned?: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const Icon = orphaned ? MessageSquareOff : thread.resolved ? CheckCircle2 : MessageSquare;
   const titleParts = [thread.resolved ? 'Resolved' : 'Open', orphaned ? '(orphaned)' : null].filter(
