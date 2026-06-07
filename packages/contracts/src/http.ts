@@ -165,13 +165,6 @@ export const WritePlanResponse = z.object({
   updated_at: IsoTimestamp,
 });
 
-// POST /api/threads/:id/plan/agent — Agent-only. Body is annotated Markdown
-// (Markdown plus inline `⟦sty:TOKEN⟧…⟦/sty:TOKEN⟧` sentinels carrying the
-// styles Markdown cannot express).
-export const AgentWritePlanRequest = z.object({
-  markdown: z.string(),
-});
-
 // POST /api/threads/:id/plan/recheck — Dev-initiated nudge. Appends a
 // `plan_edited_by_dev` event without touching the Plan body. The Plan body
 // itself is no longer auto-nudged on Dev writes (auto-save runs constantly);

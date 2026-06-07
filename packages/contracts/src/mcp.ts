@@ -36,7 +36,7 @@ export const PullPlanInput = z.object({});
 export const PullPlanOutput = AgentPlanState;
 
 export const WritePlanInput = z.object({
-  markdown: z.string(),
+  pm_json: z.unknown(),
 });
 export const WritePlanOutput = z.object({
   ok: z.literal(true),

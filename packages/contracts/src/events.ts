@@ -51,6 +51,11 @@ export const CommentUnresolvedEvent = eventBase.extend({
   comment_id: CommentId,
 });
 
+export const CommentDeletedEvent = eventBase.extend({
+  kind: z.literal('comment_deleted'),
+  comment_id: CommentId,
+});
+
 export const AgentToolUseEvent = eventBase.extend({
   kind: z.literal('agent_tool_use'),
   tool: z.string().max(64),
@@ -104,6 +109,7 @@ export const Event = z.discriminatedUnion('kind', [
   StatusChangedEvent,
   CommentResolvedEvent,
   CommentUnresolvedEvent,
+  CommentDeletedEvent,
   AgentToolUseEvent,
   AgentNarrationEvent,
   AgentTodosUpdatedEvent,
@@ -123,6 +129,7 @@ export const EventKind = z.enum([
   'status_changed',
   'comment_resolved',
   'comment_unresolved',
+  'comment_deleted',
   'agent_tool_use',
   'agent_narration',
   'agent_todos_updated',

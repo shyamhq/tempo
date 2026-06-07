@@ -57,14 +57,14 @@ export const Plan = z.object({
 });
 export type Plan = z.infer<typeof Plan>;
 
-// The agent-facing projection of a Plan. The body is annotated Markdown —
-// Markdown plus inline `⟦sty:…⟧…⟦/sty:…⟧` sentinel pairs that carry the
-// styles Markdown cannot express (text colour, comment-thread anchors).
-// Distinct from `Plan` because the Console reads/writes blocks JSON and the
-// Agent reads/writes annotated Markdown; sharing a shape would force one
-// side to translate on every call.
+// The agent-facing projection of a Plan. Same `pm_json` shape as `PlanBody` —
+// the Agent reads and writes the editor's ProseMirror JSON directly so
+// BlockNote `comment` marks (which are `blocknoteIgnore: true` and therefore
+// stripped by any Markdown round-trip) survive untouched edits by construction.
+// Kept as a separate type from `PlanBody` so future agent-only fields don't
+// force a contract rewrite.
 export const AgentPlanBody = z.object({
-  markdown: z.string(),
+  pm_json: z.unknown(),
   updated_at: IsoTimestamp,
   updated_by: Actor,
 });
