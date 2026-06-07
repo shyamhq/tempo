@@ -1,66 +1,83 @@
 'use client';
 
-// One shared PM-doc walk per recompute builds Map<threadId, pos>; per-icon
-// `view.coordsAtPos(pos)` derives top. Never one walk per thread — the cost
-// would compound by O(threads × doc-size) per keystroke.
+// Notion-style comment margin: icons sit in a narrow column to the right of
+// the Plan editor, vertically aligned with each anchor, and scroll with the
+// document. Positions are measured relative to the shared plan wrapper (not
+// the viewport), so no scroll listener is needed.
 
-import type { ThreadData } from '@blocknote/core/comments';
 import { CommentsExtension } from '@blocknote/core/comments';
+import type { Comment } from '@tempo/contracts';
 import { CheckCircle2, MessageSquare, MessageSquareOff } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PlanEditorHandle } from './plan-editor';
 
-type LiveThread = {
-  threadId: string;
-  thread: ThreadData;
-  top: number | null;
+type AnchorPos = {
+  top: number;
+  /** PM doc offset — tiebreak when multiple comments share one line. */
+  pos: number;
 };
 
+type LiveComment = {
+  comment: Comment;
+  anchor: AnchorPos | null;
+};
+
+// size-7 (28px) + 2px breathing room between stacked icons
+const ICON_STEP_PX = 30;
+const ORPHAN_SECTION_GAP_PX = 12;
+const ORPHAN_LABEL_ABOVE_PX = 16;
+
 export function PlanCommentGutter({
+  comments,
   editorHandle,
-  rootRef,
+  anchorRef,
 }: {
+  comments: Comment[];
   editorHandle: PlanEditorHandle | null;
-  rootRef: React.RefObject<HTMLElement | null>;
+  anchorRef: React.RefObject<HTMLElement | null>;
 }) {
   const [showResolved, setShowResolved] = useState(false);
-  const [threads, setThreads] = useState<Map<string, ThreadData>>(new Map());
-  // `null` sentinel = haven't measured yet. Distinguishes "no anchor found"
-  // (orphan) from "first frame, recompute pending" (everything-is-orphan
-  // flash). Until the first measurement lands, we render nothing.
-  const [positions, setPositions] = useState<Map<string, number | null> | null>(null);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>();
+  const railRef = useRef<HTMLDivElement>(null);
+  const [positions, setPositions] = useState<Map<string, AnchorPos | null> | null>(null);
 
   useEffect(() => {
     if (!editorHandle) return;
-    setThreads(editorHandle.bridge.getThreads());
-    return editorHandle.bridge.subscribe((m) => setThreads(new Map(m)));
+    const store = editorHandle.editor.getExtension(CommentsExtension)?.store;
+    if (!store) return;
+    setSelectedThreadId(store.state.selectedThreadId);
+    return store.subscribe(() => {
+      setSelectedThreadId(store.state.selectedThreadId);
+    });
   }, [editorHandle]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: rootRef.current is read inside; the ref itself is stable
+  const commentIds = useMemo(
+    () => comments.map((c) => c.id).join('\0'),
+    [comments],
+  );
+
   useEffect(() => {
     if (!editorHandle) return;
     const editor = editorHandle.editor;
-    // Snapshot the thread IDs at effect setup. The recompute closure iterates
-    // this snapshot; when the thread set changes, the effect re-runs and the
-    // snapshot is rebuilt. Reading `threads` directly inside `recompute` would
-    // make `schedule` (fired by transactions) close over stale state.
-    const ids = [...threads.keys()];
+    const ids = comments.map((c) => c.id);
 
     const recompute = () => {
+      const anchorEl = anchorRef.current;
+      if (!anchorEl) return;
+      const anchorTop = anchorEl.getBoundingClientRect().top;
       const positionsMap = walkPmDocForCommentMarks(editor);
-      const next = new Map<string, number | null>();
-      const rootTop = rootRef.current?.getBoundingClientRect().top ?? 0;
-      for (const threadId of ids) {
-        const pos = positionsMap.get(threadId);
+      const next = new Map<string, AnchorPos | null>();
+      for (const id of ids) {
+        const pos = positionsMap.get(id);
         if (pos === undefined) {
-          next.set(threadId, null);
+          next.set(id, null);
           continue;
         }
         try {
           const coords = editor._tiptapEditor.view.coordsAtPos(pos);
-          next.set(threadId, coords.top - rootTop);
+          next.set(id, { top: coords.top - anchorTop, pos });
         } catch {
-          next.set(threadId, null);
+          next.set(id, null);
         }
       }
       setPositions(next);
@@ -74,11 +91,21 @@ export function PlanCommentGutter({
 
     editor._tiptapEditor.on('update', schedule);
     editor._tiptapEditor.on('selectionUpdate', schedule);
+    window.addEventListener('resize', schedule);
+
+    const observed = new Set<Element>();
+    const observe = (el: Element | null | undefined) => {
+      if (!el || observed.has(el)) return;
+      observed.add(el);
+      observer?.observe(el);
+    };
 
     let observer: ResizeObserver | null = null;
-    if (rootRef.current && typeof ResizeObserver !== 'undefined') {
+    if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(schedule);
-      observer.observe(rootRef.current);
+      observe(anchorRef.current);
+      observe(railRef.current);
+      observe(editor._tiptapEditor.view.dom);
     }
     schedule();
 
@@ -86,105 +113,124 @@ export function PlanCommentGutter({
       cancelAnimationFrame(frame);
       editor._tiptapEditor.off('update', schedule);
       editor._tiptapEditor.off('selectionUpdate', schedule);
+      window.removeEventListener('resize', schedule);
       observer?.disconnect();
     };
-  }, [editorHandle, threads]);
+  }, [editorHandle, anchorRef, commentIds, comments]);
 
   const focusAnchor = useCallback(
-    (threadId: string) => {
+    (commentId: string) => {
       if (!editorHandle) return;
-      // `selectThread` flips the CommentsExtension's `selectedThreadId` —
-      // FloatingThreadController watches that flag to render the card —
-      // and scrolls the anchored block into view.
-      editorHandle.editor.getExtension(CommentsExtension)?.selectThread(threadId);
+      editorHandle.editor.getExtension(CommentsExtension)?.selectThread(commentId);
     },
     [editorHandle],
   );
 
   const openOrphan = useCallback(
-    (threadId: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    (commentId: string, e: React.MouseEvent<HTMLButtonElement>) => {
       if (!editorHandle) return;
       const rect = e.currentTarget.getBoundingClientRect();
-      editorHandle.openOrphan(threadId, { top: rect.top, right: rect.left });
+      editorHandle.openOrphan(commentId, { top: rect.top, right: rect.left });
     },
     [editorHandle],
   );
 
   const { anchored, orphaned } = useMemo(() => {
-    const a: LiveThread[] = [];
-    const o: LiveThread[] = [];
+    const a: LiveComment[] = [];
+    const o: LiveComment[] = [];
     if (positions === null) return { anchored: a, orphaned: o };
-    for (const [threadId, thread] of threads) {
-      if (thread.resolved && !showResolved) continue;
-      const top = positions.get(threadId) ?? null;
-      const entry: LiveThread = { threadId, thread, top };
-      if (top === null) o.push(entry);
+    for (const comment of comments) {
+      if (comment.resolved_by !== null && !showResolved) continue;
+      const anchor = positions.get(comment.id) ?? null;
+      const entry: LiveComment = { comment, anchor };
+      if (anchor === null) o.push(entry);
       else a.push(entry);
     }
-    a.sort((x, y) => (x.top ?? 0) - (y.top ?? 0));
-    o.sort((x, y) => x.thread.createdAt.getTime() - y.thread.createdAt.getTime());
+    a.sort((x, y) => {
+      const topDiff = (x.anchor?.top ?? 0) - (y.anchor?.top ?? 0);
+      if (topDiff !== 0) return topDiff;
+      return (x.anchor?.pos ?? 0) - (y.anchor?.pos ?? 0);
+    });
+    o.sort((x, y) => Date.parse(x.comment.created_at) - Date.parse(y.comment.created_at));
     return { anchored: a, orphaned: o };
-  }, [threads, positions, showResolved]);
+  }, [comments, positions, showResolved]);
+
+  const { tops: displayTops, orphanLabelTop } = useMemo(
+    () => layoutGutterIcons(anchored, orphaned),
+    [anchored, orphaned],
+  );
 
   if (!editorHandle) return null;
 
   return (
-    <aside className="relative w-12 shrink-0 select-none">
-      <div className="sticky top-[calc(3.5rem+1.5rem)] flex flex-col gap-2">
-        <label className="flex items-center gap-1.5 text-caption text-ink-subtle px-1 cursor-pointer">
+    <div className="relative w-10 shrink-0 self-stretch select-none">
+      <div className="absolute inset-0 flex flex-col pt-1">
+        <label className="flex items-center gap-1 text-caption text-ink-subtle cursor-pointer mb-2">
           <input
             type="checkbox"
             className="accent-accent"
             checked={showResolved}
             onChange={(e) => setShowResolved(e.target.checked)}
           />
-          <span>Resolved</span>
         </label>
 
-        <div className="relative h-[calc(100dvh-3.5rem-6rem)]">
-          {anchored.map(({ threadId, thread, top }) => (
+        <div ref={railRef} className="relative flex-1 min-h-full">
+          {orphanLabelTop !== null ? (
+            <span
+              className="absolute right-0 text-micro-uppercase uppercase font-semibold text-ink-tertiary pointer-events-none"
+              style={{ top: orphanLabelTop }}
+            >
+              Orphaned
+            </span>
+          ) : null}
+          {anchored.map(({ comment }) => (
             <GutterIcon
-              key={threadId}
-              thread={thread}
-              style={{ position: 'absolute', top: `${top ?? 0}px`, left: 0 }}
-              onClick={() => focusAnchor(threadId)}
+              key={comment.id}
+              resolved={comment.resolved_by !== null}
+              selected={selectedThreadId === comment.id}
+              style={{
+                position: 'absolute',
+                top: `${displayTops.get(comment.id) ?? 0}px`,
+                right: 0,
+              }}
+              onClick={() => focusAnchor(comment.id)}
+            />
+          ))}
+          {orphaned.map(({ comment }) => (
+            <GutterIcon
+              key={comment.id}
+              resolved={comment.resolved_by !== null}
+              selected={selectedThreadId === comment.id}
+              orphaned
+              style={{
+                position: 'absolute',
+                top: `${displayTops.get(comment.id) ?? 0}px`,
+                right: 0,
+              }}
+              onClick={(e) => openOrphan(comment.id, e)}
             />
           ))}
         </div>
-
-        {orphaned.length === 0 ? null : (
-          <div className="flex flex-col gap-1 pt-3 mt-3 border-t border-hairline">
-            <span className="text-micro-uppercase uppercase font-semibold text-ink-tertiary px-1">
-              Orphaned
-            </span>
-            {orphaned.map(({ threadId, thread }) => (
-              <GutterIcon
-                key={threadId}
-                thread={thread}
-                orphaned
-                onClick={(e) => openOrphan(threadId, e)}
-              />
-            ))}
-          </div>
-        )}
       </div>
-    </aside>
+    </div>
   );
 }
 
 function GutterIcon({
-  thread,
+  resolved,
+  selected,
   style,
   orphaned,
   onClick,
 }: {
-  thread: ThreadData;
+  resolved: boolean;
+  selected?: boolean;
   style?: React.CSSProperties;
   orphaned?: boolean;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
-  const Icon = orphaned ? MessageSquareOff : thread.resolved ? CheckCircle2 : MessageSquare;
-  const titleParts = [thread.resolved ? 'Resolved' : 'Open', orphaned ? '(orphaned)' : null].filter(
+  const Icon = orphaned ? MessageSquareOff : resolved ? CheckCircle2 : MessageSquare;
+  const titleParts = [resolved ? 'Resolved' : 'Open', orphaned ? '(orphaned)' : null].filter(
     Boolean,
   );
   return (
@@ -193,26 +239,86 @@ function GutterIcon({
       style={style}
       onClick={onClick}
       disabled={onClick === undefined}
+      aria-pressed={selected ?? false}
       title={titleParts.join(' ')}
-      className={`size-7 inline-flex items-center justify-center rounded-md hover:bg-surface-2 transition-colors text-ink-subtle hover:text-ink ${
-        thread.resolved ? 'opacity-50' : ''
-      } ${orphaned ? 'border border-dashed border-hairline' : ''} ${
-        onClick === undefined ? 'cursor-default' : ''
-      }`}
+      className={`size-7 inline-flex items-center justify-center rounded-md transition-colors ${
+        selected
+          ? 'bg-accent/10 text-accent-deep ring-2 ring-accent'
+          : 'text-ink-subtle hover:text-ink hover:bg-surface-2'
+      } ${resolved && !selected ? 'opacity-50' : ''} ${
+        orphaned ? 'border border-dashed border-hairline' : ''
+      } ${onClick === undefined ? 'cursor-default' : ''}`}
     >
       <Icon className="size-icon-sm" aria-hidden />
     </button>
   );
 }
 
+type LayoutEntry = { id: string; preferred: number };
+
+/** One pass for anchored, then orphans below; final spread avoids all overlap. */
+function layoutGutterIcons(
+  anchored: LiveComment[],
+  orphaned: LiveComment[],
+): { tops: Map<string, number>; orphanLabelTop: number | null } {
+  const anchoredTops = spreadAnchoredIcons(anchored);
+  let anchoredBottom = -Infinity;
+  for (const top of anchoredTops.values()) {
+    anchoredBottom = Math.max(anchoredBottom, top + ICON_STEP_PX);
+  }
+
+  const entries: LayoutEntry[] = [];
+  for (const { comment } of anchored) {
+    const preferred = anchoredTops.get(comment.id);
+    if (preferred === undefined) continue;
+    entries.push({ id: comment.id, preferred });
+  }
+
+  const orphanBase =
+    orphaned.length > 0 ? Math.max(0, anchoredBottom + ORPHAN_SECTION_GAP_PX) : 0;
+  for (let i = 0; i < orphaned.length; i++) {
+    const orphan = orphaned[i];
+    if (!orphan) continue;
+    entries.push({ id: orphan.comment.id, preferred: orphanBase + i * ICON_STEP_PX });
+  }
+
+  entries.sort((a, b) => a.preferred - b.preferred);
+  const tops = new Map<string, number>();
+  let lastBottom = -Infinity;
+  for (const { id, preferred } of entries) {
+    const top = Math.max(preferred, lastBottom);
+    tops.set(id, top);
+    lastBottom = top + ICON_STEP_PX;
+  }
+
+  const firstOrphan = orphaned[0];
+  const firstOrphanTop = firstOrphan ? tops.get(firstOrphan.comment.id) : undefined;
+  const orphanLabelTop =
+    firstOrphanTop !== undefined
+      ? Math.max(
+          anchoredBottom === -Infinity ? 0 : anchoredBottom + 2,
+          firstOrphanTop - ORPHAN_LABEL_ABOVE_PX,
+        )
+      : null;
+
+  return { tops, orphanLabelTop };
+}
+
+function spreadAnchoredIcons(anchored: LiveComment[]): Map<string, number> {
+  const out = new Map<string, number>();
+  let lastBottom = -Infinity;
+  for (const { comment, anchor } of anchored) {
+    if (!anchor) continue;
+    const top = Math.max(anchor.top, lastBottom);
+    out.set(comment.id, top);
+    lastBottom = top + ICON_STEP_PX;
+  }
+  return out;
+}
+
 function walkPmDocForCommentMarks(editor: PlanEditorHandle['editor']): Map<string, number> {
   const out = new Map<string, number>();
-  // Tiptap's `descendants` callback is typed `any` once it lands in our
-  // module graph (prosemirror-model isn't a direct dep). The Node API we
-  // touch — `isText`, `marks`, each mark's `type.name` + `attrs.threadId` —
-  // is the stable ProseMirror surface; narrowing here would just rebuild
-  // those same shapes.
-  // biome-ignore lint/suspicious/noExplicitAny: see comment above
+  // biome-ignore lint/suspicious/noExplicitAny: ProseMirror node callback is untyped in our graph
   editor._tiptapEditor.state.doc.descendants((node: any, pos: number) => {
     if (!node.isText) return;
     for (const mark of node.marks) {

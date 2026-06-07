@@ -27,13 +27,14 @@ export type CommentThreadBridgeOptions = {
   /** Pulled fresh on every read — we never cache; the parent already keeps
    * one authoritative snapshot via TanStack Query. */
   getCommentsSnapshot: () => Comment[];
-  /** Tells the parent to refetch after a mutation completes. */
+  /** Push a post-mutation snapshot into the query cache (and the editor's
+   * comments ref) before `notify`, so subscribers never read stale state. */
+  onCommentsChanged: (comments: Comment[]) => void;
+  /** Background reconcile after the optimistic write lands. */
   invalidate: () => void;
   /** Read the PM selection at the moment BlockNote calls `createThread` —
    * before the comment mark is stamped — so the Comment row carries a quote
-   * + surrounding context. The Agent's only structured handle on "where was
-   * this anchored?" is `plan_quote` / `plan_context`; the markdown view it
-   * gets has comment marks stripped (`server/plan.ts` `stripCommentMarks`). */
+   * + surrounding context for the Agent. */
   captureAnchor: () => { quote: string; context: string };
 };
 
@@ -41,6 +42,7 @@ export class CommentThreadBridge extends ThreadStore {
   private readonly threadId: string;
   private readonly devUser: User;
   private readonly getCommentsSnapshot: () => Comment[];
+  private readonly onCommentsChanged: (comments: Comment[]) => void;
   private readonly invalidate: () => void;
   private readonly captureAnchor: () => { quote: string; context: string };
   private subscribers = new Set<(threads: Map<string, ThreadData>) => void>();
@@ -50,6 +52,7 @@ export class CommentThreadBridge extends ThreadStore {
     this.threadId = opts.threadId;
     this.devUser = opts.devUser;
     this.getCommentsSnapshot = opts.getCommentsSnapshot;
+    this.onCommentsChanged = opts.onCommentsChanged;
     this.invalidate = opts.invalidate;
     this.captureAnchor = opts.captureAnchor;
   }
@@ -75,8 +78,9 @@ export class CommentThreadBridge extends ThreadStore {
       first_reply_text: text.length > 0 ? text : undefined,
       attachments: [],
     });
-    this.invalidate();
-    this.notify();
+    const prev = this.getCommentsSnapshot();
+    const next = prev.some((c) => c.id === created.id) ? prev : [...prev, created];
+    this.commitComments(next);
     return commentToThread(created, this.devUser.id);
   }
 
@@ -89,21 +93,29 @@ export class CommentThreadBridge extends ThreadStore {
       payload: { text },
       attachments: [],
     });
-    this.invalidate();
-    this.notify();
+    const next = this.getCommentsSnapshot().map((c) => {
+      if (c.id !== options.threadId) return c;
+      if (c.replies.some((r) => r.id === reply.id)) return c;
+      return { ...c, replies: [...c.replies, reply] };
+    });
+    this.commitComments(next);
     return replyToComment(reply, this.devUser.id);
   }
 
   async resolveThread(options: { threadId: string }): Promise<void> {
     await api.resolveComment(options.threadId);
-    this.invalidate();
-    this.notify();
+    const next = this.getCommentsSnapshot().map((c) =>
+      c.id === options.threadId ? { ...c, resolved_by: 'dev' as const } : c,
+    );
+    this.commitComments(next);
   }
 
   async unresolveThread(options: { threadId: string }): Promise<void> {
     await api.unresolveComment(options.threadId);
-    this.invalidate();
-    this.notify();
+    const next = this.getCommentsSnapshot().map((c) =>
+      c.id === options.threadId ? { ...c, resolved_by: null } : c,
+    );
+    this.commitComments(next);
   }
 
   async updateComment(): Promise<void> {
@@ -116,8 +128,8 @@ export class CommentThreadBridge extends ThreadStore {
 
   async deleteThread(options: { threadId: string }): Promise<void> {
     await api.deleteComment(options.threadId);
-    this.invalidate();
-    this.notify();
+    const next = this.getCommentsSnapshot().filter((c) => c.id !== options.threadId);
+    this.commitComments(next);
   }
 
   async addReaction(): Promise<void> {
@@ -153,6 +165,12 @@ export class CommentThreadBridge extends ThreadStore {
    * refetches). The parent hook wires this to query state. */
   emitChange(): void {
     this.notify();
+  }
+
+  private commitComments(next: Comment[]): void {
+    this.onCommentsChanged(next);
+    this.notify();
+    this.invalidate();
   }
 
   private notify(): void {

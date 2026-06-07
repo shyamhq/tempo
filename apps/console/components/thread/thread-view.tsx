@@ -42,7 +42,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   });
 
   const [editorHandle, setEditorHandle] = useState<PlanEditorHandle | null>(null);
-  const editorRootRef = useRef<HTMLDivElement>(null);
+  const planColumnRef = useRef<HTMLDivElement>(null);
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
   const [discussionOpen, setDiscussionOpen] = useState(initial.plan.body === null);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
@@ -209,17 +209,9 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     setDiscussionSeenAt(now);
   }, [threadId]);
 
-  // grid: [discussion?] | main | gutter? — the gutter column appears only
-  // when there is a Plan body to anchor comments against; without it the
-  // rail has nothing to render anyway.
-  const planVisible = view.plan.body !== null;
   const gridClass = discussionOpen
-    ? planVisible
-      ? 'grid-cols-[var(--discussion-w)_1fr_auto]'
-      : 'grid-cols-[var(--discussion-w)_1fr]'
-    : planVisible
-      ? 'grid-cols-[1fr_auto]'
-      : 'grid-cols-1';
+    ? 'grid-cols-[var(--discussion-w)_1fr]'
+    : 'grid-cols-1';
   const gridStyle = discussionOpen
     ? ({ ['--discussion-w' as string]: `${discussionWidth}px` } as CSSProperties)
     : undefined;
@@ -284,7 +276,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </aside>
         ) : null}
 
-        <section ref={editorRootRef}>
+        <section>
           {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
           {view.plan.body === null ? (
             <EmptyPlanState />
@@ -294,27 +286,32 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
                 planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
               }`}
             >
-              {/* The editor is mounted unconditionally so onReady can fire
-                  and we can call applyPmJson — but we hide it visually until
-                  the initial PM JSON has been applied. Avoids the empty-doc
-                  flash that would otherwise appear during the two-step init. */}
-              <div className={pmJsonApplied ? '' : 'invisible'}>
-                <PlanEditor
-                  threadId={threadId}
-                  comments={view.comments}
-                  onUserEdit={notifyEdit}
-                  onReady={setEditorHandle}
-                  readOnly={approved}
-                />
+              <div ref={planColumnRef} className="flex items-start">
+                {/* The editor is mounted unconditionally so onReady can fire
+                    and we can call applyPmJson — but we hide it visually until
+                    the initial PM JSON has been applied. Avoids the empty-doc
+                    flash that would otherwise appear during the two-step init. */}
+                <div className={`flex-1 min-w-0 ${pmJsonApplied ? '' : 'invisible'}`}>
+                  <PlanEditor
+                    threadId={threadId}
+                    comments={view.comments}
+                    onUserEdit={notifyEdit}
+                    onReady={setEditorHandle}
+                    readOnly={approved}
+                  />
+                </div>
+                {pmJsonApplied ? (
+                  <PlanCommentGutter
+                    comments={view.comments}
+                    editorHandle={editorHandle}
+                    anchorRef={planColumnRef}
+                  />
+                ) : null}
               </div>
               {pmJsonApplied ? null : <EmptyPlanState />}
             </div>
           )}
         </section>
-
-        {planVisible ? (
-          <PlanCommentGutter editorHandle={editorHandle} rootRef={editorRootRef} />
-        ) : null}
 
         <ActivityWidget threadId={threadId} />
       </div>

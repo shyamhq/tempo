@@ -10,14 +10,44 @@ import {
   FloatingThreadController,
   useCreateBlockNote,
 } from '@blocknote/react';
+import { flip, offset, shift } from '@floating-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import DOMPurify from 'isomorphic-dompurify';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { planSchema } from '@/lib/plan-schema';
 import { CommentThreadBridge } from './comment-thread-bridge';
+import {
+  COMMENT_CARD_VIEWPORT,
+  resolveVerticalCardTop,
+} from './comment-card-placement';
 import { PlanCommentCard } from './plan-comment-card';
 import { PlanCommentComposer } from './plan-comment-composer';
+
+const FLOATING_THREAD_UI = {
+  useFloatingOptions: {
+    middleware: [
+      offset(COMMENT_CARD_VIEWPORT.gap),
+      shift({
+        padding: {
+          top: COMMENT_CARD_VIEWPORT.header + COMMENT_CARD_VIEWPORT.padding,
+          bottom: COMMENT_CARD_VIEWPORT.padding,
+          left: COMMENT_CARD_VIEWPORT.padding,
+          right: COMMENT_CARD_VIEWPORT.padding,
+        },
+      }),
+      flip({
+        padding: {
+          top: COMMENT_CARD_VIEWPORT.header + COMMENT_CARD_VIEWPORT.padding,
+          bottom: COMMENT_CARD_VIEWPORT.padding,
+          left: COMMENT_CARD_VIEWPORT.padding,
+          right: COMMENT_CARD_VIEWPORT.padding,
+        },
+        fallbackPlacements: ['top', 'bottom'] as const,
+      }),
+    ],
+  },
+};
 
 // Mermaid preview is layered on the rendered DOM rather than baked into the
 // schema, so the Markdown wire format stays a vanilla fenced code block. The
@@ -72,8 +102,7 @@ export type PlanEditorHandle = {
    * Y via coordsAtPos. Do not consume from anywhere else; if another caller
    * needs this, lift the dependent logic into the editor module. */
   editor: ReturnType<typeof useCreateBlockNote>;
-  /** Escape hatch for the comment gutter only — same caveat as `editor`.
-   * The gutter subscribes to it for thread set changes. */
+  /** Escape hatch for orphan-thread popover state inside the editor tree. */
   bridge: CommentThreadBridge;
   /** Open a `PlanCommentCard` for an orphan thread, positioned at the given
    * viewport anchor (the gutter icon's bounding rect). The card renders
@@ -129,6 +158,12 @@ export function PlanEditor({
         threadId,
         devUser: DEV_USER,
         getCommentsSnapshot: () => commentsRef.current,
+        onCommentsChanged: (next) => {
+          commentsRef.current = next;
+          qc.setQueryData(['thread', threadId], (prev) =>
+            prev ? { ...prev, comments: next } : prev,
+          );
+        },
         invalidate: () => qc.invalidateQueries({ queryKey: ['thread', threadId] }),
         captureAnchor: () => readAnchor(editorRef.current),
       }),
@@ -257,11 +292,14 @@ export function PlanEditor({
         }}
       >
         <FloatingComposerController floatingComposer={PlanCommentComposer} />
-        <FloatingThreadController floatingThread={PlanCommentCard} />
+        <FloatingThreadController
+          floatingThread={PlanCommentCard}
+          floatingUIOptions={FLOATING_THREAD_UI}
+        />
         {orphanOpen && orphanThread ? (
           <OrphanCardPopover
-            top={orphanOpen.top}
-            right={orphanOpen.right}
+            anchorTop={orphanOpen.top}
+            anchorRight={orphanOpen.right}
             onDismiss={() => setOrphanOpen(null)}
           >
             <PlanCommentCard thread={orphanThread} selected={true} orphaned={true} />
@@ -272,21 +310,33 @@ export function PlanEditor({
   );
 }
 
-// Positions PlanCommentCard at the gutter icon's viewport coordinates.
-// Dismisses on Escape and on outside click; click-inside is contained by
-// the card's own DOM, so its action buttons still work.
+// Positions PlanCommentCard beside the gutter icon, flipping above when the
+// viewport below the anchor is too short.
 function OrphanCardPopover({
-  top,
-  right,
+  anchorTop,
+  anchorRight,
   onDismiss,
   children,
 }: {
-  top: number;
-  right: number;
+  anchorTop: number;
+  anchorRight: number;
   onDismiss: () => void;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState(anchorTop);
+  const [right, setRight] = useState(0);
+
+  const recompute = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setTop(resolveVerticalCardTop(anchorTop, el.getBoundingClientRect().height));
+    setRight(window.innerWidth - anchorRight + COMMENT_CARD_VIEWPORT.gap);
+  }, [anchorTop, anchorRight]);
+
+  useLayoutEffect(() => {
+    recompute();
+  }, [recompute]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -296,22 +346,28 @@ function OrphanCardPopover({
       if (ref.current && !ref.current.contains(e.target as Node)) onDismiss();
     };
     window.addEventListener('keydown', onKey);
-    // mousedown over click so a drag-from-inside that releases outside doesn't
-    // accidentally dismiss; click would fire post-mouseup at the release point.
     window.addEventListener('mousedown', onClick);
+    window.addEventListener('resize', recompute);
+    window.addEventListener('scroll', recompute, { passive: true });
+
+    const el = ref.current;
+    let observer: ResizeObserver | null = null;
+    if (el && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(recompute);
+      observer.observe(el);
+    }
+
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousedown', onClick);
+      window.removeEventListener('resize', recompute);
+      window.removeEventListener('scroll', recompute);
+      observer?.disconnect();
     };
-  }, [onDismiss]);
+  }, [onDismiss, recompute]);
 
-  // Open to the left of the icon; right anchor is the icon's screen-x, so the
-  // card's right edge sits flush against it.
   return (
-    <div
-      ref={ref}
-      style={{ position: 'fixed', top, right: window.innerWidth - right + 8, zIndex: 30 }}
-    >
+    <div ref={ref} style={{ position: 'fixed', top, right, zIndex: 30 }}>
       {children}
     </div>
   );
