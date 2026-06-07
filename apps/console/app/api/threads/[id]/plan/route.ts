@@ -2,10 +2,26 @@ import { WritePlanRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../server/http';
-import { getPlan, InvalidPlanBodyError, writePlan } from '../../../../../server/plan';
+import {
+  getPlan,
+  getPlanForAgent,
+  InvalidPlanBodyError,
+  writePlan,
+} from '../../../../../server/plan';
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+// Single Plan endpoint for both Dev (Console) and Agent. The actor in
+// authFromRequest decides which getter runs — getPlan returns the Console
+// `Plan` shape; getPlanForAgent returns the `AgentPlanState` projection.
+// Both bodies carry the same `pm_json` payload now that the Markdown
+// sentinel pipeline is gone; the actor-aware GET preserves the type
+// labelling at the contract boundary.
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  const auth = await authFromRequest(req);
+  if (auth?.actor === 'agent') {
+    if (auth.thread_id !== id) return err('unauthorized', 401);
+    return ok(await getPlanForAgent(id));
+  }
   return ok(await getPlan(id));
 }
 
