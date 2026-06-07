@@ -11,22 +11,20 @@ export async function getPlan(threadId: string): Promise<Plan> {
   if (row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
     return { status: row.status, body: null };
   }
+  let pmJson: unknown = null;
+  try {
+    pmJson = JSON.parse(row.body_pm_json);
+  } catch {
+    return { status: row.status, body: null };
+  }
   return {
     status: row.status,
     body: {
-      pm_json: parsePmJson(row.body_pm_json),
+      pm_json: pmJson,
       updated_at: toIso(row.updated_at),
       updated_by: row.updated_by,
     },
   };
-}
-
-function parsePmJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
 }
 
 export async function writePlan(

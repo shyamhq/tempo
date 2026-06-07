@@ -36,18 +36,22 @@ export function PlanCommentGutter({
     return editorHandle.bridge.subscribe((m) => setThreads(new Map(m)));
   }, [editorHandle]);
 
-  const threadsKey = useMemo(() => [...threads.keys()].sort().join(','), [threads]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: threadsKey + editorHandle are the triggers; rootRef.current is read inside, the ref itself is stable
+  // biome-ignore lint/correctness/useExhaustiveDependencies: rootRef.current is read inside; the ref itself is stable
   useEffect(() => {
     if (!editorHandle) return;
     const editor = editorHandle.editor;
+    // Snapshot the thread IDs at effect setup. The recompute closure iterates
+    // this snapshot; when the thread set changes, the effect re-runs and the
+    // snapshot is rebuilt. Reading `threads` directly inside `recompute` would
+    // make `schedule` (fired by transactions) close over stale state.
+    const ids = [...threads.keys()];
 
     const recompute = () => {
       const positionsMap = walkPmDocForCommentMarks(editor);
       positionsRef.current = positionsMap;
       const next = new Map<string, number | null>();
       const rootTop = rootRef.current?.getBoundingClientRect().top ?? 0;
-      for (const threadId of threads.keys()) {
+      for (const threadId of ids) {
         const pos = positionsMap.get(threadId);
         if (pos === undefined) {
           next.set(threadId, null);
@@ -85,7 +89,7 @@ export function PlanCommentGutter({
       editor._tiptapEditor.off('selectionUpdate', schedule);
       observer?.disconnect();
     };
-  }, [editorHandle, threadsKey]);
+  }, [editorHandle, threads]);
 
   const focusAnchor = useCallback(
     (threadId: string) => {
