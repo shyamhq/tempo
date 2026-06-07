@@ -44,7 +44,7 @@ export async function runStdioMcpServer(args: {
     'tempo_pull_plan',
     {
       description:
-        'Read the current Plan as annotated Markdown. The markdown is the Plan, edit it like a normal document. You may also see inline sentinel pairs of the form `⟦sty:TOKEN⟧…⟦/sty:TOKEN⟧` wrapping styled text (e.g. a Dev colour, a comment-thread anchor). The TOKEN is opaque — never modify or invent one. Keep paired markers balanced: every opener has its matching closer with the same TOKEN, and the markers travel with the wrapped text. If you rewrite the wrapped text, keep both markers around the new wording so the style follows. If you delete the wrapped text entirely, delete both markers with it. Half-deletions (opener without closer) are dropped silently when the Plan is saved.',
+        "Read the current Plan as a ProseMirror JSON document — the editor's native shape. The body is a tree of nodes (paragraphs, headings, bullets, code blocks, etc.); inside each text node, `marks` is an array describing inline styling (bold, italic, code, link, and — most importantly — `comment` marks that anchor Dev-authored Comments to specific text runs). Edit the document as a tree, not as text: replace whole nodes when you need to rewrite, splice into the `content` array when you need to add. ON EVERY TEXT NODE YOU DO NOT INTEND TO REWRITE, KEEP THE `marks` ARRAY EXACTLY AS YOU FOUND IT — dropping it orphans the Dev's Comment. When you do rewrite a text node, you may drop `comment` marks on the rewritten run (the Dev's anchor will fall to the next-best surface), but never drop other marks (`bold`, `italic`, `code`, `link`) unless the rewrite genuinely removes that styling.",
       inputSchema: {},
     },
     async () => wrap(await client.getPlan(threadId)),
@@ -54,10 +54,10 @@ export async function runStdioMcpServer(args: {
     'tempo_write_plan',
     {
       description:
-        'Replace the Plan with this annotated Markdown. Same `⟦sty:TOKEN⟧…⟦/sty:TOKEN⟧` rules apply: keep markers balanced and traveling with their wrapped text. Pull the latest Plan with tempo_pull_plan immediately before each write so you do not stomp Dev edits — Tempo is last-write-wins.',
+        'Replace the Plan with this ProseMirror JSON document. The same rules apply: preserve `marks` arrays on every untouched text node, and keep the document shape valid (every block node has a `type`; text nodes live inside `content` arrays; node names match the ones you received from tempo_pull_plan). Pull the latest Plan with tempo_pull_plan immediately before each write so you do not stomp Dev edits — Tempo is last-write-wins.',
       inputSchema: WritePlanInput.shape,
     },
-    async (args) => wrap(await client.writePlan(threadId, args.markdown)),
+    async (args) => wrap(await client.writePlan(threadId, args.pm_json)),
   );
 
   server.registerTool(

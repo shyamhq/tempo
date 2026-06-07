@@ -27,10 +27,11 @@ function shouldNotify(ev: Event): boolean {
       return ev.message.author === 'dev';
     case 'reply_added':
       return ev.reply.author === 'dev';
-    // comment_resolved is informational only — the Dev is saying "I'm done
-    // with this, no action needed." Claude will see the resolution next time
-    // it polls for a real reason; no point burning a turn here.
+    // comment_resolved / comment_deleted are informational only — the Dev is
+    // closing the loop on a comment, no action needed. Claude will see the
+    // change next time it polls for a real reason; no point burning a turn.
     case 'comment_resolved':
+    case 'comment_deleted':
     // Agent-originated and meta events are silently skipped — Claude doesn't
     // need to hear about its own tool calls, plan writes, or session pings.
     case 'plan_edited_by_agent':

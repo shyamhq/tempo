@@ -44,16 +44,11 @@ export class ConsoleClient {
   }
 
   getPlan(threadId: ThreadId) {
-    return this.send('GET', `/api/threads/${threadId}/plan/agent`, null, AgentPlanState);
+    return this.send('GET', `/api/threads/${threadId}/plan`, null, AgentPlanState);
   }
 
-  writePlan(threadId: ThreadId, markdown: string) {
-    return this.send(
-      'POST',
-      `/api/threads/${threadId}/plan/agent`,
-      { markdown },
-      WritePlanResponse,
-    );
+  writePlan(threadId: ThreadId, pm_json: unknown) {
+    return this.send('POST', `/api/threads/${threadId}/plan`, { pm_json }, WritePlanResponse);
   }
 
   poll(threadId: ThreadId, cursor: EventId, waitSeconds = 25, signal?: AbortSignal) {
