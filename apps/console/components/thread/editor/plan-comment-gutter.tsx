@@ -5,8 +5,9 @@
 // would compound by O(threads × doc-size) per keystroke.
 
 import type { ThreadData } from '@blocknote/core/comments';
+import { CommentsExtension } from '@blocknote/core/comments';
 import { CheckCircle2, MessageSquare, MessageSquareOff } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PlanEditorHandle } from './plan-editor';
 
 type LiveThread = {
@@ -28,7 +29,6 @@ export function PlanCommentGutter({
   // (orphan) from "first frame, recompute pending" (everything-is-orphan
   // flash). Until the first measurement lands, we render nothing.
   const [positions, setPositions] = useState<Map<string, number | null> | null>(null);
-  const positionsRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!editorHandle) return;
@@ -48,7 +48,6 @@ export function PlanCommentGutter({
 
     const recompute = () => {
       const positionsMap = walkPmDocForCommentMarks(editor);
-      positionsRef.current = positionsMap;
       const next = new Map<string, number | null>();
       const rootTop = rootRef.current?.getBoundingClientRect().top ?? 0;
       for (const threadId of ids) {
@@ -94,10 +93,11 @@ export function PlanCommentGutter({
   const focusAnchor = useCallback(
     (threadId: string) => {
       if (!editorHandle) return;
-      const pos = positionsRef.current.get(threadId);
-      if (pos === undefined) return;
-      editorHandle.editor._tiptapEditor.commands.setTextSelection(pos);
-      editorHandle.editor._tiptapEditor.commands.focus();
+      // `selectThread` flips the CommentsExtension's `selectedThreadId` —
+      // FloatingThreadController watches that flag to render the card —
+      // and scrolls the anchored block into view. setTextSelection +
+      // focus() alone do not open the card.
+      editorHandle.editor.getExtension(CommentsExtension)?.selectThread(threadId);
     },
     [editorHandle],
   );
