@@ -16,8 +16,10 @@ import { api } from '@/lib/api-client';
 //   BlockNote addComment(threadId, comment)   → POST /api/comments/:id/replies
 //   BlockNote resolveThread(threadId)         → POST /api/comments/:id/resolve
 //   BlockNote unresolveThread(threadId)       → POST /api/comments/:id/unresolve
-//   updateComment / deleteComment / delete-   → throw / no-op (Tempo does
-//     Thread / addReaction / deleteReaction      not expose these surfaces)
+//   BlockNote deleteThread(threadId)          → DELETE /api/comments/:id
+//   updateComment / deleteComment (single-    → throw (Tempo does not expose
+//     reply edit/delete) / addReaction /         per-reply edit/delete or
+//     deleteReaction                              reactions in this phase)
 
 export type CommentThreadBridgeOptions = {
   threadId: string;
@@ -112,8 +114,10 @@ export class CommentThreadBridge extends ThreadStore {
     throw new Error('deleteComment is not supported by Tempo');
   }
 
-  async deleteThread(): Promise<void> {
-    throw new Error('deleteThread is not supported by Tempo');
+  async deleteThread(options: { threadId: string }): Promise<void> {
+    await api.deleteComment(options.threadId);
+    this.invalidate();
+    this.notify();
   }
 
   async addReaction(): Promise<void> {

@@ -30,7 +30,9 @@ import {
   type WritePlanRequest,
   WritePlanResponse,
 } from '@tempo/contracts/http';
-import type { z } from 'zod';
+import { z } from 'zod';
+
+const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 
 // Dev auth: single header for the MVP single-user Console.
 const DEV_HEADERS: HeadersInit = {
@@ -129,6 +131,9 @@ export const api = {
 
   unresolveComment: (commentId: string) =>
     request('POST', `/api/comments/${commentId}/unresolve`, {}, UnresolveCommentResponse),
+
+  deleteComment: (commentId: string) =>
+    request('DELETE', `/api/comments/${commentId}`, undefined, DeleteCommentResponse),
 
   createReply: (commentId: string, input: z.input<typeof CreateReplyRequest>) =>
     request('POST', `/api/comments/${commentId}/replies`, input, CreateReplyResponse),

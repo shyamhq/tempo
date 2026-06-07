@@ -85,6 +85,32 @@ export const resolveComment = (commentId: string) =>
 export const unresolveComment = (commentId: string) =>
   setResolvedBy(commentId, null, 'comment_unresolved');
 
+export async function deleteComment(commentId: string): Promise<void> {
+  const [row] = await db
+    .select({ thread_id: comments.thread_id })
+    .from(comments)
+    .where(eq(comments.id, commentId))
+    .limit(1);
+  if (!row) throw new CommentNotFoundError(commentId);
+
+  // SQLite FKs are off in this project (AGENTS.md spotted-but-not-fixed),
+  // so cascades run manually. Replies go first inside the tx; attachment
+  // rows referencing those replies become orphans for the R2 lifecycle
+  // sweep to collect — matching the existing deleteThread cascade scope.
+  await db.transaction(async (tx) => {
+    await tx.delete(replies).where(eq(replies.comment_id, commentId));
+    await tx.delete(comments).where(eq(comments.id, commentId));
+  });
+  await appendEvent(row.thread_id, { kind: 'comment_deleted', comment_id: commentId });
+}
+
+export class CommentNotFoundError extends Error {
+  constructor(public readonly commentId: string) {
+    super(`comment_not_found: ${commentId}`);
+    this.name = 'CommentNotFoundError';
+  }
+}
+
 async function setResolvedBy(
   commentId: string,
   resolved_by: 'dev' | null,

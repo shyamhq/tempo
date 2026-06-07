@@ -9,7 +9,7 @@ import type { CommentData } from '@blocknote/core/comments';
 import { CommentsExtension } from '@blocknote/core/comments';
 import type { ThreadProps } from '@blocknote/react';
 import { useBlockNoteEditor, useUsers } from '@blocknote/react';
-import { Check, CornerDownLeft, Loader2 } from 'lucide-react';
+import { Check, CornerDownLeft, Loader2, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { MarkdownText } from '@/components/thread/markdown-text';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ export function PlanCommentCard({
   const [replyDraft, setReplyDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const replyRef = useRef<HTMLTextAreaElement>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: replyDraft is the resize trigger
@@ -75,6 +76,22 @@ export function PlanCommentCard({
       else await threadStore.resolveThread({ threadId: thread.id });
     } finally {
       setResolving(false);
+    }
+  };
+
+  const doDelete = async () => {
+    if (deleting || !threadStore) return;
+    // window.confirm is the existing destructive-confirm pattern in this
+    // codebase (see DeleteThreadButton). A real toast/dialog can replace
+    // both at once when the Console gets a confirm primitive — filed in
+    // AGENTS.md spotted-but-not-fixed.
+    const ok = window.confirm('Delete this comment and all replies? This cannot be undone.');
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await threadStore.deleteThread({ threadId: thread.id });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -146,24 +163,44 @@ export function PlanCommentCard({
             />
           </div>
           <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-4">
-            <Tooltip content={thread.resolved ? 'Reopen' : 'Resolve'}>
-              <button
-                type="button"
-                disabled={resolving}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void toggleResolve();
-                }}
-                className="inline-flex items-center gap-1.5 text-body-sm font-medium text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:shadow-focus-soft rounded-md px-2 py-1.5"
-              >
-                {resolving ? (
-                  <Loader2 className="size-icon-sm animate-spin" aria-hidden />
-                ) : (
-                  <Check className="size-icon-sm" aria-hidden />
-                )}
-                Resolve
-              </button>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              <Tooltip content={thread.resolved ? 'Reopen' : 'Resolve'}>
+                <button
+                  type="button"
+                  disabled={resolving}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void toggleResolve();
+                  }}
+                  className="inline-flex items-center gap-1.5 text-body-sm font-medium text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:shadow-focus-soft rounded-md px-2 py-1.5"
+                >
+                  {resolving ? (
+                    <Loader2 className="size-icon-sm animate-spin" aria-hidden />
+                  ) : (
+                    <Check className="size-icon-sm" aria-hidden />
+                  )}
+                  Resolve
+                </button>
+              </Tooltip>
+              <Tooltip content="Delete">
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void doDelete();
+                  }}
+                  className="inline-flex items-center justify-center text-ink-subtle hover:text-danger hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:shadow-focus-soft rounded-md p-1.5"
+                  aria-label="Delete comment"
+                >
+                  {deleting ? (
+                    <Loader2 className="size-icon-sm animate-spin" aria-hidden />
+                  ) : (
+                    <Trash2 className="size-icon-sm" aria-hidden />
+                  )}
+                </button>
+              </Tooltip>
+            </div>
             <Button
               variant="accent"
               size="md"

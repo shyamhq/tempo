@@ -173,6 +173,11 @@ function apply(
             c.id === ev.comment_id ? { ...c, resolved_by: null } : c,
           ),
         };
+      case 'comment_deleted':
+        return {
+          ...next,
+          comments: next.comments.filter((c) => c.id !== ev.comment_id),
+        };
       case 'session_connected':
         return { ...next, session_status: 'connected' };
       case 'session_disconnected':
