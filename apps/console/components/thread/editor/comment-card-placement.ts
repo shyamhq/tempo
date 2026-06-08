@@ -16,8 +16,5 @@ export function resolveVerticalCardTop(
   const spaceAbove = anchorTop - header - padding;
   const openAbove = spaceBelow < cardHeight && spaceAbove >= spaceBelow;
   const naturalTop = openAbove ? anchorTop - cardHeight - gap : anchorTop;
-  return Math.max(
-    header + padding,
-    Math.min(naturalTop, viewportHeight - cardHeight - padding),
-  );
+  return Math.max(header + padding, Math.min(naturalTop, viewportHeight - cardHeight - padding));
 }

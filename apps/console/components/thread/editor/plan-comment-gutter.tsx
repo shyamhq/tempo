@@ -51,10 +51,7 @@ export function PlanCommentGutter({
     });
   }, [editorHandle]);
 
-  const commentIds = useMemo(
-    () => comments.map((c) => c.id).join('\0'),
-    [comments],
-  );
+  const commentIds = useMemo(() => comments.map((c) => c.id).join('\0'), [comments]);
 
   useEffect(() => {
     if (!editorHandle) return;
@@ -274,8 +271,7 @@ function layoutGutterIcons(
     entries.push({ id: comment.id, preferred });
   }
 
-  const orphanBase =
-    orphaned.length > 0 ? Math.max(0, anchoredBottom + ORPHAN_SECTION_GAP_PX) : 0;
+  const orphanBase = orphaned.length > 0 ? Math.max(0, anchoredBottom + ORPHAN_SECTION_GAP_PX) : 0;
   for (let i = 0; i < orphaned.length; i++) {
     const orphan = orphaned[i];
     if (!orphan) continue;

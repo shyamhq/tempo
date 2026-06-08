@@ -15,9 +15,11 @@ export function ActivityCard({
   const hasEntries = entries.length > 0;
   if (!todos && !hasEntries) return null;
   return (
-    <div className="rounded-lg border border-hairline bg-canvas px-3.5 py-3 shadow-[0_8px_22px_rgba(10,10,10,0.10)]">
-      {todos ? <TodoCard todos={todos} /> : null}
-      {hasEntries ? <ToolStack entries={entries} hasTodos={todos !== null} /> : null}
+    <div className="rounded-lg border border-hairline bg-canvas shadow-[0_8px_22px_rgba(10,10,10,0.10)]">
+      <div className="max-h-[min(70vh,520px)] overflow-y-auto px-3.5 py-3">
+        {todos ? <TodoCard todos={todos} /> : null}
+        {hasEntries ? <ToolStack entries={entries} hasTodos={todos !== null} /> : null}
+      </div>
     </div>
   );
 }
@@ -36,7 +38,7 @@ function TodoCard({ todos }: { todos: AgentTodo[] }) {
       <div className="text-micro font-semibold uppercase tracking-uppercase text-ink-tertiary mb-1.5">
         Todos · {completed.length} of {todos.length}
       </div>
-      <ul className="flex flex-col max-h-[260px] overflow-y-auto">
+      <ul className="flex flex-col">
         {collapsible && !showCompleted ? (
           <li className="py-1.5">
             <button

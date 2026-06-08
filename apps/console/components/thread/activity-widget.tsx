@@ -45,7 +45,7 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
   return (
     <div ref={containerRef} className="fixed bottom-5 right-5 z-10">
       {open ? (
-        <div className="w-[380px] relative">
+        <div className="w-[520px] relative">
           <button
             type="button"
             onClick={() => setOpen(false)}

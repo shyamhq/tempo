@@ -113,6 +113,8 @@ function spawnClaude(
     '--output-format',
     'stream-json',
     '--verbose',
+    '--model',
+    env.TEMPO_AGENT_MODEL,
     '--mcp-config',
     configPath,
     '--allowedTools',
