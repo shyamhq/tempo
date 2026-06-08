@@ -2,13 +2,16 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { AttachmentRef, Event, SessionId, ThreadId } from '@tempo/contracts';
 import {
+  AddBlocksInput,
   type AttachOutput,
+  DeleteBlockInput,
   PollInput,
   type PollOutput,
   PostDiscussionMessageInput,
   PostReplyInput,
   SetThreadMetaInput,
-  WritePlanInput,
+  UpdateBlockInput,
+  UpdatePlanInput,
 } from '@tempo/contracts/mcp';
 import type { z } from 'zod';
 import { env } from './env';
@@ -44,20 +47,50 @@ export async function runStdioMcpServer(args: {
     'tempo_pull_plan',
     {
       description:
-        "Read the current Plan as a ProseMirror JSON document — the editor's native shape. The body is a tree of nodes (paragraphs, headings, bullets, code blocks, etc.); inside each text node, `marks` is an array describing inline styling (bold, italic, code, link, and — most importantly — `comment` marks that anchor Dev-authored Comments to specific text runs). Edit the document as a tree, not as text: replace whole nodes when you need to rewrite, splice into the `content` array when you need to add. ON EVERY TEXT NODE YOU DO NOT INTEND TO REWRITE, KEEP THE `marks` ARRAY EXACTLY AS YOU FOUND IT — dropping it orphans the Dev's Comment. When you do rewrite a text node, you may drop `comment` marks on the rewritten run (the Dev's anchor will fall to the next-best surface), but never drop other marks (`bold`, `italic`, `code`, `link`) unless the rewrite genuinely removes that styling.",
+        'Read the current Plan as a flat list of blocks. Each block has an opaque id (ending in `$`) and an HTML content string. Use this when you want to inspect the Plan or before any edit.',
       inputSchema: {},
     },
-    async () => wrap(await client.getPlan(threadId)),
+    async () => wrap(await client.getPlanBlocks(threadId)),
   );
 
   server.registerTool(
-    'tempo_write_plan',
+    'tempo_update_plan',
     {
       description:
-        'Replace the Plan with this ProseMirror JSON document. The same rules apply: preserve `marks` arrays on every untouched text node, and keep the document shape valid (every block node has a `type`; text nodes live inside `content` arrays; node names match the ones you received from tempo_pull_plan). Pull the latest Plan with tempo_pull_plan immediately before each write so you do not stomp Dev edits — Tempo is last-write-wins.',
-      inputSchema: WritePlanInput.shape,
+        'Write the entire Plan in one shot from a single HTML document. Use only for the first draft of a brand-new Plan — fails with `plan_not_empty` (409) if any blocks already exist. After this, switch to `tempo_update_block` / `tempo_add_blocks` / `tempo_delete_block` for incremental edits so anchored Comments survive. The HTML can be a multi-block document (headings, paragraphs, lists, code blocks, etc.) — the server splits it into BlockNote blocks and assigns ids. For Mermaid diagrams emit `<pre><code class="language-mermaid">…</code></pre>` — the Console renders these as live SVG diagrams; without the `language-mermaid` class they render as a plain code block. Returns `$`-suffixed ids of the inserted top-level blocks.',
+      inputSchema: UpdatePlanInput.shape,
     },
-    async (args) => wrap(await client.writePlan(threadId, args.pm_json)),
+    async (args) => wrap(await client.updatePlan(threadId, args.html)),
+  );
+
+  server.registerTool(
+    'tempo_update_block',
+    {
+      description:
+        'Replace one block\'s content. Provide the block id from tempo_pull_plan and the new HTML. The editor preserves Comments anchored to blocks you do not touch; Comments anchored to text inside this block may surface in the Dev\'s Orphaned list — that is expected. For Mermaid diagrams emit `<pre><code class="language-mermaid">…</code></pre>` — the Console renders these as live SVG diagrams; without the `language-mermaid` class they render as a plain code block.',
+      inputSchema: UpdateBlockInput.shape,
+    },
+    async (args) => wrap(await client.updateBlock(threadId, args.block_id, args.html)),
+  );
+
+  server.registerTool(
+    'tempo_add_blocks',
+    {
+      description:
+        "Insert one or more new blocks. `reference_id` is the id of an existing block (or null + position:'end' to append). `position` is 'before', 'after', or 'end'. `blocks` is an array of HTML strings, one per new block. For Mermaid diagrams emit `<pre><code class=\"language-mermaid\">…</code></pre>` — the Console renders these as live SVG diagrams; without the `language-mermaid` class they render as a plain code block.",
+      inputSchema: AddBlocksInput.shape,
+    },
+    async (args) =>
+      wrap(await client.addBlocks(threadId, args.reference_id, args.position, args.blocks)),
+  );
+
+  server.registerTool(
+    'tempo_delete_block',
+    {
+      description: 'Remove one block by id.',
+      inputSchema: DeleteBlockInput.shape,
+    },
+    async (args) => wrap(await client.deleteBlock(threadId, args.block_id)),
   );
 
   server.registerTool(
@@ -78,7 +111,7 @@ export async function runStdioMcpServer(args: {
     'tempo_post_reply',
     {
       description:
-        'Post a Reply on a Comment. Chat-style markdown — one paragraph at most, the less the better. Human, conversational tone. Bold, italic, bullets, links, single-backtick inline code for filenames/identifiers, triple-backtick fenced blocks for multi-line snippets. No headings. Never put multi-line content inside single backticks; never write `\\n` as text — use a real newline. If you need to change the Plan, edit it first with tempo_write_plan, then post a Reply describing what you changed and why. If you want to suggest an edit before making it, write the suggestion in prose (e.g. "Planning to update the bullet about retries to read: *…* — confirm?") and wait for the Dev\'s text reply. No structured proposal payload; the conversation is the protocol.',
+        'Post a Reply on a Comment. Chat-style markdown — one paragraph at most, the less the better. Human, conversational tone. Bold, italic, bullets, links, single-backtick inline code for filenames/identifiers, triple-backtick fenced blocks for multi-line snippets. No headings. Never put multi-line content inside single backticks; never write `\\n` as text — use a real newline. If you need to change the Plan, edit it first with the block-editing tools (`tempo_update_block`, `tempo_add_blocks`, `tempo_delete_block`), then post a Reply describing what you changed and why. If you want to suggest an edit before making it, write the suggestion in prose (e.g. "Planning to update the bullet about retries to read: *…* — confirm?") and wait for the Dev\'s text reply. No structured proposal payload; the conversation is the protocol.',
       inputSchema: PostReplyInput.shape,
     },
     async (args) => {
@@ -104,7 +137,7 @@ export async function runStdioMcpServer(args: {
     'tempo_post_discussion_message',
     {
       description:
-        "Post one Message to the Thread Discussion. Two forms (use either, or both in one Message):\n\n• `text` — free-form prose. Use for approach-level talk about your reasoning, the codebase, or the Thread overall — not line-level pushback on the Plan (use tempo_post_reply for that). One paragraph at most, the less the better. Human, conversational tone. Chat-style markdown: bold, italic, bullets, links, single-backtick inline code for filenames/identifiers, triple-backtick fenced blocks for multi-line snippets. No headings. Never put multi-line content inside single backticks; never write `\\n` as text — use a real newline.\n\n• `questions` — a batch of 1–10 structured questions (`single_choice` / `multi_choice` / `open_text`) that the Console renders as a stepper at the bottom of the Discussion. Use when you want clear decisions on specific things before you continue. Choice questions can `allow_other` for a Dev-typed write-in. The Dev's reply lands as a normal Discussion Message whose `text` formats the answers as `**<prompt>**\\n→ <answer>` — read it as prose; there is no separate answers payload.\n\nIf multiple Dev Messages arrived since your last poll, send ONE Reply that addresses all of them. If a change to the Plan is the right answer, just edit the Plan with tempo_write_plan and say so briefly here. The Plan is the artifact.",
+        "Post one Message to the Thread Discussion. Two forms (use either, or both in one Message):\n\n• `text` — free-form prose. Use for approach-level talk about your reasoning, the codebase, or the Thread overall — not line-level pushback on the Plan (use tempo_post_reply for that). One paragraph at most, the less the better. Human, conversational tone. Chat-style markdown: bold, italic, bullets, links, single-backtick inline code for filenames/identifiers, triple-backtick fenced blocks for multi-line snippets. No headings. Never put multi-line content inside single backticks; never write `\\n` as text — use a real newline.\n\n• `questions` — a batch of 1–10 structured questions (`single_choice` / `multi_choice` / `open_text`) that the Console renders as a stepper at the bottom of the Discussion. Use when you want clear decisions on specific things before you continue. Choice questions can `allow_other` for a Dev-typed write-in. The Dev's reply lands as a normal Discussion Message whose `text` formats the answers as `**<prompt>**\\n→ <answer>` — read it as prose; there is no separate answers payload.\n\nIf multiple Dev Messages arrived since your last poll, send ONE Reply that addresses all of them. If a change to the Plan is the right answer, just edit the Plan with the block-editing tools (`tempo_update_block`, `tempo_add_blocks`, `tempo_delete_block`) and say so briefly here. The Plan is the artifact.",
       inputSchema: PostDiscussionMessageInput.shape,
     },
     async (args) => {

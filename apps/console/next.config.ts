@@ -10,7 +10,7 @@ const config: NextConfig = {
   outputFileTracingRoot: process.cwd().replace(/\/apps\/console\/?$/, ''),
   // ServerBlockNoteEditor pulls in jsdom + prosemirror at runtime; bundling
   // them breaks construction. Required by @blocknote/server-util.
-  serverExternalPackages: ['@blocknote/server-util'],
+  serverExternalPackages: ['@blocknote/server-util', 'jsdom'],
 };
 
 export default config;

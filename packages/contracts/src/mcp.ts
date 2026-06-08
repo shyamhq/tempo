@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { Event } from './events';
 import {
+  AgentPlanBlocks,
   AgentPlanState,
   AttachmentId,
   Comment,
   CommentId,
   DiscussionMessage,
   EventId,
-  IsoTimestamp,
   MessageId,
   QuestionInput,
   ReplyId,
@@ -33,14 +33,39 @@ export const AttachOutput = z.object({
 });
 
 export const PullPlanInput = z.object({});
-export const PullPlanOutput = AgentPlanState;
+export const PullPlanOutput = AgentPlanBlocks;
 
-export const WritePlanInput = z.object({
-  pm_json: z.unknown(),
+export const UpdateBlockInput = z.object({
+  block_id: z.string(),
+  html: z.string().min(1).max(200_000),
 });
-export const WritePlanOutput = z.object({
+export const UpdateBlockOutput = z.object({ ok: z.literal(true) });
+
+export const AddBlocksInput = z.object({
+  reference_id: z.string().nullable(),
+  position: z.enum(['before', 'after', 'end']),
+  blocks: z.array(z.string()).min(1),
+});
+export const AddBlocksOutput = z.object({
   ok: z.literal(true),
-  updated_at: IsoTimestamp,
+  ids: z.array(z.string()),
+});
+
+export const DeleteBlockInput = z.object({ block_id: z.string() });
+export const DeleteBlockOutput = z.object({ ok: z.literal(true) });
+
+// First-time Plan write. The whole Plan as a single HTML document — server
+// parses into top-level blocks, assigns ids, and persists in one shot. Legal
+// only when the Plan is empty (`body_pm_json IS NULL`); otherwise the route
+// returns 409 and the Agent must use the block-level tools so anchored
+// Comments survive.
+// 200 KB is well above any plausible Plan and well below Next's default body
+// limit, so an accidentally-pasted whole-repo dump fails at the contract
+// boundary instead of consuming a request.
+export const UpdatePlanInput = z.object({ html: z.string().min(1).max(200_000) });
+export const UpdatePlanOutput = z.object({
+  ok: z.literal(true),
+  ids: z.array(z.string()),
 });
 
 export const PollInput = z.object({
@@ -90,11 +115,14 @@ export const SetThreadMetaOutput = z.object({ thread: ThreadSummary });
 export const McpTool = z.enum([
   'tempo_attach',
   'tempo_pull_plan',
-  'tempo_write_plan',
+  'tempo_update_block',
+  'tempo_add_blocks',
+  'tempo_delete_block',
   'tempo_poll',
   'tempo_post_reply',
   'tempo_post_discussion_message',
   'tempo_set_thread_meta',
+  'tempo_update_plan',
 ]);
 export type McpTool = z.infer<typeof McpTool>;
 

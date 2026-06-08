@@ -1,4 +1,5 @@
 import type {
+  AgentPlanBlocks,
   CommentId,
   ConnectToken,
   EventId,
@@ -7,7 +8,6 @@ import type {
   SessionId,
   ThreadId,
 } from '@tempo/contracts';
-import { AgentPlanState } from '@tempo/contracts';
 import {
   CreateDiscussionMessageResponse,
   CreateReplyResponse,
@@ -17,14 +17,20 @@ import {
   RecordToolUseResponse,
   RecordTurnEndedResponse,
   UpdateThreadResponse,
-  WritePlanResponse,
 } from '@tempo/contracts/http';
-import { AttachOutput } from '@tempo/contracts/mcp';
+import {
+  AddBlocksOutput,
+  AttachOutput,
+  DeleteBlockOutput,
+  PullPlanOutput,
+  UpdateBlockOutput,
+  UpdatePlanOutput,
+} from '@tempo/contracts/mcp';
 import type { z } from 'zod';
 import { AuthError, ContractError, HttpStatusError, NetworkError } from './errors';
 import { logger } from './logger';
 
-type Method = 'GET' | 'POST' | 'PATCH';
+type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 const RETRYABLE_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [500, 1000, 2000];
@@ -43,12 +49,48 @@ export class ConsoleClient {
     return this.send('GET', `/api/sessions/${sessionId}/state`, null, AttachOutput);
   }
 
-  getPlan(threadId: ThreadId) {
-    return this.send('GET', `/api/threads/${threadId}/plan`, null, AgentPlanState);
+  getPlanBlocks(threadId: ThreadId): Promise<AgentPlanBlocks> {
+    return this.send('GET', `/api/threads/${threadId}/plan/blocks`, null, PullPlanOutput);
   }
 
-  writePlan(threadId: ThreadId, pm_json: unknown) {
-    return this.send('POST', `/api/threads/${threadId}/plan`, { pm_json }, WritePlanResponse);
+  updateBlock(
+    threadId: ThreadId,
+    blockId: string,
+    html: string,
+  ): Promise<z.infer<typeof UpdateBlockOutput>> {
+    return this.send(
+      'PUT',
+      `/api/threads/${threadId}/plan/blocks/${blockId}`,
+      { html },
+      UpdateBlockOutput,
+    );
+  }
+
+  updatePlan(threadId: ThreadId, html: string): Promise<z.infer<typeof UpdatePlanOutput>> {
+    return this.send('POST', `/api/threads/${threadId}/plan/update`, { html }, UpdatePlanOutput);
+  }
+
+  addBlocks(
+    threadId: ThreadId,
+    referenceId: string | null,
+    position: 'before' | 'after' | 'end',
+    blocks: string[],
+  ): Promise<z.infer<typeof AddBlocksOutput>> {
+    return this.send(
+      'POST',
+      `/api/threads/${threadId}/plan/blocks`,
+      { reference_id: referenceId, position, blocks },
+      AddBlocksOutput,
+    );
+  }
+
+  deleteBlock(threadId: ThreadId, blockId: string): Promise<z.infer<typeof DeleteBlockOutput>> {
+    return this.send(
+      'DELETE',
+      `/api/threads/${threadId}/plan/blocks/${blockId}`,
+      null,
+      DeleteBlockOutput,
+    );
   }
 
   poll(threadId: ThreadId, cursor: EventId, waitSeconds = 25, signal?: AbortSignal) {

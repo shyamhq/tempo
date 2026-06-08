@@ -13,14 +13,10 @@ import {
 import { flip, offset, shift } from '@floating-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
-import DOMPurify from 'isomorphic-dompurify';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { planSchema } from '@/lib/plan-schema';
+import { planSchemaClient } from '@/lib/plan-schema-client';
+import { COMMENT_CARD_VIEWPORT, resolveVerticalCardTop } from './comment-card-placement';
 import { CommentThreadBridge } from './comment-thread-bridge';
-import {
-  COMMENT_CARD_VIEWPORT,
-  resolveVerticalCardTop,
-} from './comment-card-placement';
 import { PlanCommentCard } from './plan-comment-card';
 import { PlanCommentComposer } from './plan-comment-composer';
 
@@ -48,32 +44,6 @@ const FLOATING_THREAD_UI = {
     ],
   },
 };
-
-// Mermaid preview is layered on the rendered DOM rather than baked into the
-// schema, so the Markdown wire format stays a vanilla fenced code block. The
-// hook scans `pre > code.language-mermaid` after each editor change and
-// injects an SVG sibling. Cached by source-hash inside the effect so steady-
-// state typing in non-mermaid blocks is essentially free.
-type Mermaid = typeof import('mermaid')['default'];
-let mermaidPromise: Promise<Mermaid> | null = null;
-function loadMermaid() {
-  if (!mermaidPromise) {
-    mermaidPromise = import('mermaid').then((m) => {
-      m.default.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'default' });
-      return m.default;
-    });
-  }
-  return mermaidPromise;
-}
-
-const MERMAID_PREVIEW_CLASS = 'tempo-mermaid-preview';
-const MERMAID_HASH_ATTR = 'data-mermaid-source-hash';
-
-function hashSource(s: string): string {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
 
 // MVP single-user Console. Identity carries over from the existing Tiptap
 // surface — we never render multi-author avatars because there's only ever
@@ -184,7 +154,7 @@ export function PlanEditor({
   // YjsThreadStore reference also uses.
   const editor = useCreateBlockNote(
     {
-      schema: planSchema,
+      schema: planSchemaClient,
       extensions: [CommentsExtension({ threadStore: bridge, resolveUsers })],
     },
     [bridge],
@@ -226,59 +196,6 @@ export function PlanEditor({
     if (!bridge.getThreads().has(orphanOpen.threadId)) setOrphanOpen(null);
   }, [orphanOpen, bridge, comments]);
 
-  // Document identity changes on every edit; the effect re-scans the rendered
-  // DOM for mermaid blocks and refreshes any out-of-date previews. The doc
-  // is the trigger, not a value read inside the effect.
-  const document = editor.document;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: document is the trigger
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    let cancelled = false;
-    const handle = setTimeout(async () => {
-      if (cancelled) return;
-      const codes = root.querySelectorAll<HTMLElement>('pre > code.language-mermaid');
-      if (codes.length === 0) return;
-      const mermaid = await loadMermaid();
-      if (cancelled) return;
-      for (const code of Array.from(codes)) {
-        const source = code.textContent ?? '';
-        const hash = hashSource(source);
-        const pre = code.closest('pre');
-        const anchor = pre ?? code;
-        const existing = anchor.previousElementSibling;
-        if (
-          existing?.classList.contains(MERMAID_PREVIEW_CLASS) &&
-          existing.getAttribute(MERMAID_HASH_ATTR) === hash
-        ) {
-          continue;
-        }
-        try {
-          const { svg } = await mermaid.render(`tempo-mmd-${hash}`, source);
-          if (cancelled) return;
-          const wrap = window.document.createElement('div');
-          wrap.className = MERMAID_PREVIEW_CLASS;
-          wrap.setAttribute(MERMAID_HASH_ATTR, hash);
-          wrap.setAttribute('contenteditable', 'false');
-          // Mermaid's `securityLevel: 'strict'` is best-effort; defense in
-          // depth via DOMPurify protects against any past or future renderer
-          // bypass that lets script-bearing SVG through.
-          wrap.innerHTML = DOMPurify.sanitize(svg, {
-            USE_PROFILES: { svg: true, svgFilters: true },
-          });
-          if (existing?.classList.contains(MERMAID_PREVIEW_CLASS)) existing.remove();
-          anchor.parentElement?.insertBefore(wrap, anchor);
-        } catch {
-          // Silent — diagram errors leave the source visible.
-        }
-      }
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [document]);
-
   const orphanThread = orphanOpen ? bridge.getThreads().get(orphanOpen.threadId) : null;
 
   return (
@@ -286,6 +203,7 @@ export function PlanEditor({
       <BlockNoteView
         editor={editor}
         comments={false}
+        theme="light"
         onChange={() => {
           if (readOnly) return;
           onUserEdit?.();

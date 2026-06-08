@@ -51,8 +51,12 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   // `pmJsonApplied` doubles as the "first apply happened" gate. It controls
   // editor visibility (kept hidden during the two-step init to avoid an
   // empty-doc flash) and short-circuits the initial-load effect once the
-  // SSE callback has already pushed content into the editor.
+  // SSE callback has already pushed content into the editor. The ref mirrors
+  // the state so the initial-load effect's guard is read synchronously,
+  // independent of React's render cycle — a TanStack refetch that flips the
+  // `view` reference in the same batch as the apply can no longer re-enter.
   const [pmJsonApplied, setPmJsonApplied] = useState(false);
+  const pmJsonAppliedRef = useRef(false);
   const editorHandleRef = useRef<PlanEditorHandle | null>(null);
   editorHandleRef.current = editorHandle;
 
@@ -68,6 +72,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     const pmJson = fresh?.plan.body?.pm_json;
     if (pmJson != null && editorHandleRef.current) {
       editorHandleRef.current.applyPmJson(pmJson);
+      pmJsonAppliedRef.current = true;
       setPmJsonApplied(true);
     }
   });
@@ -160,19 +165,21 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     readOnly: approved,
   });
 
-  // Initial load — one-shot when the editor handle becomes available. Reads
-  // pm_json from the server-rendered `initial` prop (stable across renders),
-  // NOT from `view.plan.body.pm_json` — the latter re-evaluates on every
-  // refetch and would re-fire the apply on every cache refresh. If the SSE
-  // callback already applied first (the SSR-empty + Agent-drafts case),
-  // `pmJsonApplied` short-circuits this so we don't double-apply.
+  // Initial load — one-shot when the editor handle and pm_json are both
+  // available. Reads from the live `view` (current cache) so the SSR-empty
+  // case still works: when the Agent drafts the first Plan, the editor only
+  // mounts after the refetch lands, so the SSE callback's direct apply finds
+  // a null `editorHandleRef` and skips. This effect picks up the slack.
+  // `pmJsonAppliedRef` gates it to one apply synchronously, so a concurrent
+  // `view` cache update can't slip through before the state setter renders.
   useEffect(() => {
-    if (!editorHandle || pmJsonApplied) return;
-    const pmJson = initial.plan.body?.pm_json ?? null;
+    if (!editorHandle || pmJsonAppliedRef.current) return;
+    const pmJson = view.plan.body?.pm_json ?? null;
     if (pmJson === null) return;
     editorHandle.applyPmJson(pmJson);
+    pmJsonAppliedRef.current = true;
     setPmJsonApplied(true);
-  }, [editorHandle, initial, pmJsonApplied]);
+  }, [editorHandle, view]);
 
   const approve = async () => {
     await api.approveThread(threadId);
@@ -209,9 +216,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     setDiscussionSeenAt(now);
   }, [threadId]);
 
-  const gridClass = discussionOpen
-    ? 'grid-cols-[var(--discussion-w)_1fr]'
-    : 'grid-cols-1';
+  const gridClass = discussionOpen ? 'grid-cols-[var(--discussion-w)_1fr]' : 'grid-cols-1';
   const gridStyle = discussionOpen
     ? ({ ['--discussion-w' as string]: `${discussionWidth}px` } as CSSProperties)
     : undefined;

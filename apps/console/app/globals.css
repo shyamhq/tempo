@@ -312,35 +312,22 @@ body {
   display: none;
 }
 
-.plan-editor-dense .mermaid-preview {
-  padding: 0.75rem;
-  background: var(--color-canvas);
-}
-
-.plan-editor-dense .confluence-code-block:not([data-rendered='true']) .mermaid-preview {
-  border-bottom: 1px solid var(--color-hairline);
-}
-
-.plan-editor-dense .mermaid-preview__svg {
+/* Mermaid diagram block — scale the SVG to its container's width so the
+   diagram fills the editor column instead of sitting at its intrinsic
+   pixel width with white space on either side. `viewBox` keeps the aspect
+   ratio. BlockNote's `.bn-block-content` is a flex container, so the block
+   wrapper needs `width: 100%` (or `flex: 1`) to claim the full column;
+   then the SVG fills the wrapper. Applies in both the live PlanEditor and
+   the playground. */
+.bn-mermaid-block {
   width: 100%;
 }
 
-.plan-editor-dense .mermaid-preview__svg svg {
+.bn-mermaid-block svg {
   display: block;
   width: 100%;
   height: auto;
   max-width: 100%;
-}
-
-.plan-editor-dense .mermaid-preview__error {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: #bf2600;
-  background: #ffebe6;
-  border: 1px solid #ffbdad;
-  border-radius: 3px;
-  padding: 0.5rem 0.65rem;
-  width: 100%;
 }
 
 /* Reply rendering — marked → sanitized HTML. Mirrors the Plan editor's

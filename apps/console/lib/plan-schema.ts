@@ -1,55 +1,35 @@
-import {
-  type Block,
-  BlockNoteSchema,
-  createStyleSpecFromTipTapMark,
-  defaultStyleSpecs,
-} from '@blocknote/core';
+import { type Block, BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from '@blocknote/core';
+import { CommentMark } from '@blocknote/core/comments';
+import { mermaidBlockServer } from './blocks/mermaid-block.server';
+import { permissiveCode } from './permissive-code-style';
 
-// The single source of schema truth for the Plan editor. Imported by:
-//   - the client editor surface (useCreateBlockNote)
-//   - the server-side encoder/decoder (ServerBlockNoteEditor.create)
-// Both sides must agree byte-for-byte on which block, inline-content, and
-// style specs are registered, or the wire format drifts.
-//
-// We use BlockNote's default schema with ONE override: the `code` style spec.
-// See `permissiveCode` below for the reason.
-
-// ---------------------------------------------------------------------------
-// UPSTREAM-WATCH — BlockNote #2795 + TipTap default
-//
-// TipTap's `Code` mark is declared with `excludes: '_'` (wildcard), so no
-// other inline mark can coexist with it on the same text run. This blocks
-// the BlockNote CommentsExtension from stamping a `comment` mark on inline
-// code: ProseMirror silently refuses the setMark call. Symptoms: commenting
-// on inline code produces a saved Comment row with no visible highlight; a
-// mixed selection (text + `code` + text) only highlights the non-code spans.
-//
-// Filed against BlockNote at https://github.com/TypeCellOS/BlockNote/issues/2795
-// (open as of 2026-06-07, labelled bug:P3, a contributor has expressed
-// interest). Upstream root cause documented at
-// https://github.com/ueberdosis/tiptap/issues/2563.
-//
-// Workaround below: pluck the Code mark BlockNote already extended (with
-// the backtick input rules), re-extend with `excludes: ''`, rebuild the
-// style spec, and register it in place of the default. Same fix the
-// BlockNote PR will eventually ship.
-//
-// Revisit: 2026-12 (~6 months out). If #2795 has merged, delete the
-// `permissiveCode` block below and pass no `styleSpecs` to
-// `BlockNoteSchema.create()` — the upstream default will be the same.
-// AGENTS.md "Upstream watches" tracks this for periodic review.
-// ---------------------------------------------------------------------------
-
-const permissiveCode = createStyleSpecFromTipTapMark(
-  defaultStyleSpecs.code.implementation.mark.extend({ excludes: '' }),
-  'boolean',
-);
-
+// Server-safe schema. The single source of schema truth for the Plan editor
+// when imported server-side (from `apps/console/server/plan/block-html.ts`
+// → `ServerBlockNoteEditor`). The `mermaidDiagram` block is registered via
+// the vanilla `createBlockSpec` variant so this module does not pull in
+// `@blocknote/react`, which calls `createContext` at module load and fails
+// in a React Server Component module. The client editor surface imports
+// `planSchemaClient` from `./plan-schema-client.ts` for the React-rendering
+// variant. Both schemas share type / propSchema / content via
+// `./blocks/mermaid-block-shared.ts` and the `code` style override via
+// `./permissive-code-style.ts` so PM JSON round-trips byte-for-byte.
 export const planSchema = BlockNoteSchema.create({
+  blockSpecs: {
+    ...defaultBlockSpecs,
+    mermaidDiagram: mermaidBlockServer(),
+  },
   styleSpecs: {
     ...defaultStyleSpecs,
     code: permissiveCode,
   },
 });
+
+// BlockNote's `comment` mark, exported from `@blocknote/core/comments`. The
+// client editor's CommentsExtension wires this mark plus UI plugin behavior;
+// the server-side ServerBlockNoteEditor only needs the mark spec registered
+// on its ProseMirror schema so prosemirror-model can parse pm_json that
+// contains comment marks. We re-export from here so the server path has a
+// single import point alongside `planSchema`.
+export { CommentMark };
 
 export type PlanBlock = Block;

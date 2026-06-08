@@ -57,19 +57,25 @@ export const Plan = z.object({
 });
 export type Plan = z.infer<typeof Plan>;
 
-// Agent-facing projection of a Plan. Structurally identical to `PlanBody`
-// today; kept as a separate name so the MCP contract can evolve agent-only
-// fields without rippling into Console types.
-export const AgentPlanBody = z.object({
-  pm_json: z.unknown(),
-  updated_at: IsoTimestamp,
-  updated_by: Actor,
+// A single block as seen by the Agent: opaque id (UUID with `$` suffix) + HTML content.
+export const AgentBlock = z.object({
+  id: z.string(),
+  html: z.string(),
 });
-export type AgentPlanBody = z.infer<typeof AgentPlanBody>;
+export type AgentBlock = z.infer<typeof AgentBlock>;
 
+// The Agent-facing Plan body: a flat list of blocks.
+export const AgentPlanBlocks = z.object({
+  blocks: z.array(AgentBlock),
+});
+export type AgentPlanBlocks = z.infer<typeof AgentPlanBlocks>;
+
+// Lightweight Plan metadata returned by tempo_attach. The Agent calls
+// tempo_pull_plan when it needs block content; attach is a status handshake only.
 export const AgentPlanState = z.object({
   status: ThreadStatus,
-  body: AgentPlanBody.nullable(),
+  updated_at: z.string().nullable(),
+  updated_by: Actor.nullable(),
 });
 export type AgentPlanState = z.infer<typeof AgentPlanState>;
 

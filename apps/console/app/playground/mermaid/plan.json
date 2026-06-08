@@ -1,0 +1,899 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "blockGroup",
+      "content": [
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "b6b4174e-3517-4ee2-a1a5-e4ad99140cd8" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 1,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Add Redis Cache" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "b826da94-0959-4a4d-8662-838c1e322e90" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Answers" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "c63aad71-9b00-4b2f-a563-2cd12cd7914f" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Provider:" },
+                { "type": "text", "text": " Redis on Railway (TCP) → " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "ioredis" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "5f2ac36e-da9d-44bc-a7c0-37205e24e202" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Cache targets:" },
+                { "type": "text", "text": " membership checks (" },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "assertMember" },
+                { "type": "text", "text": " / " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "getMembership" },
+                { "type": "text", "text": ") + album reads (" },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "getAlbumOrThrow" },
+                { "type": "text", "text": " / " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "getAlbumDetail" },
+                { "type": "text", "text": ") — both short TTL" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "663f5512-8804-46cb-a4e6-ad2822856eaa" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Invalidation:" },
+                { "type": "text", "text": " TTL-only (no explicit cache busting)" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "7db4df31-7042-408a-87fc-7b0a075f74a8" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Steps" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "3c4d041d-c8be-464a-9448-9c46f0a937eb" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Add " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "REDIS_URL: z.string().optional()"
+                },
+                { "type": "text", "text": " to " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "apiEnvSchema" },
+                { "type": "text", "text": " in " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "packages/config/src/env.ts"
+                },
+                { "type": "text", "text": ". Optional so local dev works without Redis." }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "9b78cc94-17e8-4f4f-96d7-56d2473fa584" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Install " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "ioredis" },
+                { "type": "text", "text": " in " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "apps/api" },
+                { "type": "text", "text": " via " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "bun add ioredis" },
+                { "type": "text", "text": "." }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "59324142-4df8-4bbe-909e-beeba765a78a" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Create " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "apps/api/src/adapters/redis.ts"
+                },
+                { "type": "text", "text": " — thin cache adapter: " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "cache.get(key)" },
+                { "type": "text", "text": " and " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "cache.set(key, value, ttlSeconds)"
+                },
+                { "type": "text", "text": ". When " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "REDIS_URL" },
+                {
+                  "type": "text",
+                  "text": " is absent, both are no-ops. Handles JSON serialization and swallows Redis errors (logs + returns null, so an outage degrades gracefully instead of 500ing)."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "7abed331-ddde-4ccc-8733-2d92e58e2644" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Wrap " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "getMembership(albumId, userId)"
+                },
+                { "type": "text", "text": " in " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "albums.module.ts" },
+                { "type": "text", "text": " with read-through cache. Key: " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "membership:{albumId}:{userId}"
+                },
+                { "type": "text", "text": ", TTL: 60 s." }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "ed9d32b6-89d0-494b-ac02-0ae622ee885c" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Wrap " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "getAlbumOrThrow(albumId)"
+                },
+                { "type": "text", "text": " in " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "media.module.ts" },
+                { "type": "text", "text": " with read-through cache. Key: " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "album:{albumId}" },
+                { "type": "text", "text": ", TTL: 60 s." }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "7a7a4d04-cae3-4c57-9bf6-5aefe0c1510e" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Wrap " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "assertMember(albumId, userId)"
+                },
+                { "type": "text", "text": " in " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "media.module.ts" },
+                { "type": "text", "text": " with read-through cache. Key: " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "member:{albumId}:{userId}"
+                },
+                { "type": "text", "text": ", TTL: 60 s. Stores " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "'1'" },
+                { "type": "text", "text": " on success; cache hit skips the DB query entirely." }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "9ee12ec7-d7b1-4dd5-80a5-55fa27dfba58" },
+          "content": [
+            {
+              "type": "numberedListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Run " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "bun run typecheck" },
+                { "type": "text", "text": " + " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "bun run lint" },
+                {
+                  "type": "text",
+                  "text": " across monorepo, then code-reviewer and code-simplifier agents on the diff."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "15144eec-dd7f-442b-a643-968153c413e1" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Files" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "a2ff360b-1185-4f59-8ffa-5a85f6774dea" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "packages/config/src/env.ts"
+                },
+                { "type": "text", "text": " — add " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "REDIS_URL" },
+                { "type": "text", "text": " (optional) to " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "apiEnvSchema" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "167e4943-beab-40f6-b52a-44ac5cc6c6e2" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "apps/api/src/adapters/redis.ts"
+                },
+                { "type": "text", "text": " — new file, thin cache adapter over ioredis" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "e8efdbb5-c84a-4969-b8d9-16c9d4b8780e" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "apps/api/src/modules/albums/albums.module.ts"
+                },
+                { "type": "text", "text": " — wrap " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "getMembership" },
+                { "type": "text", "text": " with read-through cache" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "96d79332-2b41-45ed-a4f7-3051acd37695" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "code" }],
+                  "text": "apps/api/src/modules/media/media.module.ts"
+                },
+                { "type": "text", "text": " — wrap " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "getAlbumOrThrow" },
+                { "type": "text", "text": " and " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "assertMember" },
+                { "type": "text", "text": " with read-through cache" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "d108f958-c41f-4152-a19c-746e77a9cb01" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Rationale" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "68e972d1-70ee-4ebf-a037-5147e4842ad7" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Why TTL-only?" },
+                {
+                  "type": "text",
+                  "text": " Mutation volume (album updates, member joins/leaves) is low relative to reads. A 60 s stale window is acceptable. Explicit invalidation would require touching every mutating function across albums, members, and join-requests modules — far more surface area."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "317ade31-8ef9-49b7-b4c1-bd7653df70f5" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "bold" }],
+                  "text": "Why a thin cache adapter instead of using ioredis directly?"
+                },
+                { "type": "text", "text": " (a) No-op fallback when " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "REDIS_URL" },
+                {
+                  "type": "text",
+                  "text": " is absent; (b) one place for JSON serialization and silent error handling. Intentionally minimal — no key-prefix registry, no generics tower."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "ba5b5da2-5cdd-4288-ba19-2f7d6b3f2d62" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Why not cache " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "bold" }, { "type": "code" }],
+                  "text": "listAlbums"
+                },
+                { "type": "text", "marks": [{ "type": "bold" }], "text": " or " },
+                {
+                  "type": "text",
+                  "marks": [{ "type": "bold" }, { "type": "code" }],
+                  "text": "getAlbumDetail"
+                },
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "?" },
+                {
+                  "type": "text",
+                  "text": " Both are per-user aggregates. With TTL-only strategy, a 60 s stale count on the home screen is more noticeable. Leaving for a follow-up if needed."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "b1657b17-580d-4465-ae6c-77592547b320" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Deletion test:" },
+                {
+                  "type": "text",
+                  "text": " if deleted in 6 months, the API falls back to Supabase on every request — no data corruption, just slower. Complexity only reappears if Redis is removed without reverting the env schema."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "833d7bef-1c72-4579-b1c8-9edd38e6bb5f" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Uncertainties" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "327b5fb1-cdf7-4ad3-8309-dd438a7ed1e9" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "bold" }],
+                  "text": "ioredis + Bun compatibility:"
+                },
+                {
+                  "type": "text",
+                  "text": " ioredis is Node-compatible and Bun supports Node APIs broadly, but not verified for this exact combo. Fallback: "
+                },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "redis" },
+                {
+                  "type": "text",
+                  "text": " (official Node client) has identical API shape for our use."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "63c1e06c-7f85-41ee-a3a4-b6f243e372cc" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "bold" }],
+                  "text": "Railway Redis URL format:"
+                },
+                { "type": "text", "text": " Railway provides " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "redis://..." },
+                { "type": "text", "text": " which ioredis accepts directly. If TLS is required (" },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "rediss://" },
+                { "type": "text", "text": "), the constructor needs " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "{ tls: {} }" },
+                { "type": "text", "text": " — flagged but not yet confirmed." }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "ec72ea0f-f080-44bb-b18d-0d6675d44c89" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Silent error handling:" },
+                {
+                  "type": "text",
+                  "text": " Redis errors are logged and return null (cache miss), not thrown. A Redis outage degrades to uncached behavior. Intentional but worth noting."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "4a50920d-ef6c-40d1-aa10-b3cf3f8453fa" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Not doing" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "69439f8a-084c-472a-b50d-b4c70e718653" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Not migrating " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "presignStore" },
+                { "type": "text", "text": " to Redis" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "cde8c72c-68fc-4f74-b917-cafa3ad77de8" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Not caching " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "listAlbums" },
+                { "type": "text", "text": ", " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "getAlbumDetail" },
+                { "type": "text", "text": ", or " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "resolveInvite" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "83234fde-e3ff-43c9-9a12-e05d392712f8" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Not adding explicit cache invalidation on mutations" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "42751d9e-9234-41e5-a5a2-3d3f27d98a5c" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [{ "type": "text", "text": "Not touching web or mobile code" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "533f4c13-5736-4e7a-9db9-d2816db4ca10" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Not provisioning Redis on Railway (infrastructure step)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "e7fae50c-eb8b-4aee-b6b4-ddae3c25e01c" },
+          "content": [
+            {
+              "type": "bulletListItem",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "text": "Not adding cache metrics or hit-rate logging" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "acc30451-e2cb-4b7e-b3ea-4b9511124f7b" },
+          "content": [
+            {
+              "type": "heading",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left",
+                "level": 2,
+                "isToggleable": false
+              },
+              "content": [{ "type": "text", "text": "Architecture & Data Flow" }]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "3dfbbdf1-6d0d-4404-9d9c-608f3111e895" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                { "type": "text", "marks": [{ "type": "bold" }], "text": "Component overview" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "85833e38-edc5-49e8-a56d-e3d4651d5f6a" },
+          "content": [
+            {
+              "type": "codeBlock",
+              "attrs": { "language": "text" },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "graph TD\n    Client([Mobile / Web])\n\n    subgraph \"apps/api — Hono on Bun\"\n        Routes[Route Handlers]\n        Modules[Module Functions]\n        RedisAdapter[\"adapters/redis.ts (new)\"]\n    end\n\n    Redis[(Redis Railway TCP)]\n    Supabase[(Supabase PostgreSQL)]\n\n    Client --> Routes\n    Routes --> Modules\n    Modules --> RedisAdapter\n    RedisAdapter -- \"GET / SET EX 60\" --> Redis\n    Modules -- \"cache miss only\" --> Supabase\n\n    subgraph \"Keys cached in Redis\"\n        K1[\"membership:{albumId}:{userId} · 60s\"]\n        K2[\"album:{albumId} · 60s\"]\n        K3[\"member:{albumId}:{userId} · 60s\"]\n    end\n\n    Redis -.- K1\n    Redis -.- K2\n    Redis -.- K3"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "60d0116e-cea9-495e-b5bf-add811532333" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "marks": [{ "type": "bold" }],
+                  "text": "Request data flow (cache hit vs miss)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "fb80b1ec-caa3-4fff-9741-e3146e42d721" },
+          "content": [
+            {
+              "type": "codeBlock",
+              "attrs": { "language": "text" },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "sequenceDiagram\n    participant C as Client\n    participant R as Route Handler\n    participant M as Module Function\n    participant Cache as Redis\n    participant DB as Supabase\n\n    C->>R: GET /v1/albums/:id/media\n    R->>M: getMedia(albumId, userId)\n\n    M->>Cache: GET member:{albumId}:{userId}\n    alt hit (TTL ≤ 60s)\n        Cache-->>M: \"1\"  — skip DB entirely\n    else miss\n        M->>DB: SELECT from album_members WHERE album_id = ? AND user_id = ?\n        DB-->>M: row\n        M->>Cache: SET member:{albumId}:{userId} \"1\" EX 60\n    end\n\n    M->>Cache: GET album:{albumId}\n    alt hit\n        Cache-->>M: album JSON\n    else miss\n        M->>DB: SELECT from albums WHERE id = ?\n        DB-->>M: album row\n        M->>Cache: SET album:{albumId} JSON EX 60\n    end\n\n    M-->>R: GetMediaResult\n    R-->>C: 200 JSON"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "blockContainer",
+          "attrs": { "id": "7a8a7554-ab26-4278-a57b-e0696d4d3f0f" },
+          "content": [
+            {
+              "type": "paragraph",
+              "attrs": {
+                "backgroundColor": "default",
+                "textColor": "default",
+                "textAlignment": "left"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The cache sits purely in the read path. Mutations go straight to Supabase; stale keys expire after 60 s. If Redis is unreachable, "
+                },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "adapters/redis.ts" },
+                { "type": "text", "text": " returns " },
+                { "type": "text", "marks": [{ "type": "code" }], "text": "null" },
+                {
+                  "type": "text",
+                  "text": " on every get and silently skips sets — the API degrades to uncached behaviour rather than erroring."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
