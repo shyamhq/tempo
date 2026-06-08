@@ -182,6 +182,7 @@ export const RecheckPlanResponse = z.object({
 export const CreateCommentRequest = z.object({
   plan_quote: z.string(),
   plan_context: z.string(),
+  anchor_block_id: z.string().nullable().optional(),
   first_reply_text: z.string().min(1).optional(),
   attachments: z.array(AttachmentId).max(8).default([]),
 });

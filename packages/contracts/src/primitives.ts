@@ -163,6 +163,7 @@ export const Comment = z.object({
   thread_id: ThreadId,
   plan_quote: z.string(),
   plan_context: z.string(),
+  anchor_block_id: z.string().nullable(),
   resolved_by: z.literal('dev').nullable(),
   created_at: IsoTimestamp,
   replies: z.array(Reply),
