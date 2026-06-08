@@ -8,13 +8,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = await parseBody(req, CreateCommentRequest);
   if (!parsed.ok) return parsed.response;
   try {
-    const comment = await createComment(
-      id,
-      parsed.data.plan_quote,
-      parsed.data.plan_context,
-      parsed.data.first_reply_text,
-      parsed.data.attachments,
-    );
+    const comment = await createComment({
+      threadId: id,
+      plan_quote: parsed.data.plan_quote,
+      plan_context: parsed.data.plan_context,
+      anchor_block_id: parsed.data.anchor_block_id ?? null,
+      first_reply_text: parsed.data.first_reply_text,
+      attachment_ids: parsed.data.attachments,
+    });
     return ok(comment, 201);
   } catch (e) {
     const msg = (e as Error).message;

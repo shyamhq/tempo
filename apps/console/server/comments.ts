@@ -11,13 +11,20 @@ import { appendEvent } from './event-log';
 import { newCommentId, newReplyId } from './ids';
 import { toIso } from './threads';
 
-export async function createComment(
-  threadId: string,
-  plan_quote: string,
-  plan_context: string,
-  first_reply_text?: string,
-  attachment_ids: string[] = [],
-): Promise<Comment> {
+export type CreateCommentInput = {
+  threadId: string;
+  plan_quote: string;
+  plan_context: string;
+  anchor_block_id: string | null;
+  first_reply_text?: string;
+  attachment_ids?: string[];
+};
+
+export async function createComment(input: CreateCommentInput): Promise<Comment> {
+  const { threadId, plan_quote, plan_context, anchor_block_id } = input;
+  const first_reply_text = input.first_reply_text;
+  const attachment_ids = input.attachment_ids ?? [];
+
   const id = newCommentId();
   const replyId = first_reply_text || attachment_ids.length > 0 ? newReplyId() : null;
   // Verify attachments outside the write tx (HEAD calls); the verified heads
@@ -28,7 +35,9 @@ export async function createComment(
   // comment committed — without this the `comment_added` event would fire
   // with an empty `replies` array and the Agent would get nudged for nothing.
   await db.transaction(async (tx) => {
-    await tx.insert(comments).values({ id, thread_id: threadId, plan_quote, plan_context });
+    await tx
+      .insert(comments)
+      .values({ id, thread_id: threadId, plan_quote, plan_context, anchor_block_id });
     if (replyId) {
       await tx.insert(replies).values({
         id: replyId,
@@ -139,6 +148,7 @@ function shapeComment(
     thread_id: row.thread_id,
     plan_quote: row.plan_quote,
     plan_context: row.plan_context,
+    anchor_block_id: row.anchor_block_id,
     resolved_by: row.resolved_by,
     created_at: toIso(row.created_at),
     replies: replyRows.map((r) => shapeReply(r, attsByReply.get(r.id) ?? [])),
