@@ -88,7 +88,7 @@ export const comments = sqliteTable('comments', {
     .references(() => threads.id),
   plan_quote: text('plan_quote').notNull(),
   plan_context: text('plan_context').notNull(),
-  anchor_offset_hint: integer('anchor_offset_hint'),
+  anchor_block_id: text('anchor_block_id'),
   resolved_by: text('resolved_by', { enum: ['dev'] }),
   created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 });
