@@ -13,6 +13,7 @@
 // `@blocknote/react` does — it calls `createContext` at load.
 
 import { BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from '@blocknote/core';
+import { alertBlock } from './blocks/alert-block';
 import { mermaidBlock } from './blocks/mermaid-block';
 import { permissiveCode } from './permissive-code-style';
 
@@ -20,6 +21,7 @@ export const planSchemaClient = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
     mermaidDiagram: mermaidBlock(),
+    alert: alertBlock(),
   },
   styleSpecs: {
     ...defaultStyleSpecs,

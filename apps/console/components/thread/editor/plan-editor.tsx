@@ -4,16 +4,23 @@ import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import type { User } from '@blocknote/core/comments';
 import { CommentsExtension } from '@blocknote/core/comments';
+import { filterSuggestionItems } from '@blocknote/core/extensions';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
+  blockTypeSelectItems,
   FloatingComposerController,
   FloatingThreadController,
+  FormattingToolbar,
+  FormattingToolbarController,
+  getDefaultReactSlashMenuItems,
+  SuggestionMenuController,
   useCreateBlockNote,
 } from '@blocknote/react';
 import { flip, offset, shift } from '@floating-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { alertBlockTypeItems, alertSlashItems } from '@/lib/blocks/alert-block';
 import { planSchemaClient } from '@/lib/plan-schema-client';
 import { COMMENT_CARD_VIEWPORT, resolveVerticalCardTop } from './comment-card-placement';
 import { CommentThreadBridge } from './comment-thread-bridge';
@@ -203,6 +210,8 @@ export function PlanEditor({
       <BlockNoteView
         editor={editor}
         comments={false}
+        formattingToolbar={false}
+        slashMenu={false}
         theme="light"
         onChange={() => {
           if (readOnly) return;
@@ -213,6 +222,25 @@ export function PlanEditor({
         <FloatingThreadController
           floatingThread={PlanCommentCard}
           floatingUIOptions={FLOATING_THREAD_UI}
+        />
+        <FormattingToolbarController
+          formattingToolbar={() => (
+            <FormattingToolbar
+              blockTypeSelectItems={[
+                ...blockTypeSelectItems(editor.dictionary),
+                ...alertBlockTypeItems,
+              ]}
+            />
+          )}
+        />
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={async (query) =>
+            filterSuggestionItems(
+              [...getDefaultReactSlashMenuItems(editor), ...alertSlashItems(editor)],
+              query,
+            )
+          }
         />
         {orphanOpen && orphanThread ? (
           <OrphanCardPopover
