@@ -330,6 +330,48 @@ body {
   max-width: 100%;
 }
 
+/* htmlBlock source-mode surface — CodeMirror container. Height flows from
+   the block's `bodyStyle` down through the react-codemirror wrapper (the
+   unnamed `<div>` it renders), the `.cm-editor`, and into `.cm-scroller`
+   which owns the scrollbar. Every link in that chain has to declare height
+   explicitly or the inner 100% resolves to 0 and the scroller never gets
+   a viewport to clip against. */
+.bn-html-source {
+  width: 100%;
+  height: 100%;
+  background: var(--color-surface-2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bn-html-source > div {
+  flex: 1;
+  min-height: 0;
+}
+
+.bn-html-source .cm-editor {
+  width: 100%;
+  height: 100%;
+  font-size: 12px;
+}
+
+.bn-html-source .cm-editor.cm-focused {
+  outline: none;
+}
+
+.bn-html-source .cm-scroller {
+  overflow: auto;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  line-height: 1.45;
+}
+
+.bn-html-source .cm-gutters {
+  background: var(--color-surface-2);
+  border-right: 1px solid var(--color-hairline);
+  color: var(--color-ink-tertiary);
+}
+
 /* Reply rendering — marked → sanitized HTML. Mirrors the Plan editor's
    inline-code and fenced-block visuals but matches raw HTML, not ProseMirror. */
 .reply-md :not(pre) > code {

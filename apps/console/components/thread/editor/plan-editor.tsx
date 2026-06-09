@@ -21,6 +21,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { alertBlockTypeItems, alertSlashItems } from '@/lib/blocks/alert-block';
+import { htmlBlockTypeItem, htmlSlashItem } from '@/lib/blocks/html-block';
 import { planSchemaClient } from '@/lib/plan-schema-client';
 import { COMMENT_CARD_VIEWPORT, resolveVerticalCardTop } from './comment-card-placement';
 import { CommentThreadBridge } from './comment-thread-bridge';
@@ -229,6 +230,7 @@ export function PlanEditor({
               blockTypeSelectItems={[
                 ...blockTypeSelectItems(editor.dictionary),
                 ...alertBlockTypeItems,
+                htmlBlockTypeItem,
               ]}
             />
           )}
@@ -237,7 +239,11 @@ export function PlanEditor({
           triggerCharacter="/"
           getItems={async (query) =>
             filterSuggestionItems(
-              [...getDefaultReactSlashMenuItems(editor), ...alertSlashItems(editor)],
+              [
+                ...getDefaultReactSlashMenuItems(editor),
+                ...alertSlashItems(editor),
+                htmlSlashItem(editor),
+              ],
               query,
             )
           }

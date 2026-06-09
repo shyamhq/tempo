@@ -14,6 +14,7 @@
 
 import { BlockNoteSchema, defaultBlockSpecs, defaultStyleSpecs } from '@blocknote/core';
 import { alertBlock } from './blocks/alert-block';
+import { htmlBlock } from './blocks/html-block';
 import { mermaidBlock } from './blocks/mermaid-block';
 import { permissiveCode } from './permissive-code-style';
 
@@ -22,6 +23,7 @@ export const planSchemaClient = BlockNoteSchema.create({
     ...defaultBlockSpecs,
     mermaidDiagram: mermaidBlock(),
     alert: alertBlock(),
+    htmlBlock: htmlBlock(),
   },
   styleSpecs: {
     ...defaultStyleSpecs,

@@ -291,7 +291,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
                 planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
               }`}
             >
-              <div ref={planColumnRef} className="flex items-start">
+              <div ref={planColumnRef} data-plan-column className="flex items-start">
                 {/* The editor is mounted unconditionally so onReady can fire
                     and we can call applyPmJson — but we hide it visually until
                     the initial PM JSON has been applied. Avoids the empty-doc
