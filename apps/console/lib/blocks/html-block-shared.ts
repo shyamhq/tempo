@@ -29,9 +29,10 @@ export const HTML_PROP_SCHEMA = {
 export const HTML_CONTENT = 'none' as const;
 
 // Claims `<pre><code class="language-html-block">…</code></pre>` (also accepts
-// `data-language="html-block"`). Returns `{ html }` populated from the
-// matched `<code>`'s text content so the Agent's serialized HTML round-trips
-// into the block's `html` prop on parse.
+// `data-language="html-block"`). Returns `{ html }` recovered from the matched
+// `<code>` so the Agent's serialized HTML round-trips into the block's `html`
+// prop on parse — works whether the Agent entity-escaped the inner markup or
+// emitted it raw.
 export function parseHtmlBlockPre(el: HTMLElement): { html: string } | undefined {
   if (el.tagName !== 'PRE') return undefined;
   const code = el.querySelector('code');
@@ -41,5 +42,11 @@ export function parseHtmlBlockPre(el: HTMLElement): { html: string } | undefined
     code.getAttribute('data-language') !== 'html-block'
   )
     return undefined;
-  return { html: code.textContent ?? '' };
+  // Raw markup got parsed into DOM children — `textContent` would strip the
+  // tags, so we re-serialise via `innerHTML` (which may HTML5-normalise edge
+  // structures, e.g. `<tbody>` injection, `<p>` reparenting; `props.html` is
+  // the normalised form thereafter, not a lossless copy of Agent source).
+  return {
+    html: code.children.length === 0 ? (code.textContent ?? '') : code.innerHTML,
+  };
 }
