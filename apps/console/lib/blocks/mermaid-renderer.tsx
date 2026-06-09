@@ -28,11 +28,50 @@ function loadMermaid() {
   return mermaidPromise;
 }
 
-// djb2 hash — cheap stable ID for the mermaid render call.
+// Mermaid's render() uses the supplied id to create a temp `<div id="d{id}">`
+// in <body> mid-flight. Two concurrent renders with the same id clobber each
+// other's DOM (React StrictMode's double-invoke triggers this), leaving the
+// second call's `root.select('#d{id} svg')` empty and throwing
+// "Cannot read properties of null (reading 'getAttribute')" inside
+// addA11yInfo. A monotonically-unique id per render avoids the collision.
+let renderSeq = 0;
+
+// djb2.
 function hashSource(s: string): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
+}
+
+// Rejections cached intentionally — mermaid is deterministic, so the same
+// source always produces the same error. FIFO-evict to cap memory; an
+// in-flight entry getting evicted is harmless because `renderSeq` still hands
+// out a fresh id to the next call, so the concurrent-render guard above does
+// not depend on the cache.
+const SVG_CACHE_MAX = 200;
+const svgCache = new Map<string, Promise<string>>();
+
+function renderSvg(mermaid: Mermaid, source: string): Promise<string> {
+  const key = hashSource(source);
+  const cached = svgCache.get(key);
+  if (cached) return cached;
+  renderSeq += 1;
+  const renderId = `tempo-mmd-${renderSeq}`;
+  const p = mermaid
+    .render(renderId, source)
+    .then(({ svg }) => svg)
+    .finally(() => {
+      // Mermaid creates a temporary measurement container `d{renderId}`
+      // appended to <body>; it cleans up after success, but a syntax error
+      // leaves the node orphaned and visible. Sweep it ourselves.
+      document.getElementById(`d${renderId}`)?.remove();
+    });
+  svgCache.set(key, p);
+  if (svgCache.size > SVG_CACHE_MAX) {
+    const oldest = svgCache.keys().next().value;
+    if (oldest) svgCache.delete(oldest);
+  }
+  return p;
 }
 
 type RenderState =
@@ -51,21 +90,17 @@ export function MermaidRenderer({ source }: { source: string }) {
     }
     setState({ kind: 'loading' });
     let cancelled = false;
-    const hash = hashSource(source);
-
-    const renderId = `tempo-mmd-${hash}`;
 
     loadMermaid()
-      .then((mermaid) =>
-        mermaid.render(renderId, source).then(({ svg }) => {
-          if (cancelled) return;
-          if (!svg) {
-            setState({ kind: 'error', source, message: 'Empty render output' });
-            return;
-          }
-          setState({ kind: 'ok', svg });
-        }),
-      )
+      .then((mermaid) => renderSvg(mermaid, source))
+      .then((svg) => {
+        if (cancelled) return;
+        if (!svg) {
+          setState({ kind: 'error', source, message: 'Empty render output' });
+          return;
+        }
+        setState({ kind: 'ok', svg });
+      })
       .catch((err: unknown) => {
         if (cancelled) return;
         // First line only — mermaid errors include a multi-line stack of
@@ -74,12 +109,6 @@ export function MermaidRenderer({ source }: { source: string }) {
         const raw = err instanceof Error ? err.message : String(err);
         const message = raw.split('\n')[0]?.trim() || 'Syntax error';
         setState({ kind: 'error', source, message });
-      })
-      .finally(() => {
-        // Mermaid creates a temporary measurement container `d{renderId}`
-        // appended to <body>; it cleans up after success, but a syntax error
-        // leaves the node orphaned and visible. Sweep it ourselves.
-        document.getElementById(`d${renderId}`)?.remove();
       });
 
     return () => {
