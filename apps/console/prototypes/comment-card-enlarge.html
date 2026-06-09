@@ -1,0 +1,608 @@
+<!--
+  PROTOTYPE — throwaway. Answers: "How does an enlarged comment thread
+  take over the left Discussion panel?"
+
+  Winning approach (B · Tabs):
+    - Left rail has tabs at the top.
+    - Discussion is the permanent leftmost tab.
+    - Click a comment marker → small card pops up anchored to the block.
+    - Click the enlarge icon on the card → a 'Comment' tab opens in the
+      left rail. Only one Comment tab at a time — opening a different
+      comment swaps the contents of the same tab.
+    - No anchor snippet inside the tab — the anchored block is already
+      highlighted in the doc.
+
+  Delete after the Dev confirms and the winner is folded into
+  apps/console/components/thread/discussion/discussion-panel.tsx and
+  apps/console/components/thread/editor/plan-comment-card.tsx.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comment enlarge — tabs in Discussion rail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --canvas: #ffffff;
+        --surface-2: #f6f7f9;
+        --surface-3: #eff1f4;
+        --ink: #0a0a0a;
+        --ink-muted: #3d3d3d;
+        --ink-subtle: #64748b;
+        --ink-tertiary: #94a3b8;
+        --hairline: #e5e7eb;
+        --hairline-strong: #d1d5db;
+        --primary: #0a0a0a;
+        --on-primary: #ffffff;
+        --accent: #00d4a4;
+        --accent-soft: rgba(0, 212, 164, 0.12);
+        --accent-soft-strong: rgba(0, 212, 164, 0.22);
+        --accent-deep: #00b88c;
+        --highlight: rgba(255, 226, 138, 0.55);
+        --shadow-pop: 0 18px 50px -12px rgba(10, 10, 10, 0.18), 0 6px 18px rgba(10, 10, 10, 0.08);
+        --shadow-rail: 16px 0 40px -20px rgba(10, 10, 10, 0.16);
+        --rail-w: 420px;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        font-size: 14px; line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        min-height: 100vh;
+      }
+      code, pre { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+      .prototype-marker {
+        position: fixed; top: 12px; right: 12px; z-index: 90;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px; letter-spacing: 0.08em;
+        color: var(--ink-tertiary); text-transform: uppercase;
+        background: var(--canvas); border: 1px solid var(--hairline);
+        border-radius: 9999px; padding: 4px 10px;
+      }
+
+      /* ───────────────────────── chrome ───────────────────────── */
+      .topbar {
+        position: sticky; top: 0; z-index: 30;
+        height: 44px;
+        display: flex; align-items: center; gap: 14px;
+        padding: 0 22px;
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: saturate(140%) blur(8px);
+        border-bottom: 1px solid var(--hairline);
+        font-size: 13px;
+      }
+      .topbar .crumb { color: var(--ink-subtle); }
+      .topbar .crumb strong { color: var(--ink); font-weight: 500; }
+      .topbar .sep { color: var(--ink-tertiary); }
+      .topbar .right { margin-left: auto; display: flex; gap: 10px; align-items: center; color: var(--ink-subtle); }
+      .pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        height: 24px; padding: 0 10px;
+        border: 1px solid var(--hairline);
+        border-radius: 9999px;
+        font-size: 12px; color: var(--ink-muted);
+        background: var(--canvas);
+      }
+      .pill.dot::before {
+        content: ''; width: 6px; height: 6px; border-radius: 9999px;
+        background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+
+      /* ───────────────────────── stage ───────────────────────── */
+      .stage { display: flex; min-height: calc(100vh - 44px); position: relative; }
+      .doc-shell {
+        flex: 1 1 auto;
+        display: flex; justify-content: center;
+        padding: 56px 96px 160px;
+        padding-left: calc(var(--rail-w) + 56px);
+      }
+      .doc { width: min(720px, 100%); position: relative; }
+      .doc h1 { font-size: 40px; line-height: 1.1; letter-spacing: -1px; font-weight: 700; margin: 0 0 22px; }
+      .doc h2 { font-size: 24px; line-height: 1.25; font-weight: 600; margin: 36px 0 12px; letter-spacing: -0.2px; }
+      .doc p { margin: 0 0 14px; color: var(--ink-muted); font-size: 15.5px; line-height: 1.62; }
+      .doc ul, .doc ol { margin: 0 0 14px; padding-left: 22px; color: var(--ink-muted); font-size: 15.5px; line-height: 1.7; }
+      .doc code { background: var(--surface-3); padding: 1px 6px; border-radius: 4px; font-size: 0.86em; color: var(--ink); }
+      .doc .lede { background: var(--highlight); padding: 14px 16px; border-radius: 6px; color: var(--ink); }
+
+      .anchored {
+        position: relative;
+        border-radius: 6px;
+        padding: 4px 8px; margin-left: -8px; margin-right: -8px;
+        transition: background 180ms ease;
+      }
+      .anchored.is-anchor { background: var(--accent-soft); }
+      .anchored .marker {
+        position: absolute; top: 50%; right: -46px;
+        transform: translateY(-50%);
+        width: 30px; height: 30px;
+        display: grid; place-items: center;
+        background: var(--canvas);
+        border: 1.5px solid var(--accent);
+        border-radius: 9px;
+        color: var(--accent-deep);
+        cursor: pointer;
+        transition: transform 160ms ease, box-shadow 160ms ease;
+        box-shadow: 0 1px 2px rgba(10,10,10,0.04);
+      }
+      .anchored .marker:hover { transform: translateY(-50%) scale(1.06); box-shadow: 0 4px 14px rgba(0, 212, 164, 0.25); }
+      .anchored .marker svg { width: 16px; height: 16px; }
+      .anchored .marker .badge {
+        position: absolute; top: -6px; right: -6px;
+        background: var(--ink); color: var(--on-primary);
+        font-size: 10px; font-weight: 600;
+        height: 16px; min-width: 16px; padding: 0 4px;
+        border-radius: 9999px;
+        display: grid; place-items: center;
+        line-height: 1;
+      }
+
+      /* ───────────────────────── small card popover ───────────────────────── */
+      .gutter-card {
+        position: absolute;
+        width: 320px;
+        background: var(--canvas);
+        border: 1.5px solid var(--accent);
+        border-radius: 14px;
+        box-shadow: var(--shadow-pop);
+        padding: 12px 12px 10px;
+        display: flex; flex-direction: column; gap: 10px;
+        z-index: 50;
+        opacity: 0; pointer-events: none;
+        transform: translateY(-4px);
+        transition: opacity 160ms ease, transform 160ms ease;
+      }
+      .gutter-card.is-open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+      .gutter-card .header {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 11px; color: var(--ink-subtle); text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      .gutter-card .header .count {
+        background: var(--surface-3); color: var(--ink-muted);
+        padding: 1px 8px; border-radius: 9999px;
+        font-size: 11px; font-weight: 500; letter-spacing: 0;
+        text-transform: none;
+      }
+      .gutter-card .header .spacer { margin-left: auto; }
+      .gutter-card .header .enlarge,
+      .gutter-card .header .close {
+        display: inline-grid; place-items: center;
+        width: 22px; height: 22px;
+        border-radius: 6px; border: 1px solid transparent;
+        background: var(--surface-2); color: var(--ink-muted);
+        cursor: pointer; transition: all 120ms ease;
+      }
+      .gutter-card .header .enlarge:hover {
+        background: var(--accent-soft); color: var(--accent-deep); border-color: var(--accent);
+      }
+      .gutter-card .header .close:hover { background: var(--surface-3); color: var(--ink); }
+      .gutter-card .header svg { width: 12px; height: 12px; }
+
+      .card-msgs {
+        display: flex; flex-direction: column; gap: 10px;
+        max-height: 230px; overflow: hidden; position: relative;
+      }
+      .card-msgs::after {
+        content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+        background: linear-gradient(to bottom, transparent, var(--canvas));
+        pointer-events: none;
+      }
+      .more-link {
+        font-size: 12px; color: var(--accent-deep); cursor: pointer; padding-top: 2px;
+      }
+      .more-link:hover { text-decoration: underline; }
+
+      .card-composer {
+        border-top: 1px solid var(--hairline);
+        padding-top: 8px;
+        display: flex; flex-direction: column; gap: 8px;
+      }
+      .card-composer input {
+        height: 32px; border-radius: 8px; border: 1px solid var(--hairline);
+        background: var(--surface-2); padding: 0 10px; font-size: 13px;
+        outline: none; font-family: inherit;
+      }
+      .card-composer input:focus { background: var(--canvas); border-color: var(--accent); }
+      .card-composer .row { display: flex; align-items: center; gap: 8px; }
+      .card-composer .resolve, .card-composer .trash {
+        background: none; border: 0; padding: 2px 4px; cursor: pointer;
+        font: inherit; font-size: 12.5px; color: var(--ink-muted);
+        display: inline-flex; align-items: center; gap: 4px;
+      }
+      .card-composer .resolve:hover, .card-composer .trash:hover { color: var(--ink); }
+      .card-composer .resolve svg, .card-composer .trash svg { width: 13px; height: 13px; }
+      .card-composer .reply {
+        margin-left: auto;
+        height: 28px; padding: 0 12px; border-radius: 9999px;
+        border: 0; background: var(--accent); color: var(--ink);
+        font-size: 12.5px; font-weight: 500; cursor: pointer;
+      }
+      .card-composer .reply:hover { background: var(--accent-deep); color: var(--on-primary); }
+
+      /* ───────────────────────── left rail with tabs ───────────────────────── */
+      .rail {
+        position: fixed; top: 44px; left: 0; bottom: 0;
+        width: var(--rail-w);
+        background: var(--canvas);
+        border-right: 1px solid var(--hairline);
+        z-index: 40;
+        display: flex; flex-direction: column;
+        box-shadow: var(--shadow-rail);
+      }
+
+      .tabs {
+        display: flex; align-items: stretch;
+        padding: 6px 8px 0;
+        border-bottom: 1px solid var(--hairline);
+        background: var(--surface-2);
+        gap: 4px;
+      }
+      .tab {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 12px 9px;
+        border-radius: 8px 8px 0 0;
+        font-size: 12.5px; color: var(--ink-subtle);
+        cursor: pointer;
+        white-space: nowrap;
+        border: 1px solid transparent;
+        border-bottom: 0;
+        position: relative; top: 1px;
+        transition: color 120ms ease, background 120ms ease;
+      }
+      .tab:hover { color: var(--ink); }
+      .tab.is-active {
+        background: var(--canvas);
+        color: var(--ink); font-weight: 500;
+        border-color: var(--hairline);
+      }
+      .tab .dot {
+        width: 6px; height: 6px; border-radius: 9999px; background: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-soft);
+      }
+      .tab .close {
+        background: none; border: 0; padding: 2px; margin-left: 2px; cursor: pointer;
+        color: var(--ink-tertiary); display: inline-grid; place-items: center; border-radius: 4px;
+      }
+      .tab .close:hover { color: var(--ink); background: var(--surface-3); }
+      .tab .close svg { width: 11px; height: 11px; }
+      .tab-comment { display: none; }
+      .tab-comment.is-visible { display: inline-flex; }
+
+      .tab-body { flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden; }
+      .tab-pane { flex: 1 1 auto; display: none; flex-direction: column; overflow: hidden; }
+      .tab-pane.is-active { display: flex; }
+
+      .scroll-pane {
+        flex: 1 1 auto; overflow: auto;
+        padding: 14px 14px 16px;
+        display: flex; flex-direction: column; gap: 14px;
+      }
+      .msg { display: flex; flex-direction: column; gap: 4px; }
+      .msg .meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-subtle); }
+      .msg .meta .who {
+        font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-muted);
+      }
+      .msg .meta .who.agent { color: var(--accent-deep); }
+      .msg .meta .who::before {
+        content: ''; display: inline-block; width: 6px; height: 6px;
+        border-radius: 9999px; background: var(--ink-tertiary); margin-right: 6px; vertical-align: 1px;
+      }
+      .msg .meta .who.agent::before { background: var(--accent); }
+      .msg .body { font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+      .msg .body code { background: var(--surface-3); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; color: var(--ink); }
+
+      .composer {
+        border-top: 1px solid var(--hairline);
+        padding: 10px 12px; background: var(--surface-2);
+        display: flex; gap: 8px; align-items: stretch;
+      }
+      .composer textarea {
+        flex: 1 1 auto; min-height: 38px; max-height: 120px; resize: none;
+        border: 1px solid var(--hairline); border-radius: 9px;
+        background: var(--canvas); padding: 8px 10px;
+        font: inherit; font-size: 13px; color: var(--ink);
+        outline: none; line-height: 1.4;
+      }
+      .composer textarea:focus { border-color: var(--accent); }
+      .composer .send {
+        height: 38px; padding: 0 12px; border-radius: 9999px;
+        border: 0; background: var(--accent); color: var(--ink);
+        font-size: 13px; font-weight: 500; cursor: pointer;
+      }
+      .composer .send:hover { background: var(--accent-deep); color: var(--on-primary); }
+    </style>
+  </head>
+  <body>
+    <div class="prototype-marker">prototype · comment tab</div>
+
+    <div class="topbar">
+      <span class="crumb"><strong>tempo</strong></span>
+      <span class="sep">/</span>
+      <span class="crumb">thr_01KTNP1DDAR3DYNVGD0K6T51F9</span>
+      <span class="sep">/</span>
+      <span class="crumb"><strong>Agent Instruction &amp; Skill Map</strong></span>
+      <div class="right">
+        <span class="pill dot">Agent working</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <!-- ─────────── LEFT RAIL ─────────── -->
+      <aside class="rail" aria-label="Left rail">
+        <div class="tabs" id="tabs">
+          <div class="tab is-active" data-tab="discussion">Discussion</div>
+          <div class="tab tab-comment" data-tab="comment">
+            <span class="dot"></span>
+            <span>Comment</span>
+            <button class="close" id="close-comment-tab" title="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="tab-body" id="tab-body">
+          <div class="tab-pane is-active" data-pane="discussion">
+            <div class="scroll-pane" data-fill="discussion"></div>
+            <div class="composer">
+              <textarea placeholder="Message the Agent…"></textarea>
+              <button class="send">Send</button>
+            </div>
+          </div>
+          <div class="tab-pane" data-pane="comment">
+            <div class="scroll-pane" id="comment-scroll"></div>
+            <div class="composer">
+              <textarea placeholder="Reply to thread…"></textarea>
+              <button class="send">Send</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ─────────── document ─────────── -->
+      <div class="doc-shell">
+        <article class="doc">
+          <h1>Agent Instruction &amp; Skill Map</h1>
+          <p>Every instruction, tool, hook, and skill the Tempo planning Agent receives — mapped by lifecycle stage. Sourced from <code>apps/agent/src/</code> and <code>apps/console/server/workflow.ts</code>. Descriptive map of the current state; improvement ideas live in the Discussion.</p>
+
+          <h2>How instructions reach the Agent</h2>
+          <p class="lede">Four channels. No Superpowers skills, no CLAUDE.md, no system-prompt override at runtime. The CLAUDE.md in the repo root governs build-time AI (us), not the planning Agent.</p>
+
+          <ol>
+            <li><strong>Spawn args</strong> — <code>--settings</code> hooks JSON, positional initial prompt string</li>
+            <li id="anchor-block-1" class="anchored is-anchor" data-anchor-id="1">
+              <strong>MCP tool descriptions</strong> — <code>tempo_attach</code> delivers the WORKFLOW guide + full thread state; <code>tempo_poll</code> delivers event payloads
+              <span class="marker" data-trigger="1" title="Open thread">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                </svg>
+                <span class="badge">14</span>
+              </span>
+            </li>
+            <li id="anchor-block-2" class="anchored" data-anchor-id="2">
+              <strong>WORKFLOW guide</strong> — carries detailed prose governing when and how to call it (tone, HTML contracts, …)
+              <span class="marker" data-trigger="2" title="Open thread">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                </svg>
+                <span class="badge">3</span>
+              </span>
+            </li>
+            <li><strong>tempo_poll hook</strong> — injects a one-line string into Claude's stdin when Dev activity arrives</li>
+          </ol>
+
+          <h2>Stage 1 — connect</h2>
+          <p>Files: <code>cli.ts</code> (CLI entry) / <code>session.ts</code> (POSTs to <code>/api/sessions</code> with repo path + git remote → session ID + thread ID returned → driver picks up env <code>TEMPO_AGENT_DRIVER</code>)</p>
+
+          <h2>Stage 2 — Claude spawn</h2>
+          <p>Files: <code>pty-terminal.ts</code> (pty driver) / <code>stream-pump.ts</code> (stream-json driver)</p>
+          <ul>
+            <li>Initial prompt (only instruction at spawn): <code>"Call tempo_attach to begin."</code></li>
+            <li>Allowed tools — both drivers (14 total): <code>tempo_attach</code>, <code>tempo_pull_plan</code>, <code>tempo_update_plan</code>, <code>tempo_update_block</code>, …</li>
+          </ul>
+
+          <h2>Stage 3 — attach handshake</h2>
+          <p>Files: <code>server/mcp/tools/tempo-attach.ts</code></p>
+          <p>Returns: WORKFLOW guide (hardcoded constant), full thread state snapshot, conversation history, current plan, list of unresolved comments and clarification rounds.</p>
+
+          <h2>Stage 4 — work loop</h2>
+          <p>The Agent draws on the WORKFLOW guide for tone and block-surgery contracts, on tool descriptions for wire format, and on event payloads for new Dev activity. There is no other instruction channel.</p>
+        </article>
+      </div>
+
+      <!-- small floating card -->
+      <aside class="gutter-card" id="gutter-card" role="dialog" aria-label="Comment thread">
+        <div class="header">
+          <span>Thread</span>
+          <span class="count" id="card-count">14 messages</span>
+          <span class="spacer"></span>
+          <button class="enlarge" id="enlarge-btn" title="Enlarge into Comment tab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 3 21 3 21 9"/>
+              <polyline points="9 21 3 21 3 15"/>
+              <line x1="21" y1="3" x2="14" y2="10"/>
+              <line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+          </button>
+          <button class="close" id="card-close" title="Close card">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="card-msgs" id="card-msgs"></div>
+        <a class="more-link" id="more-link">Show all messages →</a>
+        <div class="card-composer">
+          <input placeholder="Reply…" />
+          <div class="row">
+            <button class="resolve">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Resolve
+            </button>
+            <button class="trash">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+            <button class="reply">↵ Reply</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      // ───────────────────────── data ─────────────────────────
+      const COMMENTS = {
+        1: {
+          count: 14,
+          messages: [
+            { who: 'Dev', t: '15:37', body: 'Honestly this seems to be a problem and tempo loose a lot of control. What we should be doing is we should be taking a git worktree and should be working on it — what do you think?' },
+            { who: 'Agent', t: '15:39', body: 'Worktrees are a strong move here. The concrete gain: if we create a worktree on connect, we can drop a Tempo-managed <code>CLAUDE.md</code> into its root, and Claude Code\'s pty driver picks it up automatically — giving us a full, rich instruction channel we completely lack today.' },
+            { who: 'Dev', t: '15:42', body: 'Good. But we don\'t touch the user\'s root <code>CLAUDE.md</code> — that\'s theirs. Our file lives only inside the worktree.' },
+            { who: 'Agent', t: '15:43', body: 'Agreed. Three distinct scopes exist: <code>~/.claude/CLAUDE.md</code> (global, never touch), repo root <code>CLAUDE.md</code> (user-owned, never touch), and <code>.claude/CLAUDE.md</code> inside the worktree (ephemeral, ours).' },
+            { who: 'Dev', t: '15:45', body: 'Lifecycle?' },
+            { who: 'Agent', t: '15:46', body: 'Worktree created on <code>tempo-agent connect</code> → we write <code>.claude/CLAUDE.md</code> with thread-scoped instructions → worktree gets torn down on disconnect → file disappears with it.' },
+            { who: 'Dev', t: '15:48', body: 'What instructions go in it?' },
+            { who: 'Agent', t: '15:49', body: 'Tone + HTML block contracts + vocabulary discipline (CONTEXT.md vocab) + the destructive-action gate.' },
+            { who: 'Dev', t: '15:51', body: 'Does that replace the WORKFLOW guide?' },
+            { who: 'Agent', t: '15:52', body: 'Long-term yes. Short-term: emit both, let <code>tempo_attach</code> still hand back the guide so we can compare behavior.' },
+            { who: 'Dev', t: '15:54', body: 'Read-only repos / contributors without write?' },
+            { who: 'Agent', t: '15:55', body: 'Worktrees are local — they don\'t mutate the original. <code>~/.tempo/worktrees/&lt;session-id&gt;</code> by default.' },
+            { who: 'Dev', t: '15:57', body: 'Acceptable. Ship the spike behind a flag.' },
+            { who: 'Agent', t: '15:58', body: 'Routing the plan to the judge before touching code.' },
+          ],
+        },
+        2: {
+          count: 3,
+          messages: [
+            { who: 'Dev', t: '14:02', body: 'Should the WORKFLOW guide live in source or in the DB?' },
+            { who: 'Agent', t: '14:03', body: 'Today it\'s a constant in <code>server/workflow.ts</code>. Moving it to the DB lets us hot-edit per-thread, but loses git-traceability.' },
+            { who: 'Dev', t: '14:05', body: 'Keep it in source for now. Revisit when we have per-thread overrides.' },
+          ],
+        },
+      };
+
+      const DISCUSSION = [
+        { who: 'Dev', t: '13:30', body: 'Kicking off — goal is to document every instruction channel and find the gap.' },
+        { who: 'Agent', t: '13:31', body: 'Will start from <code>apps/agent/src/</code> and trace through the connect flow. Will post a draft Plan when ready.' },
+        { who: 'Agent', t: '13:54', body: 'Draft Plan posted. Two open questions inside.' },
+        { who: 'Dev', t: '14:08', body: 'Looks good. Left two comments on the anchored blocks — see right margin.' },
+        { who: 'Agent', t: '14:10', body: 'Picked up. Replying on both.' },
+        { who: 'Dev', t: '15:30', body: 'The worktree idea is the bigger lever — let\'s spike that first.' },
+      ];
+
+      // ───────────────────────── render helpers ─────────────────────────
+      function renderMsgs(node, data) {
+        if (!node) return;
+        node.innerHTML = data.map((m) => `
+          <div class="msg">
+            <div class="meta"><span class="who ${m.who === 'Agent' ? 'agent' : ''}">${m.who}</span><span>${m.t}</span></div>
+            <div class="body">${m.body}</div>
+          </div>
+        `).join('');
+      }
+      document.querySelectorAll('[data-fill="discussion"]').forEach((n) => renderMsgs(n, DISCUSSION));
+
+      // ───────────────────────── small card ─────────────────────────
+      const card = document.getElementById('gutter-card');
+      const cardMsgs = document.getElementById('card-msgs');
+      const cardCount = document.getElementById('card-count');
+      let activeCommentId = 1;
+      let activeAnchor = null;
+
+      function positionCard(triggerEl) {
+        const r = triggerEl.getBoundingClientRect();
+        const left = window.scrollX + r.right + 18;
+        const top = window.scrollY + r.top - 4;
+        card.style.top = `${top}px`;
+        card.style.left = `${left}px`;
+      }
+      function renderCardFor(id) {
+        const c = COMMENTS[id];
+        cardCount.textContent = `${c.count} message${c.count === 1 ? '' : 's'}`;
+        const preview = c.messages.slice(0, 2);
+        cardMsgs.innerHTML = preview.map((m) => `
+          <div class="msg">
+            <div class="meta"><span class="who ${m.who === 'Agent' ? 'agent' : ''}">${m.who}</span><span>${m.t}</span></div>
+            <div class="body" style="font-size:13px">${m.body.length > 220 ? m.body.slice(0, 220) + '…' : m.body}</div>
+          </div>
+        `).join('');
+      }
+      function highlightAnchor(id) {
+        document.querySelectorAll('.anchored').forEach((el) => el.classList.remove('is-anchor'));
+        const el = document.getElementById(`anchor-block-${id}`);
+        if (el) { el.classList.add('is-anchor'); activeAnchor = id; }
+      }
+      function openCard(id, triggerEl) {
+        activeCommentId = id;
+        renderCardFor(id);
+        positionCard(triggerEl);
+        card.classList.add('is-open');
+        highlightAnchor(id);
+      }
+      function closeCard() { card.classList.remove('is-open'); }
+
+      document.querySelectorAll('.marker[data-trigger]').forEach((m) => {
+        m.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openCard(Number(m.dataset.trigger), m);
+        });
+      });
+      document.getElementById('card-close').addEventListener('click', closeCard);
+      document.addEventListener('click', (e) => {
+        if (!card.contains(e.target) && !e.target.closest('.marker[data-trigger]')) closeCard();
+      });
+
+      // ───────────────────────── tabs ─────────────────────────
+      const tabsBar = document.getElementById('tabs');
+      const tabBody = document.getElementById('tab-body');
+      const tabComment = tabsBar.querySelector('.tab-comment');
+
+      function activateTab(tabId) {
+        tabsBar.querySelectorAll('.tab').forEach((t) => t.classList.toggle('is-active', t.dataset.tab === tabId));
+        tabBody.querySelectorAll('.tab-pane').forEach((p) => p.classList.toggle('is-active', p.dataset.pane === tabId));
+      }
+      function openCommentTab(id) {
+        const c = COMMENTS[id];
+        renderMsgs(document.getElementById('comment-scroll'), c.messages);
+        tabComment.classList.add('is-visible');
+        activateTab('comment');
+        highlightAnchor(id);
+      }
+      function closeCommentTab() {
+        tabComment.classList.remove('is-visible');
+        activateTab('discussion');
+      }
+      tabsBar.querySelectorAll('.tab').forEach((t) => {
+        t.addEventListener('click', (e) => {
+          if (!e.target.closest('.close') && t.dataset.tab) activateTab(t.dataset.tab);
+        });
+      });
+      document.getElementById('close-comment-tab').addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeCommentTab();
+      });
+
+      // ───────────────────────── enlarge / show all ─────────────────────────
+      document.getElementById('enlarge-btn').addEventListener('click', () => {
+        openCommentTab(activeCommentId);
+        closeCard();
+      });
+      document.getElementById('more-link').addEventListener('click', () => {
+        openCommentTab(activeCommentId);
+        closeCard();
+      });
+
+      document.addEventListener('keydown', (e) => {
+        const tag = (e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+        if (e.key === 'Escape') closeCard();
+      });
+    </script>
+  </body>
+</html>

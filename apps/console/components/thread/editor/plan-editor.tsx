@@ -15,14 +15,17 @@ import {
   getDefaultReactSlashMenuItems,
   SuggestionMenuController,
   useCreateBlockNote,
+  useThreads,
 } from '@blocknote/react';
 import { flip, offset, shift } from '@floating-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { alertBlockTypeItems, alertSlashItems } from '@/lib/blocks/alert-block';
 import { htmlBlockTypeItem, htmlSlashItem } from '@/lib/blocks/html-block';
 import { planSchemaClient } from '@/lib/plan-schema-client';
+import { useCommentUi } from '@/store/comment-ui';
 import { COMMENT_CARD_VIEWPORT, resolveVerticalCardTop } from './comment-card-placement';
 import { CommentThreadBridge } from './comment-thread-bridge';
 import { PlanCommentCard } from './plan-comment-card';
@@ -204,6 +207,47 @@ export function PlanEditor({
     if (!bridge.getThreads().has(orphanOpen.threadId)) setOrphanOpen(null);
   }, [orphanOpen, bridge, comments]);
 
+  const enlargedCommentId = useCommentUi((s) => s.enlargedCommentId);
+  const panelMount = useCommentUi((s) => s.panelMount);
+
+  // Same guard as the orphan popover above — collapse the rail tab if its
+  // underlying Comment is gone (deleted from inside the panel, or via SSE).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: comments is the trigger
+  useEffect(() => {
+    if (enlargedCommentId === null) return;
+    if (!bridge.getThreads().has(enlargedCommentId)) useCommentUi.getState().closeEnlarged();
+  }, [enlargedCommentId, bridge, comments]);
+
+  // While the Comment tab is open, mirror BlockNote's selected thread id
+  // into `enlargedCommentId` so clicking a different gutter icon swaps the
+  // tab's contents. The gutter stays unchanged — it keeps calling
+  // `selectThread(id)`; this effect is the single subscriber for tab sync.
+  useEffect(() => {
+    if (enlargedCommentId === null) return;
+    const bnStore = editor.getExtension(CommentsExtension)?.store;
+    if (!bnStore) return;
+    return bnStore.subscribe(() => {
+      const selected = bnStore.state.selectedThreadId;
+      if (typeof selected === 'string' && selected !== enlargedCommentId) {
+        useCommentUi.getState().setEnlarged(selected);
+      }
+    });
+  }, [editor, enlargedCommentId]);
+
+  // On the enlarged → null transition, clear BlockNote's selected thread id
+  // so the freshly re-mounted FloatingThreadController doesn't spring the
+  // floating card back open. Subscribing to the zustand store with the
+  // previous-state argument detects the transition without a tracking ref.
+  useEffect(
+    () =>
+      useCommentUi.subscribe((state, prev) => {
+        if (prev.enlargedCommentId !== null && state.enlargedCommentId === null) {
+          editor.getExtension(CommentsExtension)?.selectThread(undefined);
+        }
+      }),
+    [editor],
+  );
+
   const orphanThread = orphanOpen ? bridge.getThreads().get(orphanOpen.threadId) : null;
 
   return (
@@ -220,10 +264,14 @@ export function PlanEditor({
         }}
       >
         <FloatingComposerController floatingComposer={PlanCommentComposer} />
-        <FloatingThreadController
-          floatingThread={PlanCommentCard}
-          floatingUIOptions={FLOATING_THREAD_UI}
-        />
+        {enlargedCommentId === null ? (
+          <FloatingThreadController
+            floatingThread={PlanCommentCard}
+            floatingUIOptions={FLOATING_THREAD_UI}
+          />
+        ) : (
+          <EnlargedCommentPortal commentId={enlargedCommentId} mountEl={panelMount} />
+        )}
         <FormattingToolbarController
           formattingToolbar={() => (
             <FormattingToolbar
@@ -260,6 +308,23 @@ export function PlanEditor({
       </BlockNoteView>
     </div>
   );
+}
+
+// Portal target lives outside BlockNoteView, but the card's hooks
+// (`useBlockNoteEditor`, `useUsers`, `useThreads`) need BlockNoteView's
+// React context. createPortal preserves the React tree and only moves the
+// DOM nodes, so the card mounts in the rail while still seeing the editor.
+function EnlargedCommentPortal({
+  commentId,
+  mountEl,
+}: {
+  commentId: string;
+  mountEl: HTMLDivElement | null;
+}) {
+  const threads = useThreads();
+  const thread = threads.get(commentId);
+  if (!mountEl || !thread) return null;
+  return createPortal(<PlanCommentCard thread={thread} selected={true} variant="panel" />, mountEl);
 }
 
 // Positions PlanCommentCard beside the gutter icon, flipping above when the

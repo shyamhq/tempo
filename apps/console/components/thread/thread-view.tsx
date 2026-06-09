@@ -1,8 +1,10 @@
 'use client';
 
+import { CommentsExtension } from '@blocknote/core/comments';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { SessionStatus } from '@tempo/contracts';
 import type { GetThreadResponse } from '@tempo/contracts/http';
-import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles } from 'lucide-react';
+import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles, X } from 'lucide-react';
 import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
@@ -19,6 +21,7 @@ import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
 import { Button } from '@/components/ui/button';
 import { useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
+import { useCommentUi } from '@/store/comment-ui';
 
 type View = z.infer<typeof GetThreadResponse>;
 
@@ -47,6 +50,34 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const [discussionOpen, setDiscussionOpen] = useState(initial.plan.body === null);
   const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
   const [discussionWidth, setDiscussionWidth] = useState(DEFAULT_DISCUSSION_WIDTH);
+  const enlargedCommentId = useCommentUi((s) => s.enlargedCommentId);
+  const activeRailTab = useCommentUi((s) => s.activeRailTab);
+  const setPanelMount = useCommentUi((s) => s.setPanelMount);
+  const setActiveRailTab = useCommentUi((s) => s.setActiveRailTab);
+  const closeEnlarged = useCommentUi((s) => s.closeEnlarged);
+
+  // Opening the Comment tab implies the rail must be visible. Watch the
+  // store for the null → set transition and flip `discussionOpen` then.
+  // `setEnlarged` is the sole writer of this transition; any new caller
+  // inherits the "rail comes with you" coupling automatically.
+  useEffect(
+    () =>
+      useCommentUi.subscribe((state, prev) => {
+        if (state.enlargedCommentId !== null && prev.enlargedCommentId === null) {
+          setDiscussionOpen(true);
+        }
+      }),
+    [],
+  );
+
+  // The store is module-scoped — surviving SPA navigation between Threads
+  // would leave the previous Thread's enlargedCommentId set, briefly
+  // showing a Comment tab with no content before the auto-close guard
+  // catches up. Reset on Thread switch.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: threadId is the change trigger
+  useEffect(() => {
+    useCommentUi.getState().closeEnlarged();
+  }, [threadId]);
 
   // `pmJsonApplied` doubles as the "first apply happened" gate. It controls
   // editor visibility (kept hidden during the two-step init to avoid an
@@ -206,9 +237,21 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const openDiscussion = useCallback(() => setDiscussionOpen(true), []);
   const closeDiscussion = useCallback(() => {
     const y = window.scrollY;
+    // The plan-editor transition effect clears BlockNote's selectedThreadId
+    // whenever enlargedCommentId flips to null. That covers the
+    // rail-closed-with-comment-enlarged path. The marker-clicked-but-never-
+    // enlarged path leaves selectedThreadId set in BlockNote with
+    // enlargedCommentId already null — no transition would fire — so clear
+    // directly only when there was nothing to transition.
+    const wasEnlarged = useCommentUi.getState().enlargedCommentId !== null;
+    useCommentUi.getState().closeEnlarged();
+    if (!wasEnlarged) {
+      editorHandle?.editor.getExtension(CommentsExtension)?.selectThread(undefined);
+    }
     setDiscussionOpen(false);
     requestAnimationFrame(() => window.scrollTo({ top: y }));
-  }, []);
+  }, [editorHandle]);
+
   const markOpened = useCallback(() => {
     if (typeof window === 'undefined') return;
     const now = new Date().toISOString();
@@ -226,11 +269,19 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
         setDiscussionOpen((v) => !v);
+        return;
+      }
+      // Escape closes the rail regardless of which tab is active. Used to
+      // live inside DiscussionPanel, but that panel doesn't mount while the
+      // Comment tab is showing — handler has to live one level up.
+      if (e.key === 'Escape' && discussionOpen) {
+        e.preventDefault();
+        closeDiscussion();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [discussionOpen, closeDiscussion]);
 
   return (
     <div className="min-h-dvh">
@@ -265,19 +316,36 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
       <div className={`mx-auto max-w-[1600px] px-6 py-6 grid gap-6 ${gridClass}`} style={gridStyle}>
         {discussionOpen ? (
-          <aside className="h-[calc(100dvh-3.5rem-3rem)] sticky top-[calc(3.5rem+1.5rem)]">
-            <DiscussionPanel
-              threadId={threadId}
-              messages={view.discussion.messages}
-              approved={approved}
+          <aside className="-mt-6 h-[calc(100dvh-5rem)] sticky top-14 flex flex-col min-h-0 bg-canvas border-r border-hairline">
+            <RailTabStrip
+              activeTab={activeRailTab}
+              // Selecting Discussion fully closes the Comment tab — keeping
+              // both alive while the user reads Discussion leaves
+              // `enlargedCommentId` set and resurrects the tab on the next
+              // gutter click. One-tab-at-a-time was the original spec.
+              onSelectDiscussion={closeEnlarged}
+              onSelectComment={() => setActiveRailTab('comment')}
+              onCloseCommentTab={closeEnlarged}
+              showCommentTab={enlargedCommentId !== null}
               sessionStatus={view.session_status}
-              width={discussionWidth}
-              minWidth={MIN_DISCUSSION_WIDTH}
-              maxWidth={MAX_DISCUSSION_WIDTH}
-              onWidthChange={persistDiscussionWidth}
-              onClose={closeDiscussion}
-              onOpened={markOpened}
+              onCloseRail={closeDiscussion}
             />
+            <div className="flex-1 min-h-0">
+              {activeRailTab === 'comment' && enlargedCommentId !== null ? (
+                <div ref={setPanelMount} className="h-full overflow-hidden" />
+              ) : (
+                <DiscussionPanel
+                  threadId={threadId}
+                  messages={view.discussion.messages}
+                  approved={approved}
+                  width={discussionWidth}
+                  minWidth={MIN_DISCUSSION_WIDTH}
+                  maxWidth={MAX_DISCUSSION_WIDTH}
+                  onWidthChange={persistDiscussionWidth}
+                  onOpened={markOpened}
+                />
+              )}
+            </div>
           </aside>
         ) : null}
 
@@ -382,6 +450,88 @@ function PlanSaveStatus({
       <RefreshCcw className="h-3 w-3 animate-spin" aria-hidden />
       Save failed — retrying
     </span>
+  );
+}
+
+function RailTabStrip({
+  activeTab,
+  onSelectDiscussion,
+  onSelectComment,
+  onCloseCommentTab,
+  showCommentTab,
+  sessionStatus,
+  onCloseRail,
+}: {
+  activeTab: 'discussion' | 'comment';
+  onSelectDiscussion: () => void;
+  onSelectComment: () => void;
+  onCloseCommentTab: () => void;
+  showCommentTab: boolean;
+  sessionStatus: SessionStatus;
+  onCloseRail: () => void;
+}) {
+  const baseTab =
+    'inline-flex items-center gap-1.5 h-8 px-3 rounded-t-md text-caption font-medium border border-b-0 transition-colors';
+  const inactive = 'border-transparent text-ink-subtle hover:text-ink';
+  const active = 'border-hairline bg-canvas text-ink';
+  const connected = sessionStatus === 'connected';
+  return (
+    <div className="flex items-end gap-1 px-2 pt-1 bg-surface-2 border-b border-hairline h-12">
+      <button
+        type="button"
+        onClick={onSelectDiscussion}
+        className={`${baseTab} ${activeTab === 'discussion' ? active : inactive}`}
+      >
+        Discussion
+      </button>
+      {showCommentTab ? (
+        <div className={`${baseTab} ${activeTab === 'comment' ? active : inactive} pr-1`}>
+          <button
+            type="button"
+            onClick={onSelectComment}
+            className="inline-flex items-center gap-1.5"
+          >
+            <span
+              aria-hidden
+              className="size-1.5 rounded-full bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.18)]"
+            />
+            Comment
+          </button>
+          <button
+            type="button"
+            onClick={onCloseCommentTab}
+            aria-label="Close Comment tab"
+            className="inline-flex items-center justify-center text-ink-tertiary hover:text-ink hover:bg-surface-3 rounded p-0.5 ml-1"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ) : null}
+      <div className="ml-auto flex items-center gap-2 pb-1.5 pr-1">
+        <span
+          className="inline-flex items-center gap-1.5 text-micro font-normal text-ink-subtle shrink-0"
+          title={
+            connected ? 'Agent connected' : 'Agent disconnected — messages deliver on reconnect'
+          }
+        >
+          <span
+            aria-hidden
+            className={`inline-block h-[7px] w-[7px] rounded-full ${
+              connected ? 'bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.16)]' : 'bg-ink-tertiary'
+            }`}
+          />
+          {connected ? 'connected' : 'offline'}
+        </span>
+        <button
+          type="button"
+          onClick={onCloseRail}
+          aria-label="Close rail"
+          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-3 transition-colors"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 

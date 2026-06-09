@@ -1,7 +1,7 @@
 'use client';
 
-import type { DiscussionMessage, SessionStatus } from '@tempo/contracts';
-import { Sparkles, X } from 'lucide-react';
+import type { DiscussionMessage } from '@tempo/contracts';
+import { Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { MessageComposer } from './message-composer';
 import { MessageList } from './message-list';
@@ -10,23 +10,19 @@ export function DiscussionPanel({
   threadId,
   messages,
   approved,
-  sessionStatus,
   width,
   minWidth,
   maxWidth,
   onWidthChange,
-  onClose,
   onOpened,
 }: {
   threadId: string;
   messages: DiscussionMessage[];
   approved: boolean;
-  sessionStatus: SessionStatus;
   width: number;
   minWidth: number;
   maxWidth: number;
   onWidthChange: (w: number) => void;
-  onClose: () => void;
   onOpened: () => void;
 }) {
   // Stamp "seen" whenever the panel renders open. Parent guarantees this
@@ -34,17 +30,6 @@ export function DiscussionPanel({
   useEffect(() => {
     onOpened();
   }, [onOpened]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   // Composer disabled only when the Thread is frozen (approved). When a live
   // question card sits at the bottom of the timeline the Dev can still post
@@ -57,9 +42,8 @@ export function DiscussionPanel({
   return (
     <aside
       aria-label="Discussion"
-      className="relative flex flex-col h-full min-h-0 bg-canvas border-r border-hairline overflow-hidden"
+      className="relative flex flex-col h-full min-h-0 bg-canvas overflow-hidden"
     >
-      <PanelHeader sessionStatus={sessionStatus} onClose={onClose} />
       <MessageList messages={messages} threadId={threadId} emptyState={<EmptyState />} />
       <MessageComposer
         threadId={threadId}
@@ -167,47 +151,6 @@ function ResizeHandle({
       className="absolute top-0 right-0 h-full w-1.5 -mr-[3px] cursor-col-resize group focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/15 z-10"
     >
       <div className="absolute inset-y-0 right-[2px] w-px bg-hairline group-hover:bg-accent group-focus-visible:bg-accent transition-colors" />
-    </div>
-  );
-}
-
-function PanelHeader({
-  sessionStatus,
-  onClose,
-}: {
-  sessionStatus: SessionStatus;
-  onClose: () => void;
-}) {
-  const connected = sessionStatus === 'connected';
-  return (
-    <div className="flex items-center justify-between gap-3 px-5 h-12 border-b border-hairline">
-      <div className="flex items-center gap-2.5 min-w-0">
-        <h2 className="font-display text-body-md font-semibold text-ink truncate tracking-[-0.01em]">
-          Discussion
-        </h2>
-        <span
-          className="inline-flex items-center gap-1.5 text-micro font-normal text-ink-subtle shrink-0"
-          title={
-            connected ? 'Agent connected' : 'Agent disconnected — messages deliver on reconnect'
-          }
-        >
-          <span
-            aria-hidden
-            className={`inline-block h-[7px] w-[7px] rounded-full ${
-              connected ? 'bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.16)]' : 'bg-ink-tertiary'
-            }`}
-          />
-          {connected ? 'connected' : 'offline'}
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close Discussion"
-        className="inline-flex items-center justify-center h-7 w-7 -mr-1 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors"
-      >
-        <X className="h-4 w-4" />
-      </button>
     </div>
   );
 }

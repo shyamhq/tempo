@@ -9,12 +9,15 @@ import type { CommentData } from '@blocknote/core/comments';
 import { CommentsExtension } from '@blocknote/core/comments';
 import type { ThreadProps } from '@blocknote/react';
 import { useBlockNoteEditor, useUsers } from '@blocknote/react';
-import { Check, CornerDownLeft, Loader2, Trash2 } from 'lucide-react';
+import { Check, CornerDownLeft, Loader2, Maximize2, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { MarkdownText } from '@/components/thread/markdown-text';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip } from '@/components/ui/tooltip';
+import { useCommentUi } from '@/store/comment-ui';
+
+export type PlanCommentCardVariant = 'card' | 'panel';
 
 export function PlanCommentCard({
   thread,
@@ -23,7 +26,8 @@ export function PlanCommentCard({
   onFocus,
   onBlur,
   tabIndex,
-}: ThreadProps) {
+  variant = 'card',
+}: ThreadProps & { variant?: PlanCommentCardVariant }) {
   const editor = useBlockNoteEditor();
   const ext = editor.getExtension(CommentsExtension);
   const threadStore = ext?.threadStore;
@@ -108,6 +112,22 @@ export function PlanCommentCard({
   const border = `${baseBorder}${orphaned ? ' border-dashed' : ''}`;
   const shadow = selected ? ' shadow-card-elevated' : '';
 
+  const setEnlarged = useCommentUi((s) => s.setEnlarged);
+  const canEnlarge = variant === 'card';
+
+  const outerClass =
+    variant === 'panel'
+      ? 'flex flex-col w-full h-full bg-surface-1'
+      : `w-[360px] border bg-surface-1 ${border}${shadow} rounded-xl overflow-hidden`;
+  const listClass =
+    variant === 'panel'
+      ? `flex flex-col flex-1 min-h-0 overflow-y-auto pt-1.5 transition-opacity ${
+          thread.resolved ? 'opacity-50' : ''
+        }`
+      : `flex flex-col max-h-[33vh] overflow-y-auto pt-1.5 transition-opacity ${
+          thread.resolved ? 'opacity-50' : ''
+        }`;
+
   return (
     <div
       role="group"
@@ -115,13 +135,26 @@ export function PlanCommentCard({
       onFocus={onFocus}
       onBlur={onBlur}
       tabIndex={tabIndex}
-      className={`w-[360px] border bg-surface-1 ${border}${shadow} rounded-xl overflow-hidden`}
+      className={outerClass}
     >
-      <div
-        className={`flex flex-col max-h-[33vh] overflow-y-auto pt-1.5 transition-opacity ${
-          thread.resolved ? 'opacity-50' : ''
-        }`}
-      >
+      {canEnlarge ? (
+        <div className="flex items-center justify-end px-2 pt-1.5">
+          <Tooltip content="Open in rail">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEnlarged(thread.id);
+              }}
+              aria-label="Enlarge comment into rail"
+              className="inline-flex items-center justify-center text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors focus-visible:outline-none focus-visible:shadow-focus-soft rounded-md p-1.5"
+            >
+              <Maximize2 className="size-icon-xs" aria-hidden />
+            </button>
+          </Tooltip>
+        </div>
+      ) : null}
+      <div className={listClass}>
         {thread.comments.map((c) => (
           <PlanCommentRow
             key={c.id}
