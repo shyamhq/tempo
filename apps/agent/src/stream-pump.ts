@@ -9,7 +9,9 @@ import { ConsoleClient } from './http-client';
 import { logger } from './logger';
 import { writeMcpConfigFile } from './mcp-config';
 import { buildNudge } from './nudge';
-import { ALLOWED_TOOLS, INITIAL_PROMPT } from './pty-terminal';
+import { INITIAL_PROMPT } from './prompts/initial-prompt';
+import { writeAppendSystemPromptFile } from './prompts/system-prompt';
+import { ALLOWED_TOOLS } from './pty-terminal';
 import { clip, summarizeToolInput } from './tool-summary';
 
 const TEXT_MAX = 8000;
@@ -31,6 +33,7 @@ export async function runStreamPump(args: {
     threadId: args.threadId,
     token: args.token,
   });
+  const systemPromptPath = writeAppendSystemPromptFile(configDir);
 
   // claude's own session id, captured from the first `system:init` row and
   // re-used as `--resume` on subsequent spawns. Null until init lands; if a
@@ -61,7 +64,7 @@ export async function runStreamPump(args: {
       return;
     }
     state = 'RUNNING';
-    const child = spawnClaude(configPath, claudeSessionId, prompt);
+    const child = spawnClaude(configPath, systemPromptPath, claudeSessionId, prompt);
     pipeJsonl(child, args.sessionId, client, (sid) => {
       claudeSessionId = sid;
     });
@@ -105,6 +108,7 @@ export async function runStreamPump(args: {
 
 function spawnClaude(
   configPath: string,
+  systemPromptPath: string,
   resumeSessionId: string | null,
   prompt: string,
 ): ChildProcessByStdio<null, Readable, Readable> {
@@ -117,6 +121,8 @@ function spawnClaude(
     env.TEMPO_AGENT_MODEL,
     '--mcp-config',
     configPath,
+    '--append-system-prompt-file',
+    systemPromptPath,
     '--allowedTools',
     ALLOWED_TOOLS.join(','),
   ];

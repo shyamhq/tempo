@@ -4,6 +4,8 @@ import { spawn as ptySpawn } from 'node-pty';
 import { env } from './env';
 import { TempoError } from './errors';
 import { CLI_PATH, writeMcpConfigFile } from './mcp-config';
+import { INITIAL_PROMPT } from './prompts/initial-prompt';
+import { writeAppendSystemPromptFile } from './prompts/system-prompt';
 
 const CLAUDE_MISSING_MESSAGE =
   "Couldn't find `claude` on PATH. Install Claude Code (https://claude.com/claude-code) and re-run.";
@@ -29,8 +31,6 @@ export const ALLOWED_TOOLS = [
   'Bash',
 ];
 
-export const INITIAL_PROMPT = 'Call tempo_attach to begin.';
-
 const SIGINT_TO_SIGKILL_MS = 5_000;
 // Gap between nudge text and the trailing `\r`. Without it, Claude's ink
 // composer treats the burst as one paste and the CR lands as text.
@@ -51,6 +51,7 @@ export function spawnTerminal(args: {
     threadId: args.threadId,
     token: args.token,
   });
+  const systemPromptPath = writeAppendSystemPromptFile(configDir);
 
   const cols = process.stdout.columns ?? 80;
   const rows = process.stdout.rows ?? 24;
@@ -64,6 +65,8 @@ export function spawnTerminal(args: {
         configPath,
         '--settings',
         HOOK_SETTINGS_JSON,
+        '--append-system-prompt-file',
+        systemPromptPath,
         '--allowedTools',
         ALLOWED_TOOLS.join(','),
         // `--` terminates --allowedTools so the next arg is the positional

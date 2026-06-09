@@ -1,7 +1,6 @@
 import type { Event } from '@tempo/contracts';
+import { formatNudge } from './prompts/nudge';
 
-// One short nudge per poll batch — just kind counts. Claude pulls full payloads
-// via tempo_poll rather than reading them from the injected text.
 export function buildNudge(events: Event[]): string | null {
   const kinds = new Map<string, number>();
   for (const ev of events) {
@@ -13,7 +12,7 @@ export function buildNudge(events: Event[]): string | null {
     .map(([k, n]) => (n > 1 ? `${n}× ${k}` : k))
     .join(', ');
   const total = Array.from(kinds.values()).reduce((a, b) => a + b, 0);
-  return `[Tempo] ${total} new Console event(s): ${summary}. Call tempo_poll with your last cursor to fetch payloads, then act (tempo_post_reply / tempo_pull_plan / tempo_post_discussion_message as needed).`;
+  return formatNudge(summary, total);
 }
 
 function shouldNotify(ev: Event): boolean {
