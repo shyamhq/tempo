@@ -21,8 +21,7 @@ export type CreateCommentInput = {
 };
 
 export async function createComment(input: CreateCommentInput): Promise<Comment> {
-  const { threadId, plan_quote, plan_context, anchor_block_id } = input;
-  const first_reply_text = input.first_reply_text;
+  const { threadId, plan_quote, plan_context, anchor_block_id, first_reply_text } = input;
   const attachment_ids = input.attachment_ids ?? [];
 
   const id = newCommentId();

@@ -326,14 +326,28 @@ const CONTEXT_RADIUS = 80;
 function readAnchor(editor: ReturnType<typeof useCreateBlockNote> | null): {
   quote: string;
   context: string;
+  blockId: string | null;
 } {
-  if (!editor) return { quote: '', context: '' };
+  if (!editor) return { quote: '', context: '', blockId: null };
   const state = editor._tiptapEditor.state;
   const { from, to } = state.selection;
-  if (from === to) return { quote: '', context: '' };
+  if (from === to) return { quote: '', context: '', blockId: null };
   const quote = state.doc.textBetween(from, to, ' ');
   const ctxFrom = Math.max(0, from - CONTEXT_RADIUS);
   const ctxTo = Math.min(state.doc.content.size, to + CONTEXT_RADIUS);
   const context = state.doc.textBetween(ctxFrom, ctxTo, ' ');
-  return { quote, context };
+  // For multi-block selections, the *start* block wins — matches the dev's
+  // mental model of "where I started highlighting" and matches how readers
+  // scan top-down.
+  const $from = state.selection.$from;
+  let blockId: string | null = null;
+  for (let d = $from.depth; d > 0; d--) {
+    const n = $from.node(d);
+    if (n.type.name === 'blockContainer') {
+      const id = n.attrs.id;
+      if (typeof id === 'string' && id.length > 0) blockId = id;
+      break;
+    }
+  }
+  return { quote, context, blockId };
 }

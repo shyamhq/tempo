@@ -20,6 +20,9 @@ type AnchorPos = {
 type LiveComment = {
   comment: Comment;
   anchor: AnchorPos | null;
+  /** True when the `comment` mark is no longer in the doc — the icon should
+   * read as "unmoored" even though we resolved a position via anchor_block_id. */
+  markGone: boolean;
 };
 
 // size-7 (28px) + 2px breathing room between stacked icons
@@ -39,7 +42,10 @@ export function PlanCommentGutter({
   const [showResolved, setShowResolved] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | undefined>();
   const railRef = useRef<HTMLDivElement>(null);
-  const [positions, setPositions] = useState<Map<string, AnchorPos | null> | null>(null);
+  const [positions, setPositions] = useState<Map<
+    string,
+    { anchor: AnchorPos | null; markGone: boolean }
+  > | null>(null);
 
   useEffect(() => {
     if (!editorHandle) return;
@@ -51,8 +57,6 @@ export function PlanCommentGutter({
     });
   }, [editorHandle]);
 
-  const commentIds = useMemo(() => comments.map((c) => c.id).join('\0'), [comments]);
-
   useEffect(() => {
     if (!editorHandle) return;
     const editor = editorHandle.editor;
@@ -62,20 +66,42 @@ export function PlanCommentGutter({
       const anchorEl = anchorRef.current;
       if (!anchorEl) return;
       const anchorTop = anchorEl.getBoundingClientRect().top;
-      const positionsMap = walkPmDocForCommentMarks(editor);
-      const next = new Map<string, AnchorPos | null>();
+      const { byCommentId, byBlockId } = walkPmDoc(editor);
+      const commentById = new Map(comments.map((c) => [c.id, c]));
+      const next = new Map<string, { anchor: AnchorPos | null; markGone: boolean }>();
       for (const id of ids) {
-        const pos = positionsMap.get(id);
-        if (pos === undefined) {
-          next.set(id, null);
+        const directPos = byCommentId.get(id);
+        if (directPos !== undefined) {
+          try {
+            const coords = editor._tiptapEditor.view.coordsAtPos(directPos);
+            next.set(id, {
+              anchor: { top: coords.top - anchorTop, pos: directPos },
+              markGone: false,
+            });
+          } catch {
+            next.set(id, { anchor: null, markGone: false });
+          }
           continue;
         }
-        try {
-          const coords = editor._tiptapEditor.view.coordsAtPos(pos);
-          next.set(id, { top: coords.top - anchorTop, pos });
-        } catch {
-          next.set(id, null);
+        // Mark gone — try the persisted block-id fallback.
+        const comment = commentById.get(id);
+        const blockId = comment?.anchor_block_id ?? null;
+        if (blockId !== null) {
+          const blockPos = byBlockId.get(blockId);
+          if (blockPos !== undefined) {
+            try {
+              const coords = editor._tiptapEditor.view.coordsAtPos(blockPos);
+              next.set(id, {
+                anchor: { top: coords.top - anchorTop, pos: blockPos },
+                markGone: true,
+              });
+              continue;
+            } catch {
+              // fall through to null
+            }
+          }
         }
+        next.set(id, { anchor: null, markGone: true });
       }
       setPositions(next);
     };
@@ -113,7 +139,7 @@ export function PlanCommentGutter({
       window.removeEventListener('resize', schedule);
       observer?.disconnect();
     };
-  }, [editorHandle, anchorRef, commentIds, comments]);
+  }, [editorHandle, anchorRef, comments]);
 
   const focusAnchor = useCallback(
     (commentId: string) => {
@@ -138,10 +164,12 @@ export function PlanCommentGutter({
     if (positions === null) return { anchored: a, orphaned: o };
     for (const comment of comments) {
       if (comment.resolved_by !== null && !showResolved) continue;
-      const anchor = positions.get(comment.id) ?? null;
-      const entry: LiveComment = { comment, anchor };
-      if (anchor === null) o.push(entry);
-      else a.push(entry);
+      const entry = positions.get(comment.id);
+      const anchor = entry?.anchor ?? null;
+      const markGone = entry?.markGone ?? false;
+      const lc: LiveComment = { comment, anchor, markGone };
+      if (anchor === null) o.push(lc);
+      else a.push(lc);
     }
     a.sort((x, y) => {
       const topDiff = (x.anchor?.top ?? 0) - (y.anchor?.top ?? 0);
@@ -180,17 +208,19 @@ export function PlanCommentGutter({
               Orphaned
             </span>
           ) : null}
-          {anchored.map(({ comment }) => (
+          {anchored.map(({ comment, markGone }) => (
             <GutterIcon
               key={comment.id}
               resolved={comment.resolved_by !== null}
               selected={selectedThreadId === comment.id}
+              orphaned={markGone}
+              fullyDetached={false}
               style={{
                 position: 'absolute',
                 top: `${displayTops.get(comment.id) ?? 0}px`,
                 right: 0,
               }}
-              onClick={() => focusAnchor(comment.id)}
+              onClick={markGone ? (e) => openOrphan(comment.id, e) : () => focusAnchor(comment.id)}
             />
           ))}
           {orphaned.map(({ comment }) => (
@@ -199,6 +229,7 @@ export function PlanCommentGutter({
               resolved={comment.resolved_by !== null}
               selected={selectedThreadId === comment.id}
               orphaned
+              fullyDetached
               style={{
                 position: 'absolute',
                 top: `${displayTops.get(comment.id) ?? 0}px`,
@@ -218,18 +249,23 @@ function GutterIcon({
   selected,
   style,
   orphaned,
+  fullyDetached,
   onClick,
 }: {
   resolved: boolean;
   selected?: boolean;
   style?: React.CSSProperties;
+  /** True when the comment mark is gone from the doc (block-anchored or detached). */
   orphaned?: boolean;
+  /** True only for footer-bucket orphans whose block is also gone. */
+  fullyDetached?: boolean;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
-  const Icon = orphaned ? MessageSquareOff : resolved ? CheckCircle2 : MessageSquare;
-  const titleParts = [resolved ? 'Resolved' : 'Open', orphaned ? '(orphaned)' : null].filter(
-    Boolean,
-  );
+  const Icon = fullyDetached ? MessageSquareOff : resolved ? CheckCircle2 : MessageSquare;
+  const titleParts = [
+    resolved ? 'Resolved' : 'Open',
+    fullyDetached ? '(detached)' : orphaned ? '(orphaned)' : null,
+  ].filter(Boolean);
   return (
     <button
       type="button"
@@ -238,15 +274,28 @@ function GutterIcon({
       disabled={onClick === undefined}
       aria-pressed={selected ?? false}
       title={titleParts.join(' ')}
-      className={`size-7 inline-flex items-center justify-center rounded-md transition-colors ${
+      className={`relative size-7 inline-flex items-center justify-center rounded-md transition-colors ${
         selected
           ? 'bg-accent/10 text-accent-deep ring-2 ring-accent'
-          : 'text-ink-subtle hover:text-ink hover:bg-surface-2'
+          : orphaned
+            ? 'text-brand-warn hover:bg-[color-mix(in_oklab,var(--color-brand-warn)_20%,transparent)]'
+            : 'text-ink-subtle hover:text-ink hover:bg-surface-2'
       } ${resolved && !selected ? 'opacity-50' : ''} ${
-        orphaned ? 'border border-dashed border-hairline' : ''
+        orphaned
+          ? 'border-2 border-dashed border-brand-warn bg-[color-mix(in_oklab,var(--color-brand-warn)_12%,transparent)]'
+          : ''
       } ${onClick === undefined ? 'cursor-default' : ''}`}
     >
       <Icon className="size-icon-sm" aria-hidden />
+      {orphaned ? (
+        <span
+          aria-hidden
+          className="absolute -bottom-1 -right-1 size-3 rounded-full bg-brand-warn text-white text-[8px] font-bold leading-none flex items-center justify-center"
+          style={{ boxShadow: '0 0 0 2px var(--color-surface-1, white)' }}
+        >
+          ×
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -312,17 +361,26 @@ function spreadAnchoredIcons(anchored: LiveComment[]): Map<string, number> {
   return out;
 }
 
-function walkPmDocForCommentMarks(editor: PlanEditorHandle['editor']): Map<string, number> {
-  const out = new Map<string, number>();
+function walkPmDoc(editor: PlanEditorHandle['editor']): {
+  byCommentId: Map<string, number>;
+  byBlockId: Map<string, number>;
+} {
+  const byCommentId = new Map<string, number>();
+  const byBlockId = new Map<string, number>();
   // biome-ignore lint/suspicious/noExplicitAny: ProseMirror node callback is untyped in our graph
   editor._tiptapEditor.state.doc.descendants((node: any, pos: number) => {
+    if (node.type?.name === 'blockContainer') {
+      const id = node.attrs?.id;
+      if (typeof id === 'string' && id.length > 0) byBlockId.set(id, pos);
+      return; // children are still walked by `descendants`
+    }
     if (!node.isText) return;
     for (const mark of node.marks) {
       if (mark.type.name !== 'comment') continue;
       const threadId = mark.attrs.threadId as string | undefined;
       if (typeof threadId !== 'string' || threadId.length === 0) continue;
-      if (!out.has(threadId)) out.set(threadId, pos);
+      if (!byCommentId.has(threadId)) byCommentId.set(threadId, pos);
     }
   });
-  return out;
+  return { byCommentId, byBlockId };
 }

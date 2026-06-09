@@ -35,7 +35,7 @@ export type CommentThreadBridgeOptions = {
   /** Read the PM selection at the moment BlockNote calls `createThread` —
    * before the comment mark is stamped — so the Comment row carries a quote
    * + surrounding context for the Agent. */
-  captureAnchor: () => { quote: string; context: string };
+  captureAnchor: () => { quote: string; context: string; blockId: string | null };
 };
 
 export class CommentThreadBridge extends ThreadStore {
@@ -44,7 +44,7 @@ export class CommentThreadBridge extends ThreadStore {
   private readonly getCommentsSnapshot: () => Comment[];
   private readonly onCommentsChanged: (comments: Comment[]) => void;
   private readonly invalidate: () => void;
-  private readonly captureAnchor: () => { quote: string; context: string };
+  private readonly captureAnchor: () => { quote: string; context: string; blockId: string | null };
   private subscribers = new Set<(threads: Map<string, ThreadData>) => void>();
 
   constructor(opts: CommentThreadBridgeOptions) {
@@ -75,6 +75,7 @@ export class CommentThreadBridge extends ThreadStore {
       // editor's selection is still the user's pending-comment range here.
       plan_quote: anchor.quote,
       plan_context: anchor.context,
+      anchor_block_id: anchor.blockId,
       first_reply_text: text.length > 0 ? text : undefined,
       attachments: [],
     });
