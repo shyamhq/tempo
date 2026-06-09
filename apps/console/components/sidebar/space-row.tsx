@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Space } from '@tempo/contracts';
 import { ChevronRight, GripVertical } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useSidebar } from '@/hooks/use-sidebar-state';
+import { useSidebar } from '@/store/sidebar';
 import { api } from '@/lib/api-client';
 import { colorForSpace } from '@/lib/space-color';
 import { cn } from '@/lib/utils';

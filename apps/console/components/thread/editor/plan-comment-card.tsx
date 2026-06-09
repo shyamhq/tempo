@@ -15,7 +15,7 @@ import { MarkdownText } from '@/components/thread/markdown-text';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip } from '@/components/ui/tooltip';
-import { useCommentUi } from '@/store/comment-ui';
+import { useThreadUi } from '@/store/thread-ui';
 
 export type PlanCommentCardVariant = 'card' | 'panel';
 
@@ -112,7 +112,7 @@ export function PlanCommentCard({
   const border = `${baseBorder}${orphaned ? ' border-dashed' : ''}`;
   const shadow = selected ? ' shadow-card-elevated' : '';
 
-  const setEnlarged = useCommentUi((s) => s.setEnlarged);
+  const setEnlarged = useThreadUi((s) => s.setEnlarged);
   const canEnlarge = variant === 'card';
 
   const outerClass =

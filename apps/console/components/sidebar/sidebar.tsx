@@ -20,8 +20,8 @@ import { PanelLeftClose, PanelLeftOpen, Plus, Search } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Tooltip } from '@/components/ui/tooltip';
-import { useSidebar } from '@/hooks/use-sidebar-state';
 import { api } from '@/lib/api-client';
+import { useSidebar } from '@/store/sidebar';
 import { SpaceRow } from './space-row';
 import { UndoToast } from './undo-toast';
 
@@ -39,12 +39,6 @@ export function Sidebar({ initial }: { initial: Space[] }) {
 
   const collapsed = useSidebar((s) => s.collapsed);
   const toggleCollapsed = useSidebar((s) => s.toggleCollapsed);
-
-  // Hydrate persisted collapse state on mount (matches the pattern at
-  // thread-view.tsx:64–69 for `DISCUSSION_WIDTH_STORAGE`).
-  useEffect(() => {
-    useSidebar.getState().hydrateCollapsed();
-  }, []);
 
   // Publish the sidebar's current pixel width as a CSS variable so that
   // position:fixed children elsewhere (e.g. the Discussion FAB) can align

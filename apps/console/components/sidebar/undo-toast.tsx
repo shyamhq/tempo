@@ -5,7 +5,7 @@ import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { Undo2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
-import { type PendingDeleteInput, useSidebar } from '@/hooks/use-sidebar-state';
+import { type PendingDeleteInput, useSidebar } from '@/store/sidebar';
 import { api } from '@/lib/api-client';
 
 export function UndoToast() {

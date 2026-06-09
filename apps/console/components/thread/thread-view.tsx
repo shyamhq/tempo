@@ -8,6 +8,7 @@ import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles, X } from 'l
 import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
+import { useShallow } from 'zustand/react/shallow';
 import { ActivityWidget } from '@/components/thread/activity-widget';
 import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
@@ -21,19 +22,11 @@ import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
 import { Button } from '@/components/ui/button';
 import { useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
-import { useCommentUi } from '@/store/comment-ui';
+import { useThreadUi } from '@/store/thread-ui';
 
 type View = z.infer<typeof GetThreadResponse>;
 
-const DEFAULT_DISCUSSION_WIDTH = 360;
-const MIN_DISCUSSION_WIDTH = 320;
-const MAX_DISCUSSION_WIDTH = 720;
-const DISCUSSION_WIDTH_STORAGE = 'tempo:discussion_width';
 const SAVED_PILL_FADE_MS = 2000;
-
-function clampWidth(w: number): number {
-  return Math.max(MIN_DISCUSSION_WIDTH, Math.min(MAX_DISCUSSION_WIDTH, Math.round(w)));
-}
 
 export function ThreadView({ threadId, initial }: { threadId: string; initial: View }) {
   const qc = useQueryClient();
@@ -47,36 +40,27 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const [editorHandle, setEditorHandle] = useState<PlanEditorHandle | null>(null);
   const planColumnRef = useRef<HTMLDivElement>(null);
   const [planUpdatedAt, setPlanUpdatedAt] = useState<number | null>(null);
-  const [discussionOpen, setDiscussionOpen] = useState(initial.plan.body === null);
-  const [discussionSeenAt, setDiscussionSeenAt] = useState<string | null>(null);
-  const [discussionWidth, setDiscussionWidth] = useState(DEFAULT_DISCUSSION_WIDTH);
-  const enlargedCommentId = useCommentUi((s) => s.enlargedCommentId);
-  const activeRailTab = useCommentUi((s) => s.activeRailTab);
-  const setPanelMount = useCommentUi((s) => s.setPanelMount);
-  const setActiveRailTab = useCommentUi((s) => s.setActiveRailTab);
-  const closeEnlarged = useCommentUi((s) => s.closeEnlarged);
-
-  // Opening the Comment tab implies the rail must be visible. Watch the
-  // store for the null → set transition and flip `discussionOpen` then.
-  // `setEnlarged` is the sole writer of this transition; any new caller
-  // inherits the "rail comes with you" coupling automatically.
-  useEffect(
-    () =>
-      useCommentUi.subscribe((state, prev) => {
-        if (state.enlargedCommentId !== null && prev.enlargedCommentId === null) {
-          setDiscussionOpen(true);
-        }
-      }),
-    [],
+  const { discussionOpen, activeRailTab, enlargedCommentId, discussionWidth } = useThreadUi(
+    useShallow((s) => ({
+      discussionOpen: s.discussionOpen,
+      activeRailTab: s.activeRailTab,
+      enlargedCommentId: s.enlargedCommentId,
+      discussionWidth: s.discussionWidth,
+    })),
   );
+  const discussionSeenAt = useThreadUi((s) => s.discussionSeenAt[threadId] ?? null);
+  const setPanelMount = useThreadUi((s) => s.setPanelMount);
+  const setActiveRailTab = useThreadUi((s) => s.setActiveRailTab);
+  const closeEnlarged = useThreadUi((s) => s.closeEnlarged);
 
-  // The store is module-scoped — surviving SPA navigation between Threads
-  // would leave the previous Thread's enlargedCommentId set, briefly
-  // showing a Comment tab with no content before the auto-close guard
-  // catches up. Reset on Thread switch.
+  // Module-scoped store survives SPA navigation between Threads. Reset
+  // rail state on Thread switch so we don't briefly render a stale Comment
+  // tab, and seed `discussionOpen` from this Thread's "no plan yet" default.
   // biome-ignore lint/correctness/useExhaustiveDependencies: threadId is the change trigger
   useEffect(() => {
-    useCommentUi.getState().closeEnlarged();
+    const s = useThreadUi.getState();
+    s.closeEnlarged();
+    s.setDiscussionOpen(initial.plan.body === null);
   }, [threadId]);
 
   // `pmJsonApplied` doubles as the "first apply happened" gate. It controls
@@ -107,35 +91,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       setPmJsonApplied(true);
     }
   });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    setDiscussionSeenAt(window.localStorage.getItem(`tempo:thread:${threadId}:discussion_seen_at`));
-  }, [threadId]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem(DISCUSSION_WIDTH_STORAGE);
-    const parsed = stored ? Number.parseInt(stored, 10) : NaN;
-    if (Number.isFinite(parsed)) setDiscussionWidth(clampWidth(parsed));
-  }, []);
-
-  const widthPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (widthPersistTimer.current) clearTimeout(widthPersistTimer.current);
-    },
-    [],
-  );
-  const persistDiscussionWidth = useCallback((w: number) => {
-    const clamped = clampWidth(w);
-    setDiscussionWidth(clamped);
-    if (typeof window === 'undefined') return;
-    if (widthPersistTimer.current) clearTimeout(widthPersistTimer.current);
-    widthPersistTimer.current = setTimeout(() => {
-      window.localStorage.setItem(DISCUSSION_WIDTH_STORAGE, String(clamped));
-    }, 200);
-  }, []);
 
   useEffect(() => {
     if (planUpdatedAt === null) return;
@@ -234,7 +189,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     ).length;
   }, [view.discussion.messages, discussionSeenAt, discussionOpen]);
 
-  const openDiscussion = useCallback(() => setDiscussionOpen(true), []);
   const closeDiscussion = useCallback(() => {
     const y = window.scrollY;
     // The plan-editor transition effect clears BlockNote's selectedThreadId
@@ -243,21 +197,13 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     // enlarged path leaves selectedThreadId set in BlockNote with
     // enlargedCommentId already null — no transition would fire — so clear
     // directly only when there was nothing to transition.
-    const wasEnlarged = useCommentUi.getState().enlargedCommentId !== null;
-    useCommentUi.getState().closeEnlarged();
+    const wasEnlarged = useThreadUi.getState().enlargedCommentId !== null;
+    useThreadUi.getState().closeRail();
     if (!wasEnlarged) {
       editorHandle?.editor.getExtension(CommentsExtension)?.selectThread(undefined);
     }
-    setDiscussionOpen(false);
     requestAnimationFrame(() => window.scrollTo({ top: y }));
   }, [editorHandle]);
-
-  const markOpened = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const now = new Date().toISOString();
-    window.localStorage.setItem(`tempo:thread:${threadId}:discussion_seen_at`, now);
-    setDiscussionSeenAt(now);
-  }, [threadId]);
 
   const gridClass = discussionOpen ? 'grid-cols-[var(--discussion-w)_1fr]' : 'grid-cols-1';
   const gridStyle = discussionOpen
@@ -268,7 +214,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === '/') {
         e.preventDefault();
-        setDiscussionOpen((v) => !v);
+        useThreadUi.getState().toggleDiscussion();
         return;
       }
       // Escape closes the rail regardless of which tab is active. Used to
@@ -338,11 +284,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
                   threadId={threadId}
                   messages={view.discussion.messages}
                   approved={approved}
-                  width={discussionWidth}
-                  minWidth={MIN_DISCUSSION_WIDTH}
-                  maxWidth={MAX_DISCUSSION_WIDTH}
-                  onWidthChange={persistDiscussionWidth}
-                  onOpened={markOpened}
                 />
               )}
             </div>
@@ -399,7 +340,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      <DiscussionButton open={discussionOpen} unreadCount={unreadCount} onClick={openDiscussion} />
+      <DiscussionButton
+        open={discussionOpen}
+        unreadCount={unreadCount}
+        onClick={() => useThreadUi.getState().setDiscussionOpen(true)}
+      />
     </div>
   );
 }

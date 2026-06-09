@@ -25,7 +25,7 @@ import { createPortal } from 'react-dom';
 import { alertBlockTypeItems, alertSlashItems } from '@/lib/blocks/alert-block';
 import { htmlBlockTypeItem, htmlSlashItem } from '@/lib/blocks/html-block';
 import { planSchemaClient } from '@/lib/plan-schema-client';
-import { useCommentUi } from '@/store/comment-ui';
+import { useThreadUi } from '@/store/thread-ui';
 import { COMMENT_CARD_VIEWPORT, resolveVerticalCardTop } from './comment-card-placement';
 import { CommentThreadBridge } from './comment-thread-bridge';
 import { PlanCommentCard } from './plan-comment-card';
@@ -207,15 +207,15 @@ export function PlanEditor({
     if (!bridge.getThreads().has(orphanOpen.threadId)) setOrphanOpen(null);
   }, [orphanOpen, bridge, comments]);
 
-  const enlargedCommentId = useCommentUi((s) => s.enlargedCommentId);
-  const panelMount = useCommentUi((s) => s.panelMount);
+  const enlargedCommentId = useThreadUi((s) => s.enlargedCommentId);
+  const panelMount = useThreadUi((s) => s.panelMount);
 
   // Same guard as the orphan popover above — collapse the rail tab if its
   // underlying Comment is gone (deleted from inside the panel, or via SSE).
   // biome-ignore lint/correctness/useExhaustiveDependencies: comments is the trigger
   useEffect(() => {
     if (enlargedCommentId === null) return;
-    if (!bridge.getThreads().has(enlargedCommentId)) useCommentUi.getState().closeEnlarged();
+    if (!bridge.getThreads().has(enlargedCommentId)) useThreadUi.getState().closeEnlarged();
   }, [enlargedCommentId, bridge, comments]);
 
   // While the Comment tab is open, mirror BlockNote's selected thread id
@@ -229,7 +229,7 @@ export function PlanEditor({
     return bnStore.subscribe(() => {
       const selected = bnStore.state.selectedThreadId;
       if (typeof selected === 'string' && selected !== enlargedCommentId) {
-        useCommentUi.getState().setEnlarged(selected);
+        useThreadUi.getState().setEnlarged(selected);
       }
     });
   }, [editor, enlargedCommentId]);
@@ -240,7 +240,7 @@ export function PlanEditor({
   // previous-state argument detects the transition without a tracking ref.
   useEffect(
     () =>
-      useCommentUi.subscribe((state, prev) => {
+      useThreadUi.subscribe((state, prev) => {
         if (prev.enlargedCommentId !== null && state.enlargedCommentId === null) {
           editor.getExtension(CommentsExtension)?.selectThread(undefined);
         }

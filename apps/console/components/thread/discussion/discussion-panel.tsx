@@ -3,6 +3,7 @@
 import type { DiscussionMessage } from '@tempo/contracts';
 import { Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { MAX_DISCUSSION_WIDTH, MIN_DISCUSSION_WIDTH, useThreadUi } from '@/store/thread-ui';
 import { MessageComposer } from './message-composer';
 import { MessageList } from './message-list';
 
@@ -10,26 +11,17 @@ export function DiscussionPanel({
   threadId,
   messages,
   approved,
-  width,
-  minWidth,
-  maxWidth,
-  onWidthChange,
-  onOpened,
 }: {
   threadId: string;
   messages: DiscussionMessage[];
   approved: boolean;
-  width: number;
-  minWidth: number;
-  maxWidth: number;
-  onWidthChange: (w: number) => void;
-  onOpened: () => void;
 }) {
   // Stamp "seen" whenever the panel renders open. Parent guarantees this
-  // component only mounts while `open` — so a mount equals an open event.
+  // component only mounts while `discussionOpen` — so a mount equals an open
+  // event.
   useEffect(() => {
-    onOpened();
-  }, [onOpened]);
+    useThreadUi.getState().markDiscussionSeen(threadId);
+  }, [threadId]);
 
   // Composer disabled only when the Thread is frozen (approved). When a live
   // question card sits at the bottom of the timeline the Dev can still post
@@ -57,27 +49,16 @@ export function DiscussionPanel({
         <span className="sr-only">. </span>
         general discussion, not tied to a selection
       </p>
-      <ResizeHandle
-        width={width}
-        minWidth={minWidth}
-        maxWidth={maxWidth}
-        onWidthChange={onWidthChange}
-      />
+      <ResizeHandle />
     </aside>
   );
 }
 
-function ResizeHandle({
-  width,
-  minWidth,
-  maxWidth,
-  onWidthChange,
-}: {
-  width: number;
-  minWidth: number;
-  maxWidth: number;
-  onWidthChange: (w: number) => void;
-}) {
+function ResizeHandle() {
+  const width = useThreadUi((s) => s.discussionWidth);
+  // Action ref is stable for the lifetime of the store — read once instead of
+  // taking out a reactive subscription that can never fire.
+  const setWidth = useThreadUi.getState().setDiscussionWidth;
   const startRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -103,9 +84,7 @@ function ResizeHandle({
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const start = startRef.current;
     if (!start || start.pointerId !== e.pointerId) return;
-    const delta = e.clientX - start.startX;
-    const next = Math.max(minWidth, Math.min(maxWidth, start.startWidth + delta));
-    onWidthChange(next);
+    setWidth(start.startWidth + (e.clientX - start.startX));
   };
 
   const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -124,8 +103,8 @@ function ResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize Discussion panel"
-      aria-valuemin={minWidth}
-      aria-valuemax={maxWidth}
+      aria-valuemin={MIN_DISCUSSION_WIDTH}
+      aria-valuemax={MAX_DISCUSSION_WIDTH}
       aria-valuenow={width}
       aria-valuetext={`${width} pixels`}
       tabIndex={0}
@@ -136,16 +115,16 @@ function ResizeHandle({
       onKeyDown={(e) => {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
-          onWidthChange(Math.max(minWidth, width - (e.shiftKey ? 32 : 8)));
+          setWidth(width - (e.shiftKey ? 32 : 8));
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
-          onWidthChange(Math.min(maxWidth, width + (e.shiftKey ? 32 : 8)));
+          setWidth(width + (e.shiftKey ? 32 : 8));
         } else if (e.key === 'Home') {
           e.preventDefault();
-          onWidthChange(minWidth);
+          setWidth(MIN_DISCUSSION_WIDTH);
         } else if (e.key === 'End') {
           e.preventDefault();
-          onWidthChange(maxWidth);
+          setWidth(MAX_DISCUSSION_WIDTH);
         }
       }}
       className="absolute top-0 right-0 h-full w-1.5 -mr-[3px] cursor-col-resize group focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/15 z-10"

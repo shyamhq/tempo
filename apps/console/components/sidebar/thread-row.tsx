@@ -7,7 +7,7 @@ import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { Check, GripVertical } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useSidebar } from '@/hooks/use-sidebar-state';
+import { useSidebar } from '@/store/sidebar';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 import { InlineRename } from './inline-rename';
