@@ -9,7 +9,7 @@ import { appendEvent } from './event-log';
 import {
   blocksToPmDoc,
   blockToHtml,
-  htmlToPmBlockContainer,
+  htmlToPmBlockContainers,
   type PmBlockContainer,
   parseHtmlDocToBlocks,
   pmDocToBlocks,
@@ -47,7 +47,7 @@ export async function writePlan(
   // `_prosemirrorJSONToBlocks` ran against it (it would throw, surfacing as
   // a 500 on the next Agent poll).
   if (pmJson === null || typeof pmJson !== 'object') {
-    throw new InvalidPlanBodyError('pm_json must be a ProseMirror document object');
+    throw new InvalidPlanBodyError('plan body must be a document object');
   }
   const updated_at = nowIso();
   await db
@@ -131,12 +131,12 @@ export async function getPlanBlocks(threadId: string): Promise<AgentPlanBlocks> 
 // The write orchestrators below do block-level surgery on the stored pm_json:
 // they read the original tree, locate the target blockContainer in the
 // root blockGroup by `attrs.id`, and splice (replace / insert / remove). The
-// new content is converted from HTML via `htmlToPmBlockContainer`, which
-// produces a single PM blockContainer node — that's the only conversion that
-// runs through BlockNote.
+// new content is converted from HTML via `htmlToPmBlockContainers`, which
+// may yield one or more PM blockContainer nodes — that's the only conversion
+// that runs through the editor on the write path.
 //
 // Why surgery (rather than `pmDocToBlocks` → mutate → `blocksToPmDoc`): the
-// round-trip through BlockNote's Block model silently drops every `comment`
+// round-trip through the editor's Block model silently drops every `comment`
 // mark, because the mark spec tags itself `blocknoteIgnore: true` in
 // `extendMarkSchema`. Comments on untouched blocks would vanish on every
 // write. Surgery keeps the original tree byte-for-byte except at the target
@@ -156,10 +156,15 @@ export async function updateBlock(
   const group = getRootBlockGroup(pmJson);
   const idx = group.content.findIndex((bc) => bc.attrs?.id === rawId);
   if (idx === -1) throw new BlockNotFoundError(blockId);
-  const replacement = await htmlToPmBlockContainer(html);
-  // Preserve the original block id — the Agent must not change IDs.
-  replacement.attrs = { ...replacement.attrs, id: rawId };
-  group.content[idx] = replacement;
+  const [first, ...rest] = await htmlToPmBlockContainers(html);
+  if (!first) throw new InvalidPlanBodyError('html produced no plan blocks');
+  // First container takes the original block id so anchored Comments survive;
+  // any additional containers are inserted after with fresh ids.
+  first.attrs = { ...first.attrs, id: rawId };
+  for (const bc of rest) {
+    bc.attrs = { ...bc.attrs, id: randomUUID() };
+  }
+  group.content.splice(idx, 1, first, ...rest);
   await writePlan(threadId, pmJson, actor);
 }
 
@@ -184,13 +189,17 @@ export async function addBlocks(
   const pmJson = parsePmJsonOrThrow(row.body_pm_json);
   const group = getRootBlockGroup(pmJson);
 
-  const newContainers = await Promise.all(
-    htmlBlocks.map(async (html) => {
-      const bc = await htmlToPmBlockContainer(html);
+  const perEntry = await Promise.all(htmlBlocks.map((html) => htmlToPmBlockContainers(html)));
+  const newContainers: PmBlockContainer[] = [];
+  for (const [i, entry] of perEntry.entries()) {
+    if (entry.length === 0) {
+      throw new InvalidPlanBodyError(`blocks[${i}]: html produced no plan blocks`);
+    }
+    for (const bc of entry) {
       bc.attrs = { ...bc.attrs, id: randomUUID() };
-      return bc;
-    }),
-  );
+      newContainers.push(bc);
+    }
+  }
   const newIds = newContainers.map((bc) => `${bc.attrs.id}$`);
 
   let insertAt: number;
@@ -269,8 +278,10 @@ export async function deleteBlock(threadId: string, blockId: string, actor: Acto
   if (idx === -1) throw new BlockNotFoundError(blockId);
   group.content.splice(idx, 1);
   if (group.content.length === 0) {
-    // BlockNote requires at least one block in the doc.
-    const empty = await htmlToPmBlockContainer('<p></p>');
+    // The editor requires at least one block in the doc.
+    const [empty] = await htmlToPmBlockContainers('<p></p>');
+    // Static `<p></p>` always parses to one block; this is an editor fault, not a bad request.
+    if (!empty) throw new Error('editor failed to parse <p></p> into a block');
     empty.attrs = { ...empty.attrs, id: randomUUID() };
     group.content.push(empty);
   }
@@ -301,7 +312,7 @@ function getRootBlockGroup(pmJson: unknown): { content: PmBlockContainer[] } {
   const doc = pmJson as { type?: string; content?: Array<{ type?: string; content?: unknown[] }> };
   const group = doc?.content?.[0];
   if (doc?.type !== 'doc' || group?.type !== 'blockGroup' || !Array.isArray(group.content)) {
-    throw new InvalidPlanBodyError('plan body is not a BlockNote doc / blockGroup');
+    throw new InvalidPlanBodyError('plan body is malformed');
   }
   return group as { content: PmBlockContainer[] };
 }

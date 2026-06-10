@@ -44,7 +44,6 @@ export async function blockToHtml(block: PlanPartialBlock): Promise<string> {
   }
 }
 
-// Parse a multi-block HTML document into BlockNote PartialBlocks.
 export async function parseHtmlDocToBlocks(html: string): Promise<PlanPartialBlock[]> {
   const t0 = Date.now();
   try {
@@ -58,31 +57,6 @@ export async function parseHtmlDocToBlocks(html: string): Promise<PlanPartialBlo
     logger.error(
       { err, ms: Date.now() - t0, htmlLen: html.length, htmlPreview: html.slice(0, 120) },
       'block-html: parseHtmlDocToBlocks failed',
-    );
-    throw err;
-  }
-}
-
-export async function htmlToBlock(html: string): Promise<PlanPartialBlock> {
-  const t0 = Date.now();
-  try {
-    const blocks = await createEditor().tryParseHTMLToBlocks(html);
-    if (blocks.length === 0) {
-      logger.warn(
-        { ms: Date.now() - t0, htmlLen: html.length, htmlPreview: html.slice(0, 120) },
-        'block-html: htmlToBlock produced 0 blocks; returning empty paragraph',
-      );
-      return { type: 'paragraph', content: [] };
-    }
-    logger.debug(
-      { ms: Date.now() - t0, htmlLen: html.length, blocksOut: blocks.length },
-      'block-html: htmlToBlock ok',
-    );
-    return blocks[0] as PlanPartialBlock;
-  } catch (err) {
-    logger.error(
-      { err, ms: Date.now() - t0, htmlLen: html.length, htmlPreview: html.slice(0, 120) },
-      'block-html: htmlToBlock failed',
     );
     throw err;
   }
@@ -133,20 +107,24 @@ export type PmBlockContainer = {
   content: unknown[];
 };
 
-// Convert one HTML string into a single PM blockContainer node. Used by the
-// write orchestrators in plan.ts to splice new content into the original
-// pm_json by array index — *without* round-tripping the whole document
-// through `pmDocToBlocks` + `blocksToPmDoc`, which would discard every
-// `comment` mark in the doc (BlockNote tags the mark `blocknoteIgnore: true`
-// in `extendMarkSchema`, so its Block model never carries it).
-export async function htmlToPmBlockContainer(html: string): Promise<PmBlockContainer> {
-  const partial = await htmlToBlock(html);
-  const pmDoc = blocksToPmDoc([partial]) as {
+// Convert an HTML string into PM blockContainer nodes (one per top-level block
+// the editor parses out). Used by the write orchestrators in plan.ts to splice
+// new content into the original pm_json by array index — *without*
+// round-tripping the whole document through `pmDocToBlocks` + `blocksToPmDoc`,
+// which would discard every `comment` mark in the doc (the editor tags it
+// `blocknoteIgnore: true` in `extendMarkSchema`, so its Block model never
+// carries it). Returns `[]` when the HTML yields no blocks; callers decide
+// what that means. Throws if the editor produces partials but `blocksToPmDoc`
+// then refuses to materialise them — a server-side editor fault.
+export async function htmlToPmBlockContainers(html: string): Promise<PmBlockContainer[]> {
+  const partials = await parseHtmlDocToBlocks(html);
+  if (partials.length === 0) return [];
+  const pmDoc = blocksToPmDoc(partials) as {
     content?: Array<{ content?: PmBlockContainer[] }>;
   };
-  const container = pmDoc.content?.[0]?.content?.[0];
-  if (!container) {
-    throw new Error('htmlToPmBlockContainer: blocksToPmDoc produced no blockContainer');
+  const containers = pmDoc.content?.[0]?.content;
+  if (!containers || containers.length === 0) {
+    throw new Error('htmlToPmBlockContainers: blocksToPmDoc produced no blockContainers');
   }
-  return container;
+  return containers;
 }

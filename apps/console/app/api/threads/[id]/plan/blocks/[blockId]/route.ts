@@ -26,7 +26,7 @@ export async function PUT(
     await updateBlock(id, blockId, parsed.data.html, auth.actor);
   } catch (e) {
     if (e instanceof BlockNotFoundError) return err('not_found', 404);
-    if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400);
+    if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400, e.message);
     throw e;
   }
   return ok({ ok: true });
@@ -44,7 +44,7 @@ export async function DELETE(
     await deleteBlock(id, blockId, auth.actor);
   } catch (e) {
     if (e instanceof BlockNotFoundError) return err('not_found', 404);
-    if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400);
+    if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400, e.message);
     throw e;
   }
   return ok({ ok: true });

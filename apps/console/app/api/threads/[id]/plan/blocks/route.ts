@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return ok({ ok: true, ids: result.ids });
   } catch (e) {
     if (e instanceof BlockNotFoundError) return err('not_found', 404);
-    if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400);
+    if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400, e.message);
     throw e;
   }
 }
