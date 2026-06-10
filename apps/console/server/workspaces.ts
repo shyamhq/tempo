@@ -27,7 +27,11 @@ export async function getOrCreateWorkspaceForOrg(
       agent_api_key: mintAgentKey(),
     })
     .onConflictDoNothing({ target: workspaces.clerk_org_id })
-    .returning({ id: workspaces.id, name: workspaces.name, agent_api_key: workspaces.agent_api_key });
+    .returning({
+      id: workspaces.id,
+      name: workspaces.name,
+      agent_api_key: workspaces.agent_api_key,
+    });
   if (inserted[0]) {
     // Fresh workspace gets the default Space so new threads have a home.
     await db
@@ -87,6 +91,7 @@ class LastAdminError extends Error {
     super('last_admin');
   }
 }
+
 export { LastAdminError };
 
 export async function inviteMember(

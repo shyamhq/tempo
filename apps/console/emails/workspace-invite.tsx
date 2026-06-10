@@ -30,8 +30,8 @@ export default function WorkspaceInviteEmail({ inviterName, workspaceName, invit
           <Section>
             <Heading style={heading}>Tempo</Heading>
             <Text style={paragraph}>
-              <strong>{inviterName}</strong> invited you to join{' '}
-              <strong>{workspaceName}</strong> on Tempo — a planning tool for engineers.
+              <strong>{inviterName}</strong> invited you to join <strong>{workspaceName}</strong> on
+              Tempo — a planning tool for engineers.
             </Text>
             <Button style={button} href={inviteUrl}>
               Accept invitation
@@ -98,4 +98,8 @@ const fineprint: React.CSSProperties = {
   lineHeight: 1.5,
   margin: '24px 0 0',
 };
-const hr: React.CSSProperties = { border: 'none', borderTop: '1px solid #e5e5e0', margin: '32px 0 0' };
+const hr: React.CSSProperties = {
+  border: 'none',
+  borderTop: '1px solid #e5e5e0',
+  margin: '32px 0 0',
+};
