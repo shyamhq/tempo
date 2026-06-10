@@ -17,7 +17,7 @@ import {
   useCreateBlockNote,
   useThreads,
 } from '@blocknote/react';
-import { flip, offset, shift } from '@floating-ui/react';
+import { flip, type Middleware, offset, shift } from '@floating-ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -31,27 +31,52 @@ import { CommentThreadBridge } from './comment-thread-bridge';
 import { PlanCommentCard } from './plan-comment-card';
 import { PlanCommentComposer } from './plan-comment-composer';
 
-const FLOATING_THREAD_UI = {
+const VIEWPORT_PADDING = {
+  top: COMMENT_CARD_VIEWPORT.header + COMMENT_CARD_VIEWPORT.padding,
+  bottom: COMMENT_CARD_VIEWPORT.padding,
+  left: COMMENT_CARD_VIEWPORT.padding,
+  right: COMMENT_CARD_VIEWPORT.padding,
+};
+
+// Last-resort clamp: if the computed y would put the card off the top or
+// bottom of the viewport (the case where the selection fills most of the
+// viewport, so `shift`/`flip` have nothing to work with), pin it to the
+// nearest in-viewport edge. The card visually detaches from the anchor in
+// that edge case, which is the right call — for a viewport-sized selection
+// there isn't a meaningful anchor line to point at anyway.
+//
+// Mirrors the `max-h-[33vh]` cap on `PlanCommentCard`. Used as the fallback
+// height on the first frame, before floating-ui has measured the rect.
+const CARD_MAX_VH = 0.33;
+
+const clampYToViewport: Middleware = {
+  name: 'clampYToViewport',
+  fn(state) {
+    const measured = state.rects.floating.height;
+    const h = measured > 0 ? measured : Math.round(window.innerHeight * CARD_MAX_VH);
+    const topLimit = VIEWPORT_PADDING.top;
+    const bottomLimit = window.innerHeight - VIEWPORT_PADDING.bottom;
+
+    let { y } = state;
+    if (y < topLimit) y = topLimit;
+    else if (y + h > bottomLimit) y = bottomLimit - h;
+
+    return y === state.y ? {} : { y };
+  },
+};
+
+const FLOATING_RANGE_UI = {
   useFloatingOptions: {
+    // Viewport-space coordinates so `clampYToViewport`'s math (which uses
+    // `window.innerHeight`) lines up with what floating-ui computes.
+    strategy: 'fixed' as const,
     middleware: [
       offset(COMMENT_CARD_VIEWPORT.gap),
-      shift({
-        padding: {
-          top: COMMENT_CARD_VIEWPORT.header + COMMENT_CARD_VIEWPORT.padding,
-          bottom: COMMENT_CARD_VIEWPORT.padding,
-          left: COMMENT_CARD_VIEWPORT.padding,
-          right: COMMENT_CARD_VIEWPORT.padding,
-        },
-      }),
-      flip({
-        padding: {
-          top: COMMENT_CARD_VIEWPORT.header + COMMENT_CARD_VIEWPORT.padding,
-          bottom: COMMENT_CARD_VIEWPORT.padding,
-          left: COMMENT_CARD_VIEWPORT.padding,
-          right: COMMENT_CARD_VIEWPORT.padding,
-        },
-        fallbackPlacements: ['top', 'bottom'] as const,
-      }),
+      // `shift` before `flip`: try to slide on the preferred side first so
+      // we don't flip placement unnecessarily for near-edge selections.
+      shift({ padding: VIEWPORT_PADDING }),
+      flip({ padding: VIEWPORT_PADDING, fallbackPlacements: ['top', 'bottom'] as const }),
+      clampYToViewport,
     ],
   },
 };
@@ -263,11 +288,14 @@ export function PlanEditor({
           onUserEdit?.();
         }}
       >
-        <FloatingComposerController floatingComposer={PlanCommentComposer} />
+        <FloatingComposerController
+          floatingComposer={PlanCommentComposer}
+          floatingUIOptions={FLOATING_RANGE_UI}
+        />
         {enlargedCommentId === null ? (
           <FloatingThreadController
             floatingThread={PlanCommentCard}
-            floatingUIOptions={FLOATING_THREAD_UI}
+            floatingUIOptions={FLOATING_RANGE_UI}
           />
         ) : (
           <EnlargedCommentPortal commentId={enlargedCommentId} mountEl={panelMount} />
