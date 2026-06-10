@@ -1,6 +1,6 @@
 import { CreateReplyRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
-import { authFromRequest } from '../../../../../server/actor';
+import { authFromRequest, authorOf } from '../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../server/http';
 import { postReply } from '../../../../../server/replies';
 
@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = await parseBody(req, CreateReplyRequest);
   if (!parsed.ok) return parsed.response;
   try {
-    const reply = await postReply(id, parsed.data.payload, auth.actor, parsed.data.attachments);
+    const reply = await postReply(id, parsed.data.payload, authorOf(auth), parsed.data.attachments);
     return ok(reply, 201);
   } catch (e) {
     const msg = (e as Error).message;

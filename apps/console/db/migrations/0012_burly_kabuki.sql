@@ -1,1 +1,0 @@
-ALTER TABLE `plans` DROP COLUMN `body_markdown`;

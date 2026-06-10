@@ -1,6 +1,6 @@
 import { UpdateBlockInput } from '@tempo/contracts/mcp';
 import type { NextRequest } from 'next/server';
-import { authFromRequest } from '../../../../../../../server/actor';
+import { authFromRequest, authorOf } from '../../../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../../../server/http';
 import {
   BlockNotFoundError,
@@ -23,7 +23,7 @@ export async function PUT(
   const parsed = await parseBody(req, UpdateBlockBody);
   if (!parsed.ok) return parsed.response;
   try {
-    await updateBlock(id, blockId, parsed.data.html, auth.actor);
+    await updateBlock(id, blockId, parsed.data.html, authorOf(auth));
   } catch (e) {
     if (e instanceof BlockNotFoundError) return err('not_found', 404);
     if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400, e.message);
@@ -41,7 +41,7 @@ export async function DELETE(
   if (!auth) return err('unauthorized', 401);
   if (auth.actor === 'agent' && auth.thread_id !== id) return err('unauthorized', 401);
   try {
-    await deleteBlock(id, blockId, auth.actor);
+    await deleteBlock(id, blockId, authorOf(auth));
   } catch (e) {
     if (e instanceof BlockNotFoundError) return err('not_found', 404);
     if (e instanceof InvalidPlanBodyError) return err('invalid_body', 400, e.message);

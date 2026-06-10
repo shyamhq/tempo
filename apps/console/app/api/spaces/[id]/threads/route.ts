@@ -5,7 +5,7 @@ import { listSpaceThreadsLite } from '../../../../../server/spaces';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await params;
   const threads = await listSpaceThreadsLite(id);
   return ok({ threads });

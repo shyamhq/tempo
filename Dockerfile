@@ -25,8 +25,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    HOSTNAME=0.0.0.0 \
-    DATABASE_URL=file:/data/tempo.db
+    HOSTNAME=0.0.0.0
 
 # Standalone output: `.next/standalone/apps/console/server.js` is the entry,
 # but Next mirrors the monorepo layout, so we keep `/app` rooted at the
@@ -35,10 +34,6 @@ COPY --from=build /repo/apps/console/.next/standalone ./
 COPY --from=build /repo/apps/console/.next/static ./apps/console/.next/static
 COPY --from=build /repo/apps/console/public ./apps/console/public
 COPY --from=build /repo/apps/console/db/migrations ./apps/console/db/migrations
-
-# `/data` is the Fly volume mount target; SQLite lives there so it survives
-# VM restarts.
-VOLUME ["/data"]
 
 EXPOSE 3000
 CMD ["node", "apps/console/server.js"]

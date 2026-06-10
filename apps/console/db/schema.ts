@@ -1,22 +1,32 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  doublePrecision,
   index,
   integer,
+  jsonb,
+  pgTable,
   primaryKey,
-  real,
-  sqliteTable,
   text,
+  timestamp,
   uniqueIndex,
-} from 'drizzle-orm/sqlite-core';
+} from 'drizzle-orm/pg-core';
 
-export const workspaces = sqliteTable('workspaces', {
+// Timestamps are stored as `timestamp with time zone` but exposed to TS as ISO
+// strings (mode: 'string'). The wire shape and the prior SQLite-era helpers
+// (`toIso`, `nowIso`) already assume strings, so this keeps the surface stable.
+const timestampString = (name: string) =>
+  timestamp(name, { withTimezone: true, mode: 'string' }).notNull().defaultNow();
+
+export const workspaces = pgTable('workspaces', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  clerk_org_id: text('clerk_org_id').notNull().unique(),
+  agent_api_key: text('agent_api_key').notNull().unique(),
+  created_at: timestampString('created_at'),
 });
 
-export const spaces = sqliteTable('spaces', {
+export const spaces = pgTable('spaces', {
   id: text('id').primaryKey(),
   workspace_id: text('workspace_id')
     .notNull()
@@ -24,11 +34,11 @@ export const spaces = sqliteTable('spaces', {
   name: text('name').notNull(),
   // Drag-reorder uses fractional indexing: drop between siblings writes the
   // midpoint of their sort_order values; no rebalance at this scale.
-  sort_order: real('sort_order').notNull().default(0),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  sort_order: doublePrecision('sort_order').notNull().default(0),
+  created_at: timestampString('created_at'),
 });
 
-export const threads = sqliteTable('threads', {
+export const threads = pgTable('threads', {
   id: text('id').primaryKey(),
   workspace_id: text('workspace_id')
     .notNull()
@@ -42,12 +52,12 @@ export const threads = sqliteTable('threads', {
     .notNull()
     .default('unapproved'),
   connect_token: text('connect_token').notNull(),
-  sort_order: real('sort_order').notNull().default(0),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updated_at: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  sort_order: doublePrecision('sort_order').notNull().default(0),
+  created_at: timestampString('created_at'),
+  updated_at: timestampString('updated_at'),
 });
 
-export const sessions = sqliteTable(
+export const sessions = pgTable(
   'sessions',
   {
     id: text('id').primaryKey(),
@@ -57,10 +67,10 @@ export const sessions = sqliteTable(
     status: text('status', { enum: ['pending', 'connected', 'disconnected'] })
       .notNull()
       .default('pending'),
-    last_seen_at: text('last_seen_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    last_seen_at: timestampString('last_seen_at'),
     attached_repo_remote: text('attached_repo_remote'),
     attached_repo_path: text('attached_repo_path'),
-    created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    created_at: timestampString('created_at'),
   },
   (t) => [
     uniqueIndex('idx_sessions_one_connected_per_thread')
@@ -69,19 +79,22 @@ export const sessions = sqliteTable(
   ],
 );
 
-export const plans = sqliteTable('plans', {
+export const plans = pgTable('plans', {
   id: text('id').primaryKey(),
   thread_id: text('thread_id')
     .notNull()
     .unique()
     .references(() => threads.id),
+  // Plain text column holding stringified ProseMirror JSON. Callers do their
+  // own JSON.parse / JSON.stringify so the storage layer doesn't double-encode.
   body_pm_json: text('body_pm_json'),
   updated_by: text('updated_by', { enum: ['dev', 'agent'] }),
-  updated_at: text('updated_at'),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  // Nullable + no default: set only on first plan edit, not on row insert.
+  updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
+  created_at: timestampString('created_at'),
 });
 
-export const comments = sqliteTable('comments', {
+export const comments = pgTable('comments', {
   id: text('id').primaryKey(),
   thread_id: text('thread_id')
     .notNull()
@@ -90,20 +103,20 @@ export const comments = sqliteTable('comments', {
   plan_context: text('plan_context').notNull(),
   anchor_block_id: text('anchor_block_id'),
   resolved_by: text('resolved_by', { enum: ['dev'] }),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  created_at: timestampString('created_at'),
 });
 
-export const replies = sqliteTable('replies', {
+export const replies = pgTable('replies', {
   id: text('id').primaryKey(),
   comment_id: text('comment_id')
     .notNull()
     .references(() => comments.id),
   author: text('author', { enum: ['dev', 'agent'] }).notNull(),
   text: text('text'),
-  created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  created_at: timestampString('created_at'),
 });
 
-export const discussion_messages = sqliteTable(
+export const discussion_messages = pgTable(
   'discussion_messages',
   {
     id: text('id').primaryKey(),
@@ -112,13 +125,13 @@ export const discussion_messages = sqliteTable(
       .references(() => threads.id),
     author: text('author', { enum: ['dev', 'agent'] }).notNull(),
     text: text('text'),
-    questions: text('questions', { mode: 'json' }),
-    created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    questions: jsonb('questions'),
+    created_at: timestampString('created_at'),
   },
   (t) => [index('idx_discussion_messages_thread').on(t.thread_id, t.created_at, t.id)],
 );
 
-export const attachments = sqliteTable(
+export const attachments = pgTable(
   'attachments',
   {
     id: text('id').primaryKey(),
@@ -131,7 +144,7 @@ export const attachments = sqliteTable(
     reply_id: text('reply_id').references(() => replies.id, { onDelete: 'cascade' }),
     mime: text('mime').notNull(),
     byte_len: integer('byte_len').notNull(),
-    created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    created_at: timestampString('created_at'),
   },
   (t) => [
     check('one_parent', sql`(${t.message_id} IS NULL) <> (${t.reply_id} IS NULL)`),
@@ -140,7 +153,7 @@ export const attachments = sqliteTable(
   ],
 );
 
-export const events = sqliteTable(
+export const events = pgTable(
   'events',
   {
     id: text('id').notNull(),
@@ -148,8 +161,8 @@ export const events = sqliteTable(
       .notNull()
       .references(() => threads.id),
     kind: text('kind').notNull(),
-    payload_json: text('payload_json', { mode: 'json' }).notNull(),
-    created_at: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+    payload_json: jsonb('payload_json').notNull(),
+    created_at: timestampString('created_at'),
   },
   (t) => [
     primaryKey({ columns: [t.thread_id, t.id] }),

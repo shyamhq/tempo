@@ -1,6 +1,6 @@
 import { AddBlocksInput } from '@tempo/contracts/mcp';
 import type { NextRequest } from 'next/server';
-import { authFromRequest } from '../../../../../../server/actor';
+import { authFromRequest, authorOf } from '../../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../../server/http';
 import {
   addBlocks,
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!parsed.ok) return parsed.response;
   const { reference_id, position, blocks } = parsed.data;
   try {
-    const result = await addBlocks(id, reference_id, position, blocks, auth.actor);
+    const result = await addBlocks(id, reference_id, position, blocks, authorOf(auth));
     return ok({ ok: true, ids: result.ids });
   } catch (e) {
     if (e instanceof BlockNotFoundError) return err('not_found', 404);

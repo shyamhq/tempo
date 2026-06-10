@@ -16,7 +16,7 @@ import {
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await ctx.params;
   try {
     await deleteThread(id);

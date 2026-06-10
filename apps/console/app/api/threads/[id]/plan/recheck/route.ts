@@ -9,7 +9,7 @@ import { requestPlanRecheck, ThreadNotFoundError } from '../../../../../../serve
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
   try {
     const { updated_at } = await requestPlanRecheck(id);
     return ok({ ok: true, updated_at });

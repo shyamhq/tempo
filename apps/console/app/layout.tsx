@@ -1,3 +1,4 @@
+import {ClerkProvider} from '@clerk/nextjs';
 import { GeistMono } from 'geist/font/mono';
 import { Inter } from 'next/font/google';
 import type { ReactNode } from 'react';
@@ -25,14 +26,16 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} ${GeistMono.variable}`}>
       <body className="font-sans bg-canvas text-ink min-h-dvh">
-        <QueryProvider>
+        <ClerkProvider>
+          <QueryProvider>
           <TooltipProvider delayDuration={150}>
-            <div className="flex h-dvh">
-              <Sidebar initial={spaces} />
-              <div className="flex-1 min-w-0 overflow-auto">{children}</div>
-            </div>
+          <div className="flex h-dvh">
+          <Sidebar initial={spaces} />
+          <div className="flex-1 min-w-0 overflow-auto">{children}</div>
+          </div>
           </TooltipProvider>
-        </QueryProvider>
+          </QueryProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

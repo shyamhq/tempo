@@ -131,7 +131,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       if (body.length > 60_000) return;
       fetch(`/api/threads/${threadId}/plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Tempo-Dev': '1' },
+        headers: { 'Content-Type': 'application/json' },
         body,
         keepalive: true,
       }).catch(() => {});

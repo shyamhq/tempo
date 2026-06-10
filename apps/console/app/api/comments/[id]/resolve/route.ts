@@ -7,7 +7,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
-  if (auth.actor !== 'dev') return err('forbidden', 403, 'only the Dev can resolve comments');
+  if (auth.actor !== 'user') return err('forbidden', 403, 'only the Dev can resolve comments');
   try {
     await resolveComment(id);
   } catch (e) {

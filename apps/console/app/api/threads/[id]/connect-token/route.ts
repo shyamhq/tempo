@@ -5,7 +5,7 @@ import { getConnectToken } from '../../../../../server/threads';
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await ctx.params;
   try {
     return ok(await getConnectToken(id));

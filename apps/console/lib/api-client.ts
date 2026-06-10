@@ -34,32 +34,28 @@ import { z } from 'zod';
 
 const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 
-// Dev auth: single header for the MVP single-user Console.
-const DEV_HEADERS: HeadersInit = {
-  'Content-Type': 'application/json',
-  'X-Tempo-Dev': '1',
-};
-
-async function baseUrl(): Promise<string> {
-  if (typeof window !== 'undefined') return '';
-  if (process.env.NEXT_PUBLIC_CONSOLE_URL) return process.env.NEXT_PUBLIC_CONSOLE_URL;
-  // RSC fetches: derive the current request's origin so the dev port matches.
-  const { headers } = await import('next/headers');
-  const h = await headers();
-  const proto = h.get('x-forwarded-proto') ?? 'http';
-  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
-  return `${proto}://${host}`;
-}
-
 async function request<T>(
   method: string,
   path: string,
   body: unknown,
   responseSchema: z.ZodType<T>,
 ): Promise<T> {
-  const res = await fetch(`${await baseUrl()}${path}`, {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  let url = path;
+  if (typeof window === 'undefined') {
+    // RSC fetch: derive origin and forward the Clerk session cookie. Next.js
+    // does not auto-attach cookies to server-side fetch() calls.
+    const { headers: nextHeaders } = await import('next/headers');
+    const h = await nextHeaders();
+    const proto = h.get('x-forwarded-proto') ?? 'http';
+    const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
+    url = `${process.env.NEXT_PUBLIC_CONSOLE_URL ?? `${proto}://${host}`}${path}`;
+    const cookie = h.get('cookie');
+    if (cookie) headers.cookie = cookie;
+  }
+  const res = await fetch(url, {
     method,
-    headers: DEV_HEADERS,
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: 'no-store',
   });

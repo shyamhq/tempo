@@ -15,8 +15,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!parsed.success) return err('invalid_input', 400);
   const { cursor, wait } = parsed.data;
   // The CLI's long-poll IS the heartbeat: every Agent-authenticated request
-  // bumps last_seen_at. Dev (X-Tempo-Dev) and anonymous polls still run the
-  // auth lookup but skip the heartbeat write.
+  // bumps last_seen_at. UI / unauthenticated polls still run the auth lookup
+  // but skip the heartbeat write.
   const auth = await authFromRequest(req);
   if (auth?.actor === 'agent' && auth.session_id) {
     await touchSessionLastSeen(auth.session_id);

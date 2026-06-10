@@ -5,7 +5,7 @@ import { cancelCurrentSessionForThread } from '../../../../../server/sessions';
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'dev') return err('unauthorized', 401);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await ctx.params;
   const result = await cancelCurrentSessionForThread(id);
   if (!result.ok) {

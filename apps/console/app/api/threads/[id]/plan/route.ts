@@ -1,6 +1,6 @@
 import { WritePlanRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
-import { authFromRequest } from '../../../../../server/actor';
+import { authFromRequest, authorOf } from '../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../server/http';
 import { getPlan, InvalidPlanBodyError, writePlan } from '../../../../../server/plan';
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = await parseBody(req, WritePlanRequest);
   if (!parsed.ok) return parsed.response;
   try {
-    const { updated_at } = await writePlan(id, parsed.data.pm_json, auth.actor);
+    const { updated_at } = await writePlan(id, parsed.data.pm_json, authorOf(auth));
     return ok({ ok: true, updated_at });
   } catch (e) {
     if (e instanceof InvalidPlanBodyError) return err('invalid_plan_body', 400);

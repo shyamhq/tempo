@@ -1,1 +1,0 @@
-ALTER TABLE `plans` ADD `body_blocks` text;
