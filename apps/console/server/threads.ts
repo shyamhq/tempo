@@ -242,6 +242,20 @@ export async function latestAttachedRepo(
   };
 }
 
+// Phase 4b: thread-level auth checks. Agent ctx carries workspace_id only;
+// routes load this to verify a thread URL param is in the agent's workspace.
+export async function threadBelongsToWorkspace(
+  threadId: string,
+  workspaceId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ workspace_id: threads.workspace_id })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+  return row?.workspace_id === workspaceId;
+}
+
 export function nowIso() {
   return new Date().toISOString();
 }

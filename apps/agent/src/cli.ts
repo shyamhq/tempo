@@ -48,7 +48,9 @@ function usage(): never {
 
 async function runMcpStdio(): Promise<void> {
   const McpStdioEnv = z.object({
-    TEMPO_CONNECT_TOKEN: ConnectToken,
+    // Workspace-scoped agent key, written into the MCP config by the parent
+    // CLI after its handshake. Same shape the server validates on Bearer.
+    TEMPO_AGENT_API_KEY: z.string().regex(/^sk_agent_/),
     TEMPO_SESSION_ID: SessionId,
     TEMPO_THREAD_ID: ThreadId,
   });
@@ -57,7 +59,11 @@ async function runMcpStdio(): Promise<void> {
     process.stderr.write(`mcp-stdio: invalid env\n${z.prettifyError(parsed.error)}\n`);
     process.exit(2);
   }
-  const client = new ConsoleClient(env.TEMPO_CONSOLE_URL, parsed.data.TEMPO_CONNECT_TOKEN);
+  const client = new ConsoleClient(
+    env.TEMPO_CONSOLE_URL,
+    parsed.data.TEMPO_AGENT_API_KEY,
+    parsed.data.TEMPO_SESSION_ID,
+  );
   await runStdioMcpServer({
     client,
     sessionId: parsed.data.TEMPO_SESSION_ID,

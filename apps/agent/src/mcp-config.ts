@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ConnectToken, SessionId, ThreadId } from '@tempo/contracts';
+import type { SessionId, ThreadId } from '@tempo/contracts';
 import { env } from './env';
 
 // Path to the bundled cli.js (sibling of this file in both dev and dist).
@@ -14,11 +14,14 @@ export const CLI_PATH = fileURLToPath(import.meta.url).replace(/mcp-config\.(ts|
 export function writeMcpConfigFile(args: {
   sessionId: SessionId;
   threadId: ThreadId;
-  token: ConnectToken;
+  agentApiKey: string;
 }): { configPath: string; configDir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'tempo-mcp-'));
   const path = join(dir, `config-${args.sessionId}.json`);
 
+  // mcp-stdio reads TEMPO_AGENT_API_KEY + TEMPO_SESSION_ID and constructs a
+  // post-handshake ConsoleClient. The mode 0600 file is the secret's only
+  // hop between processes — never logs, never network.
   const config = {
     mcpServers: {
       tempo: {
@@ -26,7 +29,7 @@ export function writeMcpConfigFile(args: {
         command: process.execPath,
         args: [CLI_PATH, 'mcp-stdio'],
         env: {
-          TEMPO_CONNECT_TOKEN: args.token,
+          TEMPO_AGENT_API_KEY: args.agentApiKey,
           TEMPO_SESSION_ID: args.sessionId,
           TEMPO_THREAD_ID: args.threadId,
           TEMPO_CONSOLE_URL: env.TEMPO_CONSOLE_URL,

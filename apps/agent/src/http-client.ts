@@ -2,7 +2,6 @@ import type {
   AgentPlanBlocks,
   AgentTodo,
   CommentId,
-  ConnectToken,
   EventId,
   QuestionInput,
   ReplyPayload,
@@ -38,13 +37,29 @@ const RETRYABLE_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [500, 1000, 2000];
 
 export class ConsoleClient {
+  // Bearer is mutable: starts as the thread-scoped connect_token (tmp_…),
+  // gets swapped to the workspace-scoped agent_api_key (sk_agent_…) after
+  // the POST /api/sessions handshake. The handshake is the only call that
+  // accepts the connect_token.
+  private bearer: string;
+  private sessionId: SessionId | null;
+
   constructor(
     private readonly baseUrl: string,
-    private readonly token: ConnectToken,
-  ) {}
+    initialBearer: string,
+    sessionId: SessionId | null = null,
+  ) {
+    this.bearer = initialBearer;
+    this.sessionId = sessionId;
+  }
 
-  createSession(body: { repo_remote: string | null; repo_path: string }) {
-    return this.send('POST', '/api/sessions', body, CreateSessionResponse);
+  async createSession(body: { repo_remote: string | null; repo_path: string }) {
+    const result = await this.send('POST', '/api/sessions', body, CreateSessionResponse);
+    // Phase 4b: swap to the workspace key and pin the session id so every
+    // subsequent request sends `X-Tempo-Session`.
+    this.bearer = result.agent_api_key;
+    this.sessionId = result.session_id;
+    return result;
   }
 
   getSessionState(sessionId: SessionId) {
@@ -209,10 +224,12 @@ export class ConsoleClient {
   }
 
   private headers(): Record<string, string> {
-    return {
-      Authorization: `Bearer ${this.token}`,
+    const h: Record<string, string> = {
+      Authorization: `Bearer ${this.bearer}`,
       Accept: 'application/json',
     };
+    if (this.sessionId) h['X-Tempo-Session'] = this.sessionId;
+    return h;
   }
 
   private async toHttpError(res: Response, url: string): Promise<Error> {

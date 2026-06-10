@@ -11,6 +11,7 @@ import {
   getThread,
   latestAttachedRepo,
   latestSessionStatus,
+  threadBelongsToWorkspace,
   updateThread,
 } from '../../../../server/threads';
 
@@ -31,7 +32,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
   const { id } = await ctx.params;
-  if (auth.actor === 'agent' && auth.thread_id !== id) return err('forbidden', 403);
+  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const parsed = await parseBody(req, UpdateThreadRequest);
   if (!parsed.ok) return parsed.response;
   // Agents may only edit Thread metadata (title, description). space_id and

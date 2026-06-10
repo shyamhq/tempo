@@ -1,4 +1,4 @@
-import type { ConnectToken, SessionId } from '@tempo/contracts';
+import type { SessionId } from '@tempo/contracts';
 import { env } from './env';
 import { logger } from './logger';
 
@@ -9,12 +9,15 @@ export const DISCONNECT_TIMEOUT_MS = 500;
 
 export async function bestEffortDisconnect(args: {
   sessionId: SessionId;
-  token: ConnectToken;
+  agentApiKey: string;
 }): Promise<void> {
   try {
     await fetch(`${env.TEMPO_CONSOLE_URL}/api/sessions/${args.sessionId}/disconnect`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${args.token}` },
+      headers: {
+        Authorization: `Bearer ${args.agentApiKey}`,
+        'X-Tempo-Session': args.sessionId,
+      },
       signal: AbortSignal.timeout(DISCONNECT_TIMEOUT_MS),
     });
   } catch (err) {

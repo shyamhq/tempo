@@ -110,9 +110,15 @@ export const CreateSessionRequest = z.object({
   repo_remote: z.string().url().nullable().optional(),
   repo_path: z.string().nullable().optional(),
 });
+// `agent_api_key` is returned from the handshake. The CLI exchanges its
+// thread-scoped `tmp_…` connect-token for this workspace-scoped key and uses
+// it as Bearer on every subsequent request. The connect-token is valid only
+// on this one route after Phase 4b.
+export const AgentApiKey = z.string().regex(/^sk_agent_/);
 export const CreateSessionResponse = z.object({
   session_id: SessionId,
   thread_id: ThreadId,
+  agent_api_key: AgentApiKey,
 });
 
 // GET /api/sessions/:id/state

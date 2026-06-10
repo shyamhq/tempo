@@ -14,5 +14,9 @@ export async function POST(req: NextRequest) {
     repo_path: parsed.data.repo_path ?? null,
   });
   if (!result.ok) return err('invalid_token', 401);
-  return ok({ session_id: result.session_id, thread_id: result.thread_id });
+  return ok({
+    session_id: result.session_id,
+    thread_id: result.thread_id,
+    agent_api_key: result.agent_api_key,
+  });
 }

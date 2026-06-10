@@ -3,13 +3,14 @@ import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../../../../server/actor';
 import { initUpload } from '../../../../../../server/attachments';
 import { err, ok, parseBody } from '../../../../../../server/http';
+import { threadBelongsToWorkspace } from '../../../../../../server/threads';
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
 
   const { id } = await ctx.params;
-  if (auth.actor === 'agent' && auth.thread_id !== id) {
+  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id))) {
     return err('forbidden', 403);
   }
 

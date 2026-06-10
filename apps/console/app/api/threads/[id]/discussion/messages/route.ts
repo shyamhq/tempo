@@ -1,6 +1,7 @@
 import { CreateDiscussionMessageRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
 import { authFromRequest, authorOf } from '../../../../../../server/actor';
+import { threadBelongsToWorkspace } from '../../../../../../server/threads';
 import { postMessage } from '../../../../../../server/discussion';
 import { err, ok, parseBody } from '../../../../../../server/http';
 
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (!auth) return err('unauthorized', 401);
 
   const { id } = await ctx.params;
-  if (auth.actor === 'agent' && auth.thread_id !== id) {
+  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id))) {
     return err('forbidden', 403);
   }
 

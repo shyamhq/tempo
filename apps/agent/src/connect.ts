@@ -15,7 +15,12 @@ export async function connect(token: ConnectToken): Promise<void> {
   const repo = await collectRepoMetadata();
 
   const session = await client.createSession(repo);
-  logger.debug({ session }, 'session created');
+  // Don't log the handshake response — `agent_api_key` is workspace-wide
+  // and never belongs in logs.
+  logger.debug(
+    { session_id: session.session_id, thread_id: session.thread_id },
+    'session created',
+  );
   process.stdout.write(
     `attached to thread ${session.thread_id} as session ${session.session_id}\n`,
   );
@@ -24,7 +29,7 @@ export async function connect(token: ConnectToken): Promise<void> {
   const exitCode = await runStreamPump({
     sessionId: session.session_id,
     threadId: session.thread_id,
-    token,
+    agentApiKey: session.agent_api_key,
   });
   process.exit(exitCode);
 }

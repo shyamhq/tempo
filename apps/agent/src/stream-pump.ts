@@ -2,13 +2,7 @@ import { type ChildProcessByStdio, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import {
-  AgentTodo,
-  type ConnectToken,
-  type Event,
-  type SessionId,
-  type ThreadId,
-} from '@tempo/contracts';
+import { AgentTodo, type Event, type SessionId, type ThreadId } from '@tempo/contracts';
 import { z } from 'zod';
 import { CANCEL_NOTICE, findCancelForSession } from './cancel';
 import { bestEffortDisconnect, DISCONNECT_TIMEOUT_MS } from './disconnect-on-exit';
@@ -34,14 +28,16 @@ const TodosPayload = z.array(AgentTodo).max(50);
 export async function runStreamPump(args: {
   sessionId: SessionId;
   threadId: ThreadId;
-  token: ConnectToken;
+  agentApiKey: string;
 }): Promise<number> {
-  const client = new ConsoleClient(env.TEMPO_CONSOLE_URL, args.token);
+  // Post-handshake: bearer is the workspace agent_api_key, session id is
+  // pinned so every request carries X-Tempo-Session.
+  const client = new ConsoleClient(env.TEMPO_CONSOLE_URL, args.agentApiKey, args.sessionId);
   const stream = createEventStream({ client, threadId: args.threadId });
   const { configPath, configDir } = writeMcpConfigFile({
     sessionId: args.sessionId,
     threadId: args.threadId,
-    token: args.token,
+    agentApiKey: args.agentApiKey,
   });
   const systemPromptPath = writeAppendSystemPromptFile(configDir);
 
@@ -66,7 +62,7 @@ export async function runStreamPump(args: {
     // Fire-and-forget: bestEffortDisconnect has its own DISCONNECT_TIMEOUT_MS
     // abort ceiling. The exit timer is that ceiling + 100ms scheduler slack;
     // a hung Console must not strand the CLI past that bound.
-    void bestEffortDisconnect({ sessionId: args.sessionId, token: args.token });
+    void bestEffortDisconnect({ sessionId: args.sessionId, agentApiKey: args.agentApiKey });
     setTimeout(() => {
       cleanup();
       process.exit(130);
@@ -128,9 +124,10 @@ export async function runStreamPump(args: {
       stream.stop();
       process.off('SIGINT', onSigint);
       process.off('SIGTERM', onSigint);
-      void bestEffortDisconnect({ sessionId: args.sessionId, token: args.token }).finally(() =>
-        resolve(code),
-      );
+      void bestEffortDisconnect({
+        sessionId: args.sessionId,
+        agentApiKey: args.agentApiKey,
+      }).finally(() => resolve(code));
     };
     // Order matters: bootstrap first so `state = 'RUNNING'` is set before any
     // event-batch callback can fire and race a second `INITIAL_PROMPT` past

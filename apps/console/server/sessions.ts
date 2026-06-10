@@ -1,12 +1,12 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db';
-import { sessions, threads } from '../db/schema';
+import { sessions, threads, workspaces } from '../db/schema';
 import { appendEvent } from './event-log';
 import { newSessionId } from './ids';
 import { nowIso } from './threads';
 
 export type CreateSessionResult =
-  | { ok: true; session_id: string; thread_id: string }
+  | { ok: true; session_id: string; thread_id: string; agent_api_key: string }
   | { ok: false; error: 'invalid_token' };
 
 export async function createSessionFromToken(
@@ -14,11 +14,18 @@ export async function createSessionFromToken(
   attached: { repo_remote?: string | null; repo_path?: string | null },
 ): Promise<CreateSessionResult> {
   const [thread] = await db
-    .select({ id: threads.id })
+    .select({ id: threads.id, workspace_id: threads.workspace_id })
     .from(threads)
     .where(eq(threads.connect_token, token))
     .limit(1);
   if (!thread) return { ok: false, error: 'invalid_token' };
+
+  const [ws] = await db
+    .select({ agent_api_key: workspaces.agent_api_key })
+    .from(workspaces)
+    .where(eq(workspaces.id, thread.workspace_id))
+    .limit(1);
+  if (!ws) return { ok: false, error: 'invalid_token' };
 
   const sessionId = newSessionId();
   let displaced = 0;
@@ -50,7 +57,12 @@ export async function createSessionFromToken(
   }
   await appendEvent(thread.id, { kind: 'session_connected' });
 
-  return { ok: true, session_id: sessionId, thread_id: thread.id };
+  return {
+    ok: true,
+    session_id: sessionId,
+    thread_id: thread.id,
+    agent_api_key: ws.agent_api_key,
+  };
 }
 
 export async function getSession(sessionId: string) {
@@ -103,6 +115,22 @@ export async function touchSessionLastSeen(sessionId: string): Promise<void> {
     .update(sessions)
     .set({ last_seen_at: nowIso() })
     .where(and(eq(sessions.id, sessionId), eq(sessions.status, 'connected')));
+}
+
+// Phase 4b: session-level auth checks no longer rely on the auth ctx carrying
+// session_id. Routes derive session_id from URL + X-Tempo-Session header and
+// then verify the session belongs to a thread in the agent's workspace.
+export async function sessionBelongsToWorkspace(
+  sessionId: string,
+  workspaceId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ workspace_id: threads.workspace_id })
+    .from(sessions)
+    .innerJoin(threads, eq(sessions.thread_id, threads.id))
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+  return row?.workspace_id === workspaceId;
 }
 
 // Returns the connected session's last_seen_at (ms epoch) for a thread, or

@@ -1,15 +1,16 @@
 import { RecordTurnEndedRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
-import { authFromRequest } from '../../../../../server/actor';
+import { authFromRequest, readSessionHeader } from '../../../../../server/actor';
 import { err, ok, parseBody } from '../../../../../server/http';
+import { sessionBelongsToWorkspace } from '../../../../../server/sessions';
 import { recordAgentTurnEnded } from '../../../../../server/status';
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   const auth = await authFromRequest(req);
-  if (auth?.actor !== 'agent' || auth.session_id !== id) {
-    return err('unauthorized', 401);
-  }
+  if (auth?.actor !== 'agent') return err('unauthorized', 401);
+  if (readSessionHeader(req) !== id) return err('unauthorized', 401);
+  if (!(await sessionBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const parsed = await parseBody(req, RecordTurnEndedRequest);
   if (!parsed.ok) return parsed.response;
   try {
