@@ -1,8 +1,15 @@
 import type { Event } from '@tempo/contracts';
 import { latestEventId, readEventsAfter } from './event-log';
+import { getConnectedSessionLastSeenMs } from './sessions';
 
 const POLL_INTERVAL_MS = 500;
 const SSE_HEARTBEAT_MS = 25_000;
+// CLI long-poll cadence is 25s. 45s threshold survives one slow poll without
+// false-flipping, and stays well under a minute so a kill -9 dashboard catches
+// it within the user's attention span.
+const PRESENCE_THRESHOLD_MS = 45_000;
+// How often the SSE loop re-evaluates presence. Cheap (one indexed SELECT).
+const PRESENCE_CHECK_MS = 5_000;
 
 export async function longPoll(
   threadId: string,
@@ -42,9 +49,24 @@ export function sseStream(threadId: string, cursor: string): Response {
 
       const heartbeat = setInterval(() => enqueue(`: ping\n\n`), SSE_HEARTBEAT_MS);
 
+      // Presence is derived live from the connected session's last_seen_at —
+      // never persisted to the event log. Emit only on transition so quiet
+      // CLIs don't flood the channel. `null` lets the first read fire.
+      let lastFresh: boolean | null = null;
+      let nextPresenceAt = 0;
+
       try {
         // Replay anything already past the cursor immediately, then poll.
         while (!closed) {
+          if (Date.now() >= nextPresenceAt) {
+            nextPresenceAt = Date.now() + PRESENCE_CHECK_MS;
+            const seenMs = await getConnectedSessionLastSeenMs(threadId);
+            const fresh = seenMs !== null && Date.now() - seenMs < PRESENCE_THRESHOLD_MS;
+            if (fresh !== lastFresh) {
+              enqueue(`event: presence\ndata: ${JSON.stringify({ fresh })}\n\n`);
+              lastFresh = fresh;
+            }
+          }
           const evs = await readEventsAfter(threadId, current);
           for (const e of evs) {
             enqueue(`event: ${e.kind}\ndata: ${JSON.stringify(e)}\n\n`);

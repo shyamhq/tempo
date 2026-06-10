@@ -38,6 +38,7 @@ const ENTER_KEY_DELAY_MS = 120;
 
 type Terminal = {
   inject(text: string): Promise<void>;
+  kill(): void;
   onExit(handler: (exitCode: number) => void): void;
 };
 
@@ -156,6 +157,11 @@ export function spawnTerminal(args: {
       child.write(text);
       await new Promise<void>((resolve) => setTimeout(resolve, ENTER_KEY_DELAY_MS));
       child.write('\r');
+    },
+    kill() {
+      // Cleanup runs through onExit — don't tear configDir down here.
+      child.kill('SIGINT');
+      setTimeout(() => child.kill('SIGKILL'), SIGINT_TO_SIGKILL_MS).unref();
     },
     onExit(handler) {
       child.onExit(({ exitCode }) => {

@@ -20,12 +20,21 @@ export type LiveActivity = {
   // landed since). The widget shows a spinner on the latest tool while
   // turnActive; on Stop it becomes a dot — the rest of the card stays.
   turnActive: boolean;
+  // Derived from the server's ephemeral `presence` SSE frames (which read the
+  // connected session's last_seen_at). `null` = not yet observed (treat as
+  // present); `true`/`false` = explicit signal. Never persisted server-side.
+  agentPresent: boolean | null;
 };
 
 // Activity stream cap — keeps the in-memory list bounded if Claude bursts
 // hundreds of tool calls or narration blocks between Dev messages.
 const ACTIVITY_ENTRIES_MAX = 100;
-const EMPTY_ACTIVITY: LiveActivity = { todos: null, entries: [], turnActive: false };
+const EMPTY_ACTIVITY: LiveActivity = {
+  todos: null,
+  entries: [],
+  turnActive: false,
+  agentPresent: null,
+};
 
 export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
 
@@ -91,6 +100,21 @@ export function useThreadEvents(
       for (const kind of EventKind.options) {
         es.addEventListener(kind, handle as EventListener);
       }
+      // Ephemeral `presence` frames are SSE-only (never persisted) and carry
+      // { fresh: boolean }. Mirror into the LiveActivity cache so the pill
+      // can flip on heartbeat staleness without a refetch.
+      es.addEventListener('presence', (evt) => {
+        try {
+          const data = JSON.parse((evt as MessageEvent).data);
+          if (typeof data?.fresh !== 'boolean') return;
+          qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
+            ...(prev ?? EMPTY_ACTIVITY),
+            agentPresent: data.fresh,
+          }));
+        } catch {
+          // ignore malformed frame
+        }
+      });
       es.onerror = () => {
         es?.close();
         if (stopped) return;
@@ -266,26 +290,28 @@ function applyLiveActivity(
       // and tool stream, then flip turnActive so the widget mounts immediately
       // with "Agent working…" instead of waiting on the Agent's first event.
       if (ev.message.author === 'dev') {
-        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), DEV_TRIGGERED_ACTIVITY);
+        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       }
       return;
     case 'comment_added':
-      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), DEV_TRIGGERED_ACTIVITY);
+      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       return;
     case 'reply_added':
       if (ev.reply.author === 'dev') {
-        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), DEV_TRIGGERED_ACTIVITY);
+        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       }
       return;
   }
 }
 
 // Dev-side trigger: clear stale Agent state and mount the widget right away.
-// Same shape as EMPTY_ACTIVITY but with turnActive flipped so the floating
-// card appears without waiting for the SSE round-trip on the Agent's first
-// emitted event.
-const DEV_TRIGGERED_ACTIVITY: LiveActivity = {
-  todos: null,
-  entries: [],
-  turnActive: true,
-};
+// Preserves agentPresent (it's an independent signal from the heartbeat path,
+// not part of the turn's tool stream).
+function devTriggered(prev: LiveActivity | undefined): LiveActivity {
+  return {
+    todos: null,
+    entries: [],
+    turnActive: true,
+    agentPresent: prev?.agentPresent ?? null,
+  };
+}

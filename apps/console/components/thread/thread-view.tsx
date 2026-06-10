@@ -20,7 +20,7 @@ import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
 import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
 import { Button } from '@/components/ui/button';
-import { useThreadEvents } from '@/hooks/use-thread-events';
+import { useLiveActivityGroup, useThreadEvents } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
 import { useThreadUi } from '@/store/thread-ui';
 
@@ -100,6 +100,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const view = data ?? initial;
   const approved = view.status === 'approved';
+  const agentPresent = useLiveActivityGroup(threadId).agentPresent;
 
   const persistPmJson = useCallback(
     async (pmJson: unknown) => {
@@ -241,7 +242,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             {approved ? null : <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />}
           </div>
           <div className="flex-1" />
-          <SessionPill status={view.session_status} />
+          <SessionPill status={view.session_status} agentPresent={agentPresent} />
           <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
           {approved ? null : (

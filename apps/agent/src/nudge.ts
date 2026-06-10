@@ -44,6 +44,11 @@ function shouldNotify(ev: Event): boolean {
     // either set it itself via tempo_set_thread_meta or it pulled it from
     // tempo_attach). Nothing to react to.
     case 'thread_renamed':
+    // Cancels are out-of-band signals consumed by the driver before nudge
+    // generation — kills the child, posts an "agent admits cancel" Discussion
+    // message. Surfacing them as a nudge would replay the cancel to the next
+    // spawn, which is meaningless once the child is already dead.
+    case 'agent_cancel_requested':
       return false;
   }
 }

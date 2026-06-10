@@ -6,6 +6,7 @@ import {
   EventId,
   IsoTimestamp,
   Reply,
+  SessionId,
   ThreadStatus,
 } from './primitives';
 
@@ -101,6 +102,13 @@ export const ThreadRenamedEvent = eventBase.extend({
   title: z.string().min(1).max(200),
 });
 
+// Dev pressed Stop on the active Agent turn. The CLI matches session_id against
+// its own TEMPO_SESSION_ID to ignore stale cancels meant for a prior session.
+export const AgentCancelRequestedEvent = eventBase.extend({
+  kind: z.literal('agent_cancel_requested'),
+  session_id: SessionId,
+});
+
 export const Event = z.discriminatedUnion('kind', [
   CommentAddedEvent,
   ReplyAddedEvent,
@@ -118,6 +126,7 @@ export const Event = z.discriminatedUnion('kind', [
   SessionDisconnectedEvent,
   DiscussionMessagePostedEvent,
   ThreadRenamedEvent,
+  AgentCancelRequestedEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -138,5 +147,6 @@ export const EventKind = z.enum([
   'session_disconnected',
   'discussion_message_posted',
   'thread_renamed',
+  'agent_cancel_requested',
 ]);
 export type EventKind = z.infer<typeof EventKind>;

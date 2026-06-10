@@ -2,7 +2,10 @@ import { type ChildProcessByStdio, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import type { ConnectToken, Event, SessionId, ThreadId } from '@tempo/contracts';
+import { AgentTodo, type ConnectToken, type Event, type SessionId, type ThreadId } from '@tempo/contracts';
+import { z } from 'zod';
+import { CANCEL_NOTICE, findCancelForSession } from './cancel';
+import { bestEffortDisconnect, DISCONNECT_TIMEOUT_MS } from './disconnect-on-exit';
 import { env } from './env';
 import { createEventStream } from './event-stream';
 import { ConsoleClient } from './http-client';
@@ -11,10 +14,12 @@ import { writeMcpConfigFile } from './mcp-config';
 import { buildNudge } from './nudge';
 import { INITIAL_PROMPT } from './prompts/initial-prompt';
 import { writeAppendSystemPromptFile } from './prompts/system-prompt';
-import { ALLOWED_TOOLS } from './pty-terminal';
+import { ALLOWED_TOOLS } from './prompts/allowed-tools';
 import { clip, summarizeToolInput } from './tool-summary';
 
 const TEXT_MAX = 8000;
+const SIGINT_TO_SIGKILL_MS = 5_000;
+const TodosPayload = z.array(AgentTodo).max(50);
 
 // stream-json driver. Spawns `claude -p --output-format stream-json` per turn,
 // walks each assistant message's content blocks, and forwards `text` blocks as
@@ -42,6 +47,8 @@ export async function runStreamPump(args: {
   let claudeSessionId: string | null = null;
   let state: 'IDLE' | 'RUNNING' = 'IDLE';
   let pending: Event[] = [];
+  let currentChild: ChildProcessByStdio<null, Readable, Readable> | null = null;
+  let cancelled = false;
   let resolveExit: (code: number) => void = () => {};
 
   const cleanup = (): void => {
@@ -51,10 +58,17 @@ export async function runStreamPump(args: {
 
   const onSigint = (): void => {
     stream.stop();
-    cleanup();
-    process.exit(130);
+    // Fire-and-forget: bestEffortDisconnect has its own DISCONNECT_TIMEOUT_MS
+    // abort ceiling. The exit timer is that ceiling + 100ms scheduler slack;
+    // a hung Console must not strand the CLI past that bound.
+    void bestEffortDisconnect({ sessionId: args.sessionId, token: args.token });
+    setTimeout(() => {
+      cleanup();
+      process.exit(130);
+    }, DISCONNECT_TIMEOUT_MS + 100).unref();
   };
   process.on('SIGINT', onSigint);
+  process.on('SIGTERM', onSigint);
 
   function drainAndSpawn(): void {
     const prompt = pending.length > 0 ? buildNudge(pending) : INITIAL_PROMPT;
@@ -64,12 +78,16 @@ export async function runStreamPump(args: {
       return;
     }
     state = 'RUNNING';
+    // Reset on real re-engage so a second Stop after a fresh comment works.
+    cancelled = false;
     const child = spawnClaude(configPath, systemPromptPath, claudeSessionId, prompt);
+    currentChild = child;
     pipeJsonl(child, args.sessionId, client, (sid) => {
       claudeSessionId = sid;
     });
     child.once('exit', (code) => {
       state = 'IDLE';
+      if (currentChild === child) currentChild = null;
       if (code !== 0) {
         logger.warn({ code, hasPending: pending.length > 0 }, 'claude exited non-zero');
       } else {
@@ -93,13 +111,30 @@ export async function runStreamPump(args: {
     resolveExit = (code) => {
       stream.stop();
       process.off('SIGINT', onSigint);
-      resolve(code);
+      process.off('SIGTERM', onSigint);
+      void bestEffortDisconnect({ sessionId: args.sessionId, token: args.token }).finally(() =>
+        resolve(code),
+      );
     };
     // Order matters: bootstrap first so `state = 'RUNNING'` is set before any
     // event-batch callback can fire and race a second `INITIAL_PROMPT` past
     // the empty-pending guard.
     drainAndSpawn();
     stream.start(async (events) => {
+      if (!cancelled && findCancelForSession(events, args.sessionId)) {
+        cancelled = true;
+        await post(client.postDiscussionMessage(args.threadId, { text: CANCEL_NOTICE }));
+        // Drop the in-flight queue so the child's exit doesn't immediately
+        // respawn to drain events that arrived before the Dev hit Stop.
+        // The CLI sits IDLE until a future event arrives in a later batch.
+        pending = [];
+        const c = currentChild;
+        if (c) {
+          c.kill('SIGINT');
+          setTimeout(() => c.kill('SIGKILL'), SIGINT_TO_SIGKILL_MS).unref();
+        }
+        return;
+      }
       pending.push(...events);
       if (state === 'IDLE') drainAndSpawn();
     });

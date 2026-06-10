@@ -1,5 +1,6 @@
 import type {
   AgentPlanBlocks,
+  AgentTodo,
   CommentId,
   ConnectToken,
   EventId,
@@ -14,6 +15,7 @@ import {
   CreateSessionResponse,
   EventsLongPollResponse,
   RecordAgentNarrationResponse,
+  RecordTodosUpdatedResponse,
   RecordToolUseResponse,
   RecordTurnEndedResponse,
   UpdateThreadResponse,
@@ -129,8 +131,6 @@ export class ConsoleClient {
     return this.send('PATCH', `/api/threads/${threadId}`, patch, UpdateThreadResponse);
   }
 
-  // stream-json driver only. The PTY driver's PreToolUse hook posts to
-  // /tool-use directly via fire-and-forget raw http; that path stays untouched.
   postAgentToolUse(sessionId: SessionId, tool: string, summary: string) {
     return this.send(
       'POST',
@@ -146,6 +146,15 @@ export class ConsoleClient {
       `/api/sessions/${sessionId}/narration`,
       { text },
       RecordAgentNarrationResponse,
+    );
+  }
+
+  postAgentTodosUpdated(sessionId: SessionId, todos: AgentTodo[]) {
+    return this.send(
+      'POST',
+      `/api/sessions/${sessionId}/todos-updated`,
+      { todos },
+      RecordTodosUpdatedResponse,
     );
   }
 
