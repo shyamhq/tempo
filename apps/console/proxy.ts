@@ -12,6 +12,10 @@ const isAgentApi = createRouteMatcher([
   '/api/spaces/(.*)',
 ]);
 
+// API routes that require a Clerk session (workspace management). Listed
+// explicitly so the matcher fails loudly if a new path is added.
+const isUserApi = createRouteMatcher(['/api/workspace/(.*)']);
+
 const isPublic = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)', '/api/webhooks/(.*)']);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -28,6 +32,14 @@ export default clerkMiddleware(async (auth, req) => {
       );
       return new NextResponse('unauthorized', { status: 401 });
     }
+    return;
+  }
+
+  if (isUserApi(req)) {
+    // 401 JSON instead of redirect — these are API routes consumed by curl /
+    // the (deferred) settings UI, not landing pages.
+    const { userId } = await auth();
+    if (!userId) return new NextResponse('unauthorized', { status: 401 });
     return;
   }
 

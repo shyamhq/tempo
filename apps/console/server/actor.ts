@@ -20,7 +20,13 @@ import { getOrCreateWorkspaceForOrg } from './workspaces';
 // thread_id read URL params and check workspace membership.
 export type AuthContext =
   | { actor: 'agent'; workspace_id: string }
-  | { actor: 'user'; user_id: string; workspace_id: string; role: 'admin' | 'member' }
+  | {
+      actor: 'user';
+      user_id: string;
+      workspace_id: string;
+      org_id: string;
+      role: 'admin' | 'member';
+    }
   | null;
 
 export async function authFromRequest(req: NextRequest): Promise<AuthContext> {
@@ -48,7 +54,7 @@ async function resolveUser(): Promise<AuthContext> {
   const org = await client.organizations.getOrganization({ organizationId: orgId });
   const ws = await getOrCreateWorkspaceForOrg(orgId, org.name);
   const role: 'admin' | 'member' = orgRole === 'org:member' ? 'member' : 'admin';
-  return { actor: 'user', user_id: userId, workspace_id: ws.id, role };
+  return { actor: 'user', user_id: userId, workspace_id: ws.id, org_id: orgId, role };
 }
 
 // Read X-Tempo-Session: agent requests carry the session id here (the CLI
