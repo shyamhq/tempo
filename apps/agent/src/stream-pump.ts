@@ -25,6 +25,10 @@ import { clip, summarizeToolInput } from './tool-summary';
 
 const TEXT_MAX = 8000;
 const SIGINT_TO_SIGKILL_MS = 5_000;
+// Tail of stderr + non-JSON stdout we keep around to surface on non-zero
+// exit. claude's auth / rate-limit / quota errors land here and would
+// otherwise vanish silently.
+const ERROR_TAIL_MAX = 4_000;
 const TodosPayload = z.array(AgentTodo).max(50);
 
 export async function runStreamPump(args: {
@@ -83,14 +87,25 @@ export async function runStreamPump(args: {
     cancelled = false;
     const child = spawnClaude(configPath, systemPromptPath, claudeSessionId, prompt);
     currentChild = child;
-    pipeJsonl(child, args.sessionId, client, (sid) => {
-      claudeSessionId = sid;
-    });
+    let errorTail = '';
+    const captureError = (chunk: string): void => {
+      errorTail = (errorTail + chunk).slice(-ERROR_TAIL_MAX);
+    };
+    pipeJsonl(
+      child,
+      args.sessionId,
+      client,
+      (sid) => {
+        claudeSessionId = sid;
+      },
+      captureError,
+    );
     child.once('exit', (code) => {
       state = 'IDLE';
       if (currentChild === child) currentChild = null;
       if (code !== 0) {
         logger.warn({ code, hasPending: pending.length > 0 }, 'claude exited non-zero');
+        if (!cancelled) surfaceClaudeFailure(client, args.threadId, code, errorTail);
       } else {
         // End-of-turn signal — unmounts the Console's Activity widget.
         void post(client.postAgentTurnEnded(args.sessionId));
@@ -178,6 +193,7 @@ function pipeJsonl(
   sessionId: SessionId,
   client: ConsoleClient,
   onClaudeSessionId: (sid: string) => void,
+  captureError: (chunk: string) => void,
 ): void {
   const rl = createInterface({ input: child.stdout });
   rl.on('line', (line) => {
@@ -186,14 +202,41 @@ function pipeJsonl(
     try {
       msg = JSON.parse(line);
     } catch {
+      // Plain-text on stdout means claude bailed before JSONL — keep the
+      // line so the exit handler can surface it (e.g. "Not logged in").
+      captureError(`${line}\n`);
       return;
     }
     handleMessage(msg, sessionId, client, onClaudeSessionId);
   });
-  // stderr is mostly noise in -p mode (auth refresh, telemetry); log at debug.
   child.stderr.on('data', (chunk) => {
-    logger.debug({ stderr: chunk.toString() }, 'claude stderr');
+    const text = chunk.toString();
+    captureError(text);
+    logger.debug({ stderr: text }, 'claude stderr');
   });
+}
+
+function surfaceClaudeFailure(
+  client: ConsoleClient,
+  threadId: ThreadId,
+  code: number | null,
+  tail: string,
+): void {
+  const trimmed = tail.trim();
+  const header = `agent failed (exit ${code ?? '?'})`;
+  // Dev terminal: write loud so a Dev who started the CLI from a shell
+  // sees the actual reason (login required, rate limit, etc.).
+  if (trimmed) {
+    process.stderr.write(`\n${header}:\n${trimmed}\n\n`);
+  } else {
+    process.stderr.write(`\n${header} (no stderr captured)\n\n`);
+  }
+  // Console Discussion: same content, fenced so it renders verbatim. Gives
+  // the Dev the failure reason even when they're driving from the UI.
+  const body = trimmed
+    ? `**${header}**\n\n\`\`\`\n${trimmed}\n\`\`\``
+    : `**${header}** (no stderr captured)`;
+  void post(client.postDiscussionMessage(threadId, { text: body }));
 }
 
 type AssistantContentBlock =
