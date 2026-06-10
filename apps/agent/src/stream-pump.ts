@@ -2,7 +2,13 @@ import { type ChildProcessByStdio, spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import { AgentTodo, type ConnectToken, type Event, type SessionId, type ThreadId } from '@tempo/contracts';
+import {
+  AgentTodo,
+  type ConnectToken,
+  type Event,
+  type SessionId,
+  type ThreadId,
+} from '@tempo/contracts';
 import { z } from 'zod';
 import { CANCEL_NOTICE, findCancelForSession } from './cancel';
 import { bestEffortDisconnect, DISCONNECT_TIMEOUT_MS } from './disconnect-on-exit';
@@ -12,20 +18,15 @@ import { ConsoleClient } from './http-client';
 import { logger } from './logger';
 import { writeMcpConfigFile } from './mcp-config';
 import { buildNudge } from './nudge';
+import { ALLOWED_TOOLS } from './prompts/allowed-tools';
 import { INITIAL_PROMPT } from './prompts/initial-prompt';
 import { writeAppendSystemPromptFile } from './prompts/system-prompt';
-import { ALLOWED_TOOLS } from './prompts/allowed-tools';
 import { clip, summarizeToolInput } from './tool-summary';
 
 const TEXT_MAX = 8000;
 const SIGINT_TO_SIGKILL_MS = 5_000;
 const TodosPayload = z.array(AgentTodo).max(50);
 
-// stream-json driver. Spawns `claude -p --output-format stream-json` per turn,
-// walks each assistant message's content blocks, and forwards `text` blocks as
-// `agent_narration` and `tool_use` blocks as `agent_tool_use`. No PTY, no TUI,
-// no PreToolUse hook — the stream is the single source. Sessions are bound to
-// one driver for life; cross-driver --resume is not supported.
 export async function runStreamPump(args: {
   sessionId: SessionId;
   threadId: ThreadId;
@@ -91,7 +92,7 @@ export async function runStreamPump(args: {
       if (code !== 0) {
         logger.warn({ code, hasPending: pending.length > 0 }, 'claude exited non-zero');
       } else {
-        // Parity with PTY's Stop hook — unmounts the Activity widget.
+        // End-of-turn signal — unmounts the Console's Activity widget.
         void post(client.postAgentTurnEnded(args.sessionId));
       }
       if (pending.length > 0) {
@@ -165,6 +166,9 @@ function spawnClaude(
   args.push('--', prompt);
   return spawn('claude', args, {
     stdio: ['ignore', 'pipe', 'pipe'],
+    // CLI v2.1.142+ defaults to the Task tools (TaskCreate/...) which would
+    // split a TodoWrite call into per-item events keyed by taskId — server
+    // state accumulation we haven't built.
     env: { ...process.env, CLAUDE_CODE_ENABLE_TASKS: '0' },
   });
 }
@@ -218,6 +222,18 @@ function handleMessage(
     if (block.type === 'text' && 'text' in block && block.text.trim()) {
       void post(client.postAgentNarration(sessionId, clip(block.text, TEXT_MAX)));
     } else if (block.type === 'tool_use' && 'name' in block) {
+      // Invalid TodoWrite payloads fall through so the tool-use signal isn't dropped.
+      if (block.name === 'TodoWrite') {
+        const raw =
+          block.input && typeof block.input === 'object'
+            ? (block.input as Record<string, unknown>).todos
+            : undefined;
+        const parsed = TodosPayload.safeParse(raw);
+        if (parsed.success) {
+          void post(client.postAgentTodosUpdated(sessionId, parsed.data));
+          continue;
+        }
+      }
       void post(client.postAgentToolUse(sessionId, block.name, summarizeToolInput(block.input)));
     }
   }

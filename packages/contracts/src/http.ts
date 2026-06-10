@@ -120,7 +120,8 @@ export const CreateSessionResponse = z.object({
 export { AttachOutput as GetSessionStateResponse } from './mcp';
 
 // POST /api/sessions/:id/tool-use
-// Recorded by the Agent's Claude Code PreToolUse hook (fire-and-forget).
+// Recorded by the Agent driver when an assistant `tool_use` content block is
+// observed (one row per call).
 export const RecordToolUseRequest = z.object({
   tool: z.string().min(1).max(64),
   summary: z.string().max(200),
@@ -137,16 +138,16 @@ export const RecordAgentNarrationRequest = z.object({
 export const RecordAgentNarrationResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/sessions/:id/todos-updated
-// Recorded by the Agent's Claude Code PreToolUse hook when tool_name=TodoWrite
-// (fire-and-forget). Carries the full todo list — each call rewrites the slate.
+// Recorded by the Agent driver when a tool_use block names `TodoWrite`.
+// Carries the full todo list — each call rewrites the slate.
 export const RecordTodosUpdatedRequest = z.object({
   todos: z.array(AgentTodo).max(50),
 });
 export const RecordTodosUpdatedResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/sessions/:id/turn-ended
-// Recorded by the Agent's Claude Code Stop hook (fire-and-forget). Empty body —
-// the act of POSTing is the signal that the agent's turn has ended.
+// Recorded by the Agent driver when the per-turn `claude -p` child exits
+// cleanly. Empty body — the act of POSTing is the end-of-turn signal.
 export const RecordTurnEndedRequest = z.object({});
 export const RecordTurnEndedResponse = z.object({ ok: z.literal(true) });
 

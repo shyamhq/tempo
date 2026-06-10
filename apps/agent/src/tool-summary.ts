@@ -1,7 +1,5 @@
-// Render a one-line summary of a Claude tool-use input. Shared between
-// `hook-relay.ts` (PTY-driver PreToolUse hook) and `stream-pump.ts`
-// (stream-json driver's JSONL walker) so the two drivers produce identical
-// `agent_tool_use` rows.
+// Render a one-line summary of a Claude tool-use input — used by stream-pump
+// when forwarding `tool_use` content blocks as `agent_tool_use` events.
 
 const SUMMARY_MAX = 200;
 

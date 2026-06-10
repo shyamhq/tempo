@@ -1,7 +1,8 @@
-// Tools the Agent is allowed to invoke. ScheduleWakeup is absent — Node owns
-// the loop heartbeat. tempo_poll *is* allowed because the Agent calls it to
-// fetch event payloads after Node nudges it. Edit/Write/MultiEdit are absent
-// because the Plan is written via tempo_write_plan, never to disk.
+// ScheduleWakeup is absent — Node owns the loop heartbeat.
+// Edit/Write/MultiEdit are absent — the Plan is written via the tempo_* MCP
+// tools, never to disk.
+// tempo_poll is present — Claude calls it once per nudge to fetch full event
+// payloads (the nudge itself only carries kind counts).
 export const ALLOWED_TOOLS = [
   'mcp__tempo__tempo_attach',
   'mcp__tempo__tempo_pull_plan',
@@ -17,4 +18,5 @@ export const ALLOWED_TOOLS = [
   'Glob',
   'Grep',
   'Bash',
+  'TodoWrite',
 ];

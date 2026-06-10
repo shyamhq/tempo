@@ -4,7 +4,6 @@ import type { ConnectToken } from '@tempo/contracts';
 import { env } from './env';
 import { ConsoleClient } from './http-client';
 import { logger } from './logger';
-import { runPtyLoop } from './pty-loop';
 import { runStreamPump } from './stream-pump';
 
 const execAsync = promisify(exec);
@@ -20,10 +19,9 @@ export async function connect(token: ConnectToken): Promise<void> {
   process.stdout.write(
     `attached to thread ${session.thread_id} as session ${session.session_id}\n`,
   );
-  process.stdout.write(`launching claude (${env.TEMPO_AGENT_DRIVER})...\n\n`);
+  process.stdout.write('launching claude...\n\n');
 
-  const driver = env.TEMPO_AGENT_DRIVER === 'stream-json' ? runStreamPump : runPtyLoop;
-  const exitCode = await driver({
+  const exitCode = await runStreamPump({
     sessionId: session.session_id,
     threadId: session.thread_id,
     token,

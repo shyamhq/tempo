@@ -6,9 +6,9 @@ import type { ConnectToken, SessionId, ThreadId } from '@tempo/contracts';
 import { env } from './env';
 
 // Path to the bundled cli.js (sibling of this file in both dev and dist).
-// The MCP config and the PreToolUse hook both re-invoke this CLI as a
-// subcommand. Invariant: mcp-config must remain a sibling of cli in the source
-// tree (regex rewrites only the file name).
+// The MCP config re-invokes this CLI as a subcommand. Invariant: mcp-config
+// must remain a sibling of cli in the source tree (regex rewrites only the
+// file name).
 export const CLI_PATH = fileURLToPath(import.meta.url).replace(/mcp-config\.(ts|js)$/, 'cli.$1');
 
 export function writeMcpConfigFile(args: {

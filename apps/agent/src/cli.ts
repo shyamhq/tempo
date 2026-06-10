@@ -12,27 +12,15 @@ import { z } from 'zod';
 import { connect } from './connect';
 import { env } from './env';
 import { toDevMessage } from './errors';
-import { runHookRelay } from './hook-relay';
 import { ConsoleClient } from './http-client';
 import { logger } from './logger';
 import { runStdioMcpServer } from './mcp-server';
-import { runStopHook } from './stop-hook';
 
 async function main(): Promise<void> {
   const [, , command, ...rest] = process.argv;
 
   if (command === 'mcp-stdio') {
     await runMcpStdio();
-    return;
-  }
-
-  if (command === 'hook-relay') {
-    await runHookRelay();
-    return;
-  }
-
-  if (command === 'stop-hook') {
-    await runStopHook();
     return;
   }
 
