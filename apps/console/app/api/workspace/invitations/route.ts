@@ -1,7 +1,9 @@
+import { clerkClient } from '@clerk/nextjs/server';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { env } from '../../../../env';
 import { authFromRequest } from '../../../../server/actor';
+import { sendWorkspaceInvite } from '../../../../server/email';
 import { err, ok, parseBody } from '../../../../server/http';
 import { inviteMember, listInvitations } from '../../../../server/workspaces';
 
@@ -37,5 +39,20 @@ export async function POST(req: NextRequest) {
     parsed.data.role,
     `${env.CONSOLE_URL}/accept-invite`,
   );
+  // Send the branded Resend email after Clerk accepts the invite. Errors are
+  // swallowed inside sendWorkspaceInvite — the Clerk invite stands either way.
+  const client = await clerkClient();
+  const [inviter, org] = await Promise.all([
+    client.users.getUser(auth.user_id),
+    client.organizations.getOrganization({ organizationId: auth.org_id }),
+  ]);
+  const inviterName = inviter.firstName ?? inviter.emailAddresses[0]?.emailAddress ?? 'A teammate';
+  await sendWorkspaceInvite({
+    to: parsed.data.email,
+    inviterName,
+    workspaceName: org.name,
+    // `invitation.url` is the Clerk-hosted accept link the email targets.
+    inviteUrl: invitation.url ?? `${env.CONSOLE_URL}/accept-invite`,
+  });
   return ok({ invitation: { id: invitation.id, email: invitation.emailAddress } }, 201);
 }
