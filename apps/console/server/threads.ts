@@ -2,7 +2,6 @@ import { randomBytes } from 'node:crypto';
 import type { ThreadSummary } from '@tempo/contracts';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db';
-import { defaultWorkspaceId } from '../db/ids';
 import {
   attachments,
   comments,
@@ -58,7 +57,7 @@ export async function getConnectToken(threadId: string): Promise<{ connect_token
   return { connect_token: row.connect_token };
 }
 
-export async function listThreads(workspaceId: string = defaultWorkspaceId, spaceId?: string) {
+export async function listThreads(workspaceId: string, spaceId?: string) {
   const where = spaceId
     ? and(eq(threads.workspace_id, workspaceId), eq(threads.space_id, spaceId))
     : eq(threads.workspace_id, workspaceId);

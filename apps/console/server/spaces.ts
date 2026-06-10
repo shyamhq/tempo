@@ -2,7 +2,6 @@ import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { cache } from 'react';
 import { db } from '../db';
-import { defaultWorkspaceId } from '../db/ids';
 import {
   comments,
   discussion_messages,
@@ -17,7 +16,7 @@ import { newSpaceId } from './ids';
 
 // React.cache so the root layout + the home page share one DB hit per request.
 export const listSpaces = cache(
-  async (workspaceId: string = defaultWorkspaceId): Promise<Space[]> => {
+  async (workspaceId: string): Promise<Space[]> => {
     const rows = await db
       .select({
         id: spaces.id,
@@ -39,10 +38,7 @@ export const listSpaces = cache(
   },
 );
 
-export async function createSpace(
-  name: string,
-  workspaceId: string = defaultWorkspaceId,
-): Promise<Space> {
+export async function createSpace(name: string, workspaceId: string): Promise<Space> {
   const id = newSpaceId();
   const sort_order = await db.transaction(async (tx) => {
     const [tail] = await tx
@@ -59,7 +55,7 @@ export async function createSpace(
 export async function updateSpace(
   spaceId: string,
   patch: { name?: string; sort_order?: number },
-  workspaceId: string = defaultWorkspaceId,
+  workspaceId: string,
 ): Promise<void> {
   const set: Record<string, string | number> = {};
   if (patch.name !== undefined) set.name = patch.name;
@@ -77,7 +73,7 @@ export async function updateSpace(
 // deleteThread(threads.ts) walks per-Thread, but bulk-keyed by space.
 export async function deleteSpace(
   spaceId: string,
-  workspaceId: string = defaultWorkspaceId,
+  workspaceId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const [sp] = await tx
@@ -115,7 +111,7 @@ export async function deleteSpace(
 
 export async function listSpaceThreadsLite(
   spaceId: string,
-  workspaceId: string = defaultWorkspaceId,
+  workspaceId: string,
 ): Promise<SpaceThreadLite[]> {
   const rows = await db
     .select({

@@ -7,6 +7,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const auth = await authFromRequest(req);
   if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await params;
-  const threads = await listSpaceThreadsLite(id);
+  const threads = await listSpaceThreadsLite(id, auth.workspace_id);
   return ok({ threads });
 }

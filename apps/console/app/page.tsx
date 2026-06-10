@@ -5,6 +5,7 @@ import { EmptyHome } from '@/components/home/empty-home';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { currentWorkspaceId } from '@/server/actor';
 import { listSpaces } from '@/server/spaces';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +22,7 @@ export default async function HomePage({
   searchParams: Promise<{ space?: string }>;
 }) {
   const { space: spaceId } = await searchParams;
-  const spaces = await listSpaces();
+  const spaces = await listSpaces(await currentWorkspaceId());
   const activeSpace = spaceId ? spaces.find((s) => s.id === spaceId) : undefined;
 
   if (!activeSpace) {

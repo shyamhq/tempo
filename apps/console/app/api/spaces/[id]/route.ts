@@ -11,7 +11,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!parsed.ok) return parsed.response;
   const { id } = await ctx.params;
   try {
-    await updateSpace(id, parsed.data);
+    await updateSpace(id, parsed.data, auth.workspace_id);
     return ok({ ok: true });
   } catch (e) {
     if ((e as Error).message === 'space_not_found') return err('space_not_found', 404);
@@ -24,7 +24,7 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await ctx.params;
   try {
-    await deleteSpace(id);
+    await deleteSpace(id, auth.workspace_id);
   } catch (e) {
     if ((e as Error).message === 'space_not_found') return err('space_not_found', 404);
     throw e;

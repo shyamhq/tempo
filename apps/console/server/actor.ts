@@ -57,6 +57,20 @@ export function readSessionHeader(req: NextRequest): string | null {
   return req.headers.get('x-tempo-session');
 }
 
+// RSC helper — pages call this to resolve the current Clerk Org's workspace
+// id without going through a Request. Throws if signed out or no active Org;
+// the Clerk middleware (proxy.ts) protects every UI page so neither should
+// happen in practice.
+export async function currentWorkspaceId(): Promise<string> {
+  const { userId, orgId } = await clerkAuth();
+  if (!userId) throw new Error('unauthenticated');
+  if (!orgId) throw new Error('no_active_org');
+  const client = await clerkClient();
+  const org = await client.organizations.getOrganization({ organizationId: orgId });
+  const ws = await getOrCreateWorkspaceForOrg(orgId, org.name);
+  return ws.id;
+}
+
 // Map an auth context to the `author`/`updated_by` enum stored on `replies`,
 // `discussion_messages`, and `plans`. Phase 5 widens `plans.updated_by` to
 // carry a Clerk user id, at which point this helper expands.
