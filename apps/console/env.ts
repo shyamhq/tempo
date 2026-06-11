@@ -18,8 +18,8 @@ const Env = z.object({
 });
 
 const parsed = Env.safeParse(process.env);
-if (!parsed.success) {
+if (!parsed.success && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error(`Invalid Console env:\n${z.prettifyError(parsed.error)}`);
 }
 
-export const env = parsed.data;
+export const env = (parsed.success ? parsed.data : {}) as z.infer<typeof Env>;
