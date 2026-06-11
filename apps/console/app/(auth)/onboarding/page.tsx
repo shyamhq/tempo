@@ -20,11 +20,5 @@ export default function OnboardingPage() {
     }
   }, [isLoaded, userMemberships.data]);
 
-  return (
-    <div
-      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}
-    >
-      <p>Setting up your workspace…</p>
-    </div>
-  );
+  return <p className="text-caption text-ink-subtle">Setting up your workspace…</p>;
 }

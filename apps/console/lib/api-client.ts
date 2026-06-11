@@ -33,6 +33,46 @@ import {
 import { z } from 'zod';
 
 const DeleteCommentResponse = z.object({ ok: z.literal(true) });
+const OkResponse = z.object({ ok: z.literal(true) });
+
+// Workspace identity is read client-side from Clerk's hooks
+// (`useOrganization`, `useOrganizationList`); no GET schemas live here.
+// Only mutation-response shapes for routes that hit our DB or the Clerk
+// admin SDK belong below.
+const MemberRole = z.enum(['admin', 'member']);
+
+const MembersResponse = z.object({
+  members: z.array(
+    z.object({
+      user_id: z.string().nullish(),
+      email: z.string().nullish(),
+      first_name: z.string().nullish(),
+      last_name: z.string().nullish(),
+      image_url: z.string().nullish(),
+      role: MemberRole,
+      created_at: z.number(),
+    }),
+  ),
+});
+
+const InvitationsResponse = z.object({
+  invitations: z.array(
+    z.object({
+      id: z.string(),
+      email: z.string(),
+      role: z.string(),
+      status: z.string(),
+      created_at: z.number(),
+    }),
+  ),
+});
+
+const CreateInvitationResponse = z.object({
+  invitation: z.object({ id: z.string(), email: z.string() }),
+});
+
+export type WorkspaceMember = z.infer<typeof MembersResponse>['members'][number];
+export type WorkspaceInvitation = z.infer<typeof InvitationsResponse>['invitations'][number];
 
 async function request<T>(
   method: string,
@@ -159,4 +199,26 @@ export const api = {
 
   initAttachment: (threadId: string, input: z.input<typeof InitAttachmentInput>) =>
     request('POST', `/api/threads/${threadId}/attachments/init`, input, InitAttachmentResult),
+
+  updateWorkspace: (input: { name?: string }) =>
+    request('PATCH', '/api/workspace', input, OkResponse),
+
+  deleteWorkspace: () => request('DELETE', '/api/workspace', undefined, OkResponse),
+
+  listMembers: () => request('GET', '/api/workspace/members', undefined, MembersResponse),
+
+  updateMemberRole: (userId: string, role: z.infer<typeof MemberRole>) =>
+    request('PATCH', `/api/workspace/members/${userId}`, { role }, OkResponse),
+
+  removeMember: (userId: string) =>
+    request('DELETE', `/api/workspace/members/${userId}`, undefined, OkResponse),
+
+  listInvitations: () =>
+    request('GET', '/api/workspace/invitations', undefined, InvitationsResponse),
+
+  createInvitation: (input: { email: string; role: z.infer<typeof MemberRole> }) =>
+    request('POST', '/api/workspace/invitations', input, CreateInvitationResponse),
+
+  revokeInvitation: (id: string) =>
+    request('DELETE', `/api/workspace/invitations/${id}`, undefined, OkResponse),
 };

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       first_name: m.publicUserData?.firstName ?? null,
       last_name: m.publicUserData?.lastName ?? null,
       image_url: m.publicUserData?.imageUrl ?? null,
-      role: m.role,
+      role: m.role === 'org:admin' ? 'admin' : 'member',
       created_at: m.createdAt,
     })),
   });

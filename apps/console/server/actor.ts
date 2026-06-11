@@ -53,7 +53,10 @@ async function resolveUser(): Promise<AuthContext> {
   const client = await clerkClient();
   const org = await client.organizations.getOrganization({ organizationId: orgId });
   const ws = await getOrCreateWorkspaceForOrg(orgId, org.name);
-  const role: 'admin' | 'member' = orgRole === 'org:member' ? 'member' : 'admin';
+  // Default-deny: anything Clerk doesn't explicitly mark as admin is treated
+  // as member, including unknown / undefined orgRole values. Flipping this to
+  // default-grant would let a stale session token escalate.
+  const role: 'admin' | 'member' = orgRole === 'org:admin' ? 'admin' : 'member';
   return { actor: 'user', user_id: userId, workspace_id: ws.id, org_id: orgId, role };
 }
 

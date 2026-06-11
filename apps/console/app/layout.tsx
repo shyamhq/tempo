@@ -3,10 +3,7 @@ import { GeistMono } from 'geist/font/mono';
 import { Inter } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { QueryProvider } from '@/components/query-provider';
-import { Sidebar } from '@/components/sidebar/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { currentWorkspaceId } from '@/server/actor';
-import { listSpaces } from '@/server/spaces';
 import './globals.css';
 
 const inter = Inter({
@@ -20,29 +17,17 @@ export const metadata = {
   description: 'Planning Threads for engineers.',
 };
 
-export const dynamic = 'force-dynamic';
-
-export default async function RootLayout({ children }: { children: ReactNode }) {
-  // Root layout wraps `/sign-in` and `/sign-up` too — those pages have no
-  // active Org and shouldn't trigger a workspace lookup. Tolerate the throw
-  // and render with an empty Sidebar; signed-in pages get the real list.
-  let spaces: Awaited<ReturnType<typeof listSpaces>> = [];
-  try {
-    spaces = await listSpaces(await currentWorkspaceId());
-  } catch {
-    /* unauthed render path — Sidebar will show empty state */
-  }
+// Root layout is providers + html/body only. The app shell (sidebar, settings
+// modal, workspace fetches) lives in `(app)/layout.tsx`; auth and onboarding
+// share `(auth)/layout.tsx`. Splitting like this means signed-out pages don't
+// have to swallow workspace-lookup errors from the root.
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${GeistMono.variable}`}>
       <body className="font-sans bg-canvas text-ink min-h-dvh">
         <ClerkProvider>
           <QueryProvider>
-            <TooltipProvider delayDuration={150}>
-              <div className="flex h-dvh">
-                <Sidebar initial={spaces} />
-                <div className="flex-1 min-w-0 overflow-auto">{children}</div>
-              </div>
-            </TooltipProvider>
+            <TooltipProvider delayDuration={150}>{children}</TooltipProvider>
           </QueryProvider>
         </ClerkProvider>
       </body>

@@ -24,6 +24,7 @@ interface SidebarState {
   pendingDelete: PendingDelete;
   _commit: CommitFn | null;
   collapsed: boolean;
+  peeking: boolean;
   toggleExpanded: (id: string, force?: boolean) => void;
   startRename: (target: RenameTarget) => void;
   clearRename: () => void;
@@ -32,6 +33,7 @@ interface SidebarState {
   registerCommit: (fn: CommitFn | null) => void;
   setCollapsed: (v: boolean) => void;
   toggleCollapsed: () => void;
+  setPeeking: (v: boolean) => void;
 }
 
 export const useSidebar = create<SidebarState>()(
@@ -43,6 +45,7 @@ export const useSidebar = create<SidebarState>()(
         pendingDelete: null,
         _commit: null,
         collapsed: false,
+        peeking: false,
         toggleExpanded: (id, force) =>
           set(
             (s) => {
@@ -71,13 +74,22 @@ export const useSidebar = create<SidebarState>()(
           ),
         clearDelete: () => set({ pendingDelete: null }, undefined, 'sidebar/clearDelete'),
         registerCommit: (fn) => set({ _commit: fn }, undefined, 'sidebar/registerCommit'),
-        setCollapsed: (v) => set({ collapsed: v }, undefined, 'sidebar/setCollapsed'),
+        setCollapsed: (v) =>
+          set({ collapsed: v, peeking: false }, undefined, 'sidebar/setCollapsed'),
         toggleCollapsed: () =>
-          set((s) => ({ collapsed: !s.collapsed }), undefined, 'sidebar/toggleCollapsed'),
+          set(
+            (s) => ({ collapsed: !s.collapsed, peeking: false }),
+            undefined,
+            'sidebar/toggleCollapsed',
+          ),
+        setPeeking: (v) => set({ peeking: v }, undefined, 'sidebar/setPeeking'),
       }),
       {
         name: 'tempo:sidebar',
-        partialize: (s) => ({ collapsed: s.collapsed }),
+        // `collapsed` is intentionally NOT persisted — refresh always opens
+        // the sidebar so the workspace switcher + spaces are immediately
+        // visible. Within a session, in-memory state carries the choice.
+        partialize: () => ({}),
       },
     ),
     { name: 'sidebar', enabled: process.env.NODE_ENV !== 'production' },

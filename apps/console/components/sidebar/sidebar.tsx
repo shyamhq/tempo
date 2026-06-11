@@ -20,7 +20,9 @@ import { PanelLeftClose, PanelLeftOpen, Plus, Search } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Tooltip } from '@/components/ui/tooltip';
+import { WorkspaceSwitcher } from '@/components/workspace/workspace-switcher';
 import { api } from '@/lib/api-client';
+import { cn } from '@/lib/utils';
 import { useSidebar } from '@/store/sidebar';
 import { SpaceRow } from './space-row';
 import { UndoToast } from './undo-toast';
@@ -39,6 +41,10 @@ export function Sidebar({ initial }: { initial: Space[] }) {
 
   const collapsed = useSidebar((s) => s.collapsed);
   const toggleCollapsed = useSidebar((s) => s.toggleCollapsed);
+  const setCollapsed = useSidebar((s) => s.setCollapsed);
+  const peeking = useSidebar((s) => s.peeking);
+  const setPeeking = useSidebar((s) => s.setPeeking);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
 
   // Publish the sidebar's current pixel width as a CSS variable so that
   // position:fixed children elsewhere (e.g. the Discussion FAB) can align
@@ -104,54 +110,31 @@ export function Sidebar({ initial }: { initial: Space[] }) {
 
   const onDragEnd = (e: DragEndEvent) => handleDragEnd(e, qc, spaces, router.refresh);
 
-  if (collapsed) {
-    return (
-      <aside className="flex h-dvh w-12 shrink-0 flex-col items-center border-r border-hairline bg-surface-2/40 pt-[18px] pb-3.5">
-        <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-ink text-caption font-bold text-on-primary">
-          T
-        </span>
-        <div className="my-auto flex flex-col items-center gap-3">
-          <Tooltip content="Expand sidebar  ⌘\" side="right">
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              aria-label="Expand sidebar"
-              className="flex h-10 w-10 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-2 hover:text-ink"
-            >
-              <PanelLeftOpen size={22} strokeWidth={2} />
-            </button>
-          </Tooltip>
-          <span
-            aria-hidden
-            className="text-micro-uppercase uppercase text-ink-tertiary select-none"
-            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+  const panel = (
+    <>
+      <div className="flex items-center gap-1 px-2 pt-3 pb-2.5">
+        <div className="min-w-0 flex-1">
+          <WorkspaceSwitcher onOpenChange={setSwitcherOpen} />
+        </div>
+        <Tooltip content={peeking ? 'Pin sidebar open' : 'Collapse sidebar  ⌘\\'} side="right">
+          <button
+            type="button"
+            onClick={peeking ? () => setCollapsed(false) : toggleCollapsed}
+            aria-label={peeking ? 'Pin sidebar open' : 'Collapse sidebar'}
+            className={cn(
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-md hover:bg-surface-2',
+              peeking
+                ? 'text-accent-deep hover:text-accent-hover'
+                : 'text-ink-subtle hover:text-ink',
+            )}
           >
-            Tempo
-          </span>
-        </div>
-      </aside>
-    );
-  }
-
-  return (
-    <aside className="flex h-dvh w-sidebar shrink-0 flex-col border-r border-hairline bg-surface-2/40">
-      <div className="px-[18px] pt-[18px] pb-3.5">
-        <div className="flex items-center gap-2.5 text-heading-5 tracking-tight text-ink">
-          <span className="flex h-6 w-6 items-center justify-center rounded-sm bg-ink text-caption font-bold text-on-primary">
-            T
-          </span>
-          Tempo
-          <Tooltip content="Collapse sidebar  ⌘\" side="right">
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              aria-label="Collapse sidebar"
-              className="ml-auto flex h-9 w-9 items-center justify-center rounded-md text-ink-subtle hover:bg-surface-2 hover:text-ink"
-            >
-              <PanelLeftClose size={20} strokeWidth={2} />
-            </button>
-          </Tooltip>
-        </div>
+            {peeking ? (
+              <PanelLeftOpen size={18} strokeWidth={2} />
+            ) : (
+              <PanelLeftClose size={18} strokeWidth={2} />
+            )}
+          </button>
+        </Tooltip>
       </div>
 
       <div className="px-4 pb-2.5">
@@ -194,6 +177,43 @@ export function Sidebar({ initial }: { initial: Space[] }) {
       </DndContext>
 
       <UndoToast />
+    </>
+  );
+
+  if (collapsed) {
+    return (
+      <>
+        <div
+          aria-hidden
+          onMouseEnter={() => setPeeking(true)}
+          className="fixed top-0 bottom-0 left-0 z-30 w-3.5"
+        />
+        <aside
+          onMouseLeave={(e) => {
+            // Don't collapse while the workspace switcher popover is open —
+            // its Radix portal lives outside the aside, so the cursor moving
+            // toward it would otherwise dismiss the peek before the user can
+            // click anything inside the menu.
+            if (switcherOpen) return;
+            if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))
+              return;
+            setPeeking(false);
+          }}
+          className={cn(
+            'fixed top-0 left-0 z-40 flex h-dvh w-sidebar flex-col border-r border-hairline bg-surface-2 shadow-card-elevated',
+            'transition-transform duration-200 ease-out will-change-transform',
+            peeking ? 'translate-x-0' : '-translate-x-full pointer-events-none',
+          )}
+        >
+          {panel}
+        </aside>
+      </>
+    );
+  }
+
+  return (
+    <aside className="flex h-dvh w-sidebar shrink-0 flex-col border-r border-hairline bg-surface-2/40">
+      {panel}
     </aside>
   );
 }
