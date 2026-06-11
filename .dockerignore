@@ -1,0 +1,25 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Next.js build output (rebuilt inside Docker)
+**/.next
+apps/console/.next
+
+# Local dev data
+apps/console/data
+*.db
+*.db-journal
+
+# Git
+.git
+.gitignore
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Misc
+.DS_Store
+*.log
