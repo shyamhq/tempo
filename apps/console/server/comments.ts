@@ -9,7 +9,6 @@ import {
 } from './attachments';
 import { appendEvent } from './event-log';
 import { newCommentId, newReplyId } from './ids';
-import { toIso } from './threads';
 
 export type CreateCommentInput = {
   threadId: string;
@@ -149,7 +148,7 @@ function shapeComment(
     plan_context: row.plan_context,
     anchor_block_id: row.anchor_block_id,
     resolved_by: row.resolved_by,
-    created_at: toIso(row.created_at),
+    created_at: row.created_at.toISOString(),
     replies: replyRows.map((r) => shapeReply(r, attsByReply.get(r.id) ?? [])),
   };
 }
@@ -161,7 +160,7 @@ function shapeReply(row: typeof replies.$inferSelect, attachments: AttachmentRef
     author: row.author,
     payload: { text: row.text ?? '' },
     attachments,
-    created_at: toIso(row.created_at),
+    created_at: row.created_at.toISOString(),
   };
 }
 

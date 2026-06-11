@@ -15,6 +15,20 @@
       "when": 1781108438772,
       "tag": "0001_shiny_silver_surfer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781170768548,
+      "tag": "0002_daily_tempest",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781172635039,
+      "tag": "0003_unique_molten_man",
+      "breakpoints": true
     }
   ]
 }

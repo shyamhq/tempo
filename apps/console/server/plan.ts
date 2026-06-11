@@ -14,7 +14,6 @@ import {
   parseHtmlDocToBlocks,
   pmDocToBlocks,
 } from './plan/block-html';
-import { nowIso, toIso } from './threads';
 
 export async function getPlan(threadId: string): Promise<Plan> {
   const row = await readPlanRow(threadId);
@@ -31,7 +30,7 @@ export async function getPlan(threadId: string): Promise<Plan> {
     status: row.status,
     body: {
       pm_json: pmJson,
-      updated_at: toIso(row.updated_at),
+      updated_at: row.updated_at.toISOString(),
       updated_by: row.updated_by,
     },
   };
@@ -49,7 +48,8 @@ export async function writePlan(
   if (pmJson === null || typeof pmJson !== 'object') {
     throw new InvalidPlanBodyError('plan body must be a document object');
   }
-  const updated_at = nowIso();
+  const updated_at = new Date();
+  const updated_at_iso = updated_at.toISOString();
   await db
     .update(plans)
     .set({ body_pm_json: JSON.stringify(pmJson), updated_by: by, updated_at })
@@ -60,9 +60,9 @@ export async function writePlan(
   // explicitly via `requestPlanRecheck` (the "Recheck plan" button), and
   // Agent writes still emit so the Console can refresh its view.
   if (by === 'agent') {
-    await appendEvent(threadId, { kind: 'plan_edited_by_agent', updated_at });
+    await appendEvent(threadId, { kind: 'plan_edited_by_agent', updated_at: updated_at_iso });
   }
-  return { updated_at };
+  return { updated_at: updated_at_iso };
 }
 
 // Dev-initiated request for the Agent to re-read the current Plan. Emits the
@@ -79,7 +79,7 @@ export async function requestPlanRecheck(threadId: string): Promise<{ updated_at
     .where(eq(threads.id, threadId))
     .limit(1);
   if (!t) throw new ThreadNotFoundError(threadId);
-  const updated_at = nowIso();
+  const updated_at = new Date().toISOString();
   await appendEvent(threadId, { kind: 'plan_edited_by_dev', updated_at });
   return { updated_at };
 }
@@ -93,7 +93,7 @@ export async function getPlanState(threadId: string): Promise<AgentPlanState> {
   const row = await readPlanRow(threadId);
   return {
     status: row.status,
-    updated_at: row.updated_at ? toIso(row.updated_at) : null,
+    updated_at: row.updated_at?.toISOString() ?? null,
     updated_by: row.updated_by,
   };
 }
@@ -252,7 +252,8 @@ export async function updatePlan(
   }
   const ids = group.content.map((bc) => `${bc.attrs.id}$`);
 
-  const updated_at = nowIso();
+  const updated_at = new Date();
+  const updated_at_iso = updated_at.toISOString();
   const written = await db
     .update(plans)
     .set({ body_pm_json: JSON.stringify(pmJson), updated_by: actor, updated_at })
@@ -262,7 +263,7 @@ export async function updatePlan(
 
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
   if (actor === 'agent') {
-    await appendEvent(threadId, { kind: 'plan_edited_by_agent', updated_at });
+    await appendEvent(threadId, { kind: 'plan_edited_by_agent', updated_at: updated_at_iso });
   }
   return { ids };
 }

@@ -5,7 +5,7 @@ import { plans, threads } from '../../db/schema';
 export type PlanRow = {
   status: 'unapproved' | 'approved';
   body_pm_json: string | null;
-  updated_at: string | null;
+  updated_at: Date | null;
   updated_by: 'dev' | 'agent' | null;
 };
 

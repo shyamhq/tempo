@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 // a missed entry on a denylist silently 401s; a missed entry on an
 // allowlist routes through Clerk and fails loudly.
 const isAgentApi = createRouteMatcher([
+  '/api/sessions',
   '/api/sessions/(.*)',
   '/api/threads/(.*)',
   '/api/comments/(.*)',

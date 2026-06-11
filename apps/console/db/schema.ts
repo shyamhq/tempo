@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigserial,
   check,
   doublePrecision,
   index,
@@ -12,18 +13,18 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
-// Timestamps are stored as `timestamp with time zone` but exposed to TS as ISO
-// strings (mode: 'string'). The wire shape and the prior SQLite-era helpers
-// (`toIso`, `nowIso`) already assume strings, so this keeps the surface stable.
-const timestampString = (name: string) =>
-  timestamp(name, { withTimezone: true, mode: 'string' }).notNull().defaultNow();
+// Timestamps are stored as `timestamp with time zone` and exposed to TS as
+// Date objects (mode: 'date'). JSON.stringify calls .toISOString() on Date,
+// producing proper ISO 8601 strings on the wire.
+const timestampDate = (name: string) =>
+  timestamp(name, { withTimezone: true, mode: 'date' }).notNull().defaultNow();
 
 export const workspaces = pgTable('workspaces', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   clerk_org_id: text('clerk_org_id').notNull().unique(),
   agent_api_key: text('agent_api_key').notNull().unique(),
-  created_at: timestampString('created_at'),
+  created_at: timestampDate('created_at'),
 });
 
 export const spaces = pgTable('spaces', {
@@ -35,7 +36,7 @@ export const spaces = pgTable('spaces', {
   // Drag-reorder uses fractional indexing: drop between siblings writes the
   // midpoint of their sort_order values; no rebalance at this scale.
   sort_order: doublePrecision('sort_order').notNull().default(0),
-  created_at: timestampString('created_at'),
+  created_at: timestampDate('created_at'),
 });
 
 export const threads = pgTable('threads', {
@@ -53,8 +54,8 @@ export const threads = pgTable('threads', {
     .default('unapproved'),
   connect_token: text('connect_token').notNull(),
   sort_order: doublePrecision('sort_order').notNull().default(0),
-  created_at: timestampString('created_at'),
-  updated_at: timestampString('updated_at'),
+  created_at: timestampDate('created_at'),
+  updated_at: timestampDate('updated_at'),
 });
 
 export const sessions = pgTable(
@@ -67,10 +68,10 @@ export const sessions = pgTable(
     status: text('status', { enum: ['pending', 'connected', 'disconnected'] })
       .notNull()
       .default('pending'),
-    last_seen_at: timestampString('last_seen_at'),
+    last_seen_at: timestampDate('last_seen_at'),
     attached_repo_remote: text('attached_repo_remote'),
     attached_repo_path: text('attached_repo_path'),
-    created_at: timestampString('created_at'),
+    created_at: timestampDate('created_at'),
   },
   (t) => [
     uniqueIndex('idx_sessions_one_connected_per_thread')
@@ -90,8 +91,8 @@ export const plans = pgTable('plans', {
   body_pm_json: text('body_pm_json'),
   updated_by: text('updated_by', { enum: ['dev', 'agent'] }),
   // Nullable + no default: set only on first plan edit, not on row insert.
-  updated_at: timestamp('updated_at', { withTimezone: true, mode: 'string' }),
-  created_at: timestampString('created_at'),
+  updated_at: timestamp('updated_at', { withTimezone: true, mode: 'date' }),
+  created_at: timestampDate('created_at'),
 });
 
 export const comments = pgTable('comments', {
@@ -103,7 +104,7 @@ export const comments = pgTable('comments', {
   plan_context: text('plan_context').notNull(),
   anchor_block_id: text('anchor_block_id'),
   resolved_by: text('resolved_by', { enum: ['dev'] }),
-  created_at: timestampString('created_at'),
+  created_at: timestampDate('created_at'),
 });
 
 export const replies = pgTable('replies', {
@@ -113,7 +114,7 @@ export const replies = pgTable('replies', {
     .references(() => comments.id),
   author: text('author', { enum: ['dev', 'agent'] }).notNull(),
   text: text('text'),
-  created_at: timestampString('created_at'),
+  created_at: timestampDate('created_at'),
 });
 
 export const discussion_messages = pgTable(
@@ -126,7 +127,7 @@ export const discussion_messages = pgTable(
     author: text('author', { enum: ['dev', 'agent'] }).notNull(),
     text: text('text'),
     questions: jsonb('questions'),
-    created_at: timestampString('created_at'),
+    created_at: timestampDate('created_at'),
   },
   (t) => [index('idx_discussion_messages_thread').on(t.thread_id, t.created_at, t.id)],
 );
@@ -144,7 +145,7 @@ export const attachments = pgTable(
     reply_id: text('reply_id').references(() => replies.id, { onDelete: 'cascade' }),
     mime: text('mime').notNull(),
     byte_len: integer('byte_len').notNull(),
-    created_at: timestampString('created_at'),
+    created_at: timestampDate('created_at'),
   },
   (t) => [
     check('one_parent', sql`(${t.message_id} IS NULL) <> (${t.reply_id} IS NULL)`),
@@ -160,12 +161,12 @@ export const events = pgTable(
     thread_id: text('thread_id')
       .notNull()
       .references(() => threads.id),
+    // Global monotonic sequence — used to derive the event ID atomically, avoiding
+    // per-thread advisory locks or MAX() races under concurrent inserts.
+    seq: bigserial('seq', { mode: 'number' }).notNull(),
     kind: text('kind').notNull(),
     payload_json: jsonb('payload_json').notNull(),
-    created_at: timestampString('created_at'),
+    created_at: timestampDate('created_at'),
   },
-  (t) => [
-    primaryKey({ columns: [t.thread_id, t.id] }),
-    index('idx_events_thread_id').on(t.thread_id, t.id),
-  ],
+  (t) => [primaryKey({ columns: [t.thread_id, t.id] })],
 );

@@ -1,15 +1,9 @@
 import type { AttachmentRef, Event } from '@tempo/contracts';
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { newEventId } from '../db/ids';
 import { events } from '../db/schema';
 import { listAttachmentsForParents } from './attachments';
-
-// Per-thread monotonic counter source: COUNT(*) of existing event rows for the
-// thread at append time, inside a transaction. SQLite is single-writer so the
-// count + insert pair under one transaction yields a strictly monotonic
-// sequence per thread without a separate counter table. The lexicographic
-// 14-digit zero-pad in newEventId keeps cursor comparisons correct.
 
 type AppendPayload = Event extends infer E
   ? E extends { id: string; created_at: string }
@@ -18,29 +12,31 @@ type AppendPayload = Event extends infer E
   : never;
 
 export async function appendEvent(threadId: string, payload: AppendPayload): Promise<Event> {
-  return await db.transaction(async (tx) => {
-    const rows = await tx
-      .select({ n: sql<number>`count(*)` })
-      .from(events)
-      .where(eq(events.thread_id, threadId));
-    const n = rows[0]?.n ?? 0;
-    const id = newEventId(n + 1);
-    const created_at = new Date().toISOString();
-    const event = { id, created_at, ...payload } as Event;
-    // Strip signed URLs before persisting — the event log carries
-    // attachment ids only; signing happens at read time so URLs never
-    // go stale in storage. The live event the caller receives keeps the
-    // URLs it was given (caller's local handoff to whatever consumed
-    // the original write — e.g. the long-poll response stream).
-    await tx.insert(events).values({
-      id,
-      thread_id: threadId,
-      kind: event.kind,
-      payload_json: stripAttachmentUrls(event) as unknown as Record<string, unknown>,
-      created_at,
-    });
-    return event;
+  const seqResult = await db.execute(sql`SELECT nextval(pg_get_serial_sequence('events', 'seq')) AS n`);
+  const row = seqResult.rows[0];
+  if (!row) throw new Error('nextval returned no row');
+  // pg returns bigint as a string — build the ID without Number() to avoid
+  // precision loss at values beyond Number.MAX_SAFE_INTEGER.
+  const seqStr = String(row.n);
+  const id = `evt_${seqStr.padStart(14, '0')}`;
+  const n = Number(seqStr);
+  const created_at_date = new Date();
+  const created_at = created_at_date.toISOString();
+  const event = { id, created_at, ...payload } as Event;
+  // Strip signed URLs before persisting — the event log carries
+  // attachment ids only; signing happens at read time so URLs never
+  // go stale in storage. The live event the caller receives keeps the
+  // URLs it was given (caller's local handoff to whatever consumed
+  // the original write — e.g. the long-poll response stream).
+  await db.insert(events).values({
+    id,
+    seq: n,
+    thread_id: threadId,
+    kind: event.kind,
+    payload_json: stripAttachmentUrls(event) as unknown as Record<string, unknown>,
+    created_at: created_at_date,
   });
+  return event;
 }
 
 export async function readEventsAfter(threadId: string, cursor: string): Promise<Event[]> {
@@ -143,7 +139,7 @@ export async function latestEventId(threadId: string): Promise<string> {
     .select({ id: events.id })
     .from(events)
     .where(eq(events.thread_id, threadId))
-    .orderBy(sql`${events.id} DESC`)
+    .orderBy(desc(events.id))
     .limit(1);
   return rows[0]?.id ?? newEventId(0);
 }

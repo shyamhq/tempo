@@ -3,7 +3,6 @@ import { db } from '../db';
 import { sessions, threads, workspaces } from '../db/schema';
 import { appendEvent } from './event-log';
 import { newSessionId } from './ids';
-import { nowIso } from './threads';
 
 export type CreateSessionResult =
   | { ok: true; session_id: string; thread_id: string; agent_api_key: string }
@@ -40,7 +39,7 @@ export async function createSessionFromToken(
     for (const p of prior) {
       await tx
         .update(sessions)
-        .set({ status: 'disconnected', last_seen_at: nowIso() })
+        .set({ status: 'disconnected', last_seen_at: new Date() })
         .where(eq(sessions.id, p.id));
     }
     await tx.insert(sessions).values({
@@ -99,7 +98,7 @@ export async function cancelCurrentSessionForThread(
 export async function markSessionDisconnected(sessionId: string): Promise<boolean> {
   const flipped = await db
     .update(sessions)
-    .set({ status: 'disconnected', last_seen_at: nowIso() })
+    .set({ status: 'disconnected', last_seen_at: new Date() })
     .where(and(eq(sessions.id, sessionId), eq(sessions.status, 'connected')))
     .returning({ thread_id: sessions.thread_id });
   const row = flipped[0];
@@ -113,7 +112,7 @@ export async function markSessionDisconnected(sessionId: string): Promise<boolea
 export async function touchSessionLastSeen(sessionId: string): Promise<void> {
   await db
     .update(sessions)
-    .set({ last_seen_at: nowIso() })
+    .set({ last_seen_at: new Date() })
     .where(and(eq(sessions.id, sessionId), eq(sessions.status, 'connected')));
 }
 
@@ -144,5 +143,5 @@ export async function getConnectedSessionLastSeenMs(threadId: string): Promise<n
     .where(and(eq(sessions.thread_id, threadId), eq(sessions.status, 'connected')))
     .limit(1);
   if (!s) return null;
-  return Date.parse(s.last_seen_at);
+  return s.last_seen_at.getTime();
 }

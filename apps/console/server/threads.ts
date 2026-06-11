@@ -87,7 +87,7 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
       description: t.description,
       status: t.status,
       session_status: s?.status ?? 'pending',
-      updated_at: toIso(t.updated_at),
+      updated_at: t.updated_at?.toISOString() ?? null,
     });
   }
   return out;
@@ -101,7 +101,7 @@ export async function getThread(threadId: string) {
 export async function approveThread(threadId: string) {
   await db
     .update(threads)
-    .set({ status: 'approved', updated_at: nowIso() })
+    .set({ status: 'approved', updated_at: new Date() })
     .where(eq(threads.id, threadId));
 }
 
@@ -175,7 +175,7 @@ export async function updateThread(
       if (!sp) throw new Error('space_workspace_mismatch');
     }
 
-    const set: Record<string, string | number> = { updated_at: nowIso() };
+    const set: Record<string, string | number | Date> = { updated_at: new Date() };
     if (patch.title !== undefined) set.title = patch.title;
     if (patch.space_id !== undefined) set.space_id = patch.space_id;
     if (patch.sort_order !== undefined) set.sort_order = patch.sort_order;
@@ -207,7 +207,7 @@ export async function updateThread(
 export async function reopenThread(threadId: string) {
   await db
     .update(threads)
-    .set({ status: 'unapproved', updated_at: nowIso() })
+    .set({ status: 'unapproved', updated_at: new Date() })
     .where(eq(threads.id, threadId));
 }
 
@@ -255,13 +255,3 @@ export async function threadBelongsToWorkspace(
   return row?.workspace_id === workspaceId;
 }
 
-export function nowIso() {
-  return new Date().toISOString();
-}
-
-// SQLite stores `CURRENT_TIMESTAMP` as `YYYY-MM-DD HH:MM:SS` (UTC, no TZ marker);
-// convert to ISO-8601 with `Z` for the wire shape.
-export function toIso(s: string): string {
-  if (s.endsWith('Z') || s.includes('T')) return s;
-  return `${s.replace(' ', 'T')}Z`;
-}

@@ -12,7 +12,6 @@ import {
 } from './attachments';
 import { appendEvent } from './event-log';
 import { newMessageId } from './ids';
-import { toIso } from './threads';
 
 export async function listMessagesForThread(threadId: string): Promise<DiscussionMessage[]> {
   const rows = await db
@@ -61,12 +60,12 @@ export async function postMessage(
     if (t.status === 'approved') throw new Error('thread_approved');
 
     const id = newMessageId();
-    const created_at = new Date().toISOString();
+    const created_at = new Date();
     await tx
       .insert(discussion_messages)
       .values({ id, thread_id: threadId, author, text, questions, created_at });
     await insertAttachmentRows(tx, threadId, heads, { kind: 'message', messageId: id });
-    return { id, created_at };
+    return { id, created_at_iso: created_at.toISOString() };
   });
 
   const attsByMessage = await listAttachmentsForParents({ message_ids: [message.id] });
@@ -77,7 +76,7 @@ export async function postMessage(
     text,
     questions,
     attachments: attsByMessage.get(message.id) ?? [],
-    created_at: message.created_at,
+    created_at: message.created_at_iso,
   };
   await appendEvent(threadId, { kind: 'discussion_message_posted', message: shaped });
   return shaped;
@@ -94,6 +93,6 @@ function shapeMessage(
     text: row.text,
     questions: row.questions as Question[] | null,
     attachments,
-    created_at: toIso(row.created_at),
+    created_at: row.created_at.toISOString(),
   };
 }
