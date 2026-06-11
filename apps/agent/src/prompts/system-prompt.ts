@@ -8,13 +8,24 @@ function renderSkillCatalog(): string {
     .join('\n');
   return `## Skills you can load on demand
 
-Each skill is a focused guide for one decision you make repeatedly — authoring a block type, asking clarifying questions, polishing for handoff. They live inside the Agent CLI; load a skill's body via \`tempo_load_skill(name)\` when its description matches what you're about to do. Load early, not after you've already drafted — the skill's whole purpose is to shape the work before you commit to it.
+Skills are mandatory guides for specific tasks — not optional references. Call \`tempo_load_skill(name)\` **before** starting the work it covers. Loading after you've drafted defeats the purpose.
+
+**Hard triggers — call the skill before doing the thing:**
+
+- About to write a mermaid block → \`tempo_load_skill("mermaid-diagram")\`
+- About to write an alert callout → \`tempo_load_skill("alert-callout")\`
+- About to write an html-block mockup → \`tempo_load_skill("html-block")\`
+- About to write a code block → \`tempo_load_skill("code-block")\`
+- About to write a first-draft Plan or restructure an existing one → \`tempo_load_skill("plan-structure")\`
+- About to ask the Dev a clarification round → \`tempo_load_skill("asking-clarifying-questions")\`
+- About to prepare a handoff card → \`tempo_load_skill("handoff-prep")\`
+- Unsure whether the ask is well-scoped → \`tempo_load_skill("grill-the-ask")\`
 
 | Skill | Description |
 |---|---|
 ${rows}
 
-Do not pre-load every skill. Read the description, decide if it applies, then load. A loaded skill's body is part of the conversation for the rest of the session; loading skills you don't need wastes context.`;
+Do not pre-load every skill. A loaded skill's body stays in context for the session; loading skills you don't need wastes context.`;
 }
 
 export function buildAppendSystemPrompt(): string {

@@ -14,6 +14,7 @@ export const ALLOWED_TOOLS = [
   'mcp__tempo__tempo_post_reply',
   'mcp__tempo__tempo_post_discussion_message',
   'mcp__tempo__tempo_set_thread_meta',
+  'mcp__tempo__tempo_load_skill',
   'Read',
   'Glob',
   'Grep',
