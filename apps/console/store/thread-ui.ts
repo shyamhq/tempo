@@ -9,9 +9,12 @@ import { devtools, persist } from 'zustand/middleware';
 
 type RailTab = 'discussion' | 'comment';
 
-export const MIN_DISCUSSION_WIDTH = 320;
+// Sized to match chat/thread side panels in Slack, Linear, and Notion (~360–440px).
+// Below ~360 the Agent's question cards (multi-line text + option buttons) wrap
+// awkwardly; above ~720 the plan column starts feeling cramped.
+export const MIN_DISCUSSION_WIDTH = 360;
 export const MAX_DISCUSSION_WIDTH = 720;
-export const DEFAULT_DISCUSSION_WIDTH = 360;
+export const DEFAULT_DISCUSSION_WIDTH = 440;
 
 function clampWidth(w: number): number {
   return Math.max(MIN_DISCUSSION_WIDTH, Math.min(MAX_DISCUSSION_WIDTH, Math.round(w)));
@@ -112,10 +115,20 @@ export const useThreadUi = create<ThreadUiState>()(
       }),
       {
         name: 'tempo:thread-ui',
+        version: 2,
         partialize: (s) => ({
           discussionWidth: s.discussionWidth,
           discussionSeenAt: s.discussionSeenAt,
         }),
+        // v1 → v2: bumped MIN/DEFAULT to match industry chat-panel widths.
+        // Existing values below the new MIN get reset to the new default.
+        migrate: (persisted, _version) => {
+          const s = (persisted ?? {}) as Partial<LayoutSlice & SeenSlice>;
+          return {
+            discussionWidth: clampWidth(s.discussionWidth ?? DEFAULT_DISCUSSION_WIDTH),
+            discussionSeenAt: s.discussionSeenAt ?? {},
+          };
+        },
       },
     ),
     { name: 'thread-ui', enabled: process.env.NODE_ENV !== 'production' },

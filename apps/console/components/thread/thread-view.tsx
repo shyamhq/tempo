@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SessionStatus } from '@tempo/contracts';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
@@ -14,7 +15,12 @@ import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanCommentGutter } from '@/components/thread/editor/plan-comment-gutter';
-import { PlanEditor, type PlanEditorHandle } from '@/components/thread/editor/plan-editor';
+import type { PlanEditorHandle } from '@/components/thread/editor/plan-editor';
+
+const PlanEditor = dynamic(
+  () => import('@/components/thread/editor/plan-editor').then((m) => m.PlanEditor),
+  { ssr: false },
+);
 import { type SaveStatus, usePlanAutoSave } from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
@@ -233,7 +239,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-20 border-b border-hairline bg-canvas/85 backdrop-blur">
-        <div className="mx-auto max-w-[1600px] px-6 h-14 flex items-center gap-3">
+        <div className="px-6 h-14 flex items-center gap-3">
           <Link href="/" className="text-ink-subtle hover:text-ink" aria-label="Back to Threads">
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -261,7 +267,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       </header>
 
-      <div className={`mx-auto max-w-[1600px] px-6 py-6 grid gap-6 ${gridClass}`} style={gridStyle}>
+      <div className={`px-6 py-6 grid gap-6 ${gridClass}`} style={gridStyle}>
         {discussionOpen ? (
           <aside className="-mt-6 h-[calc(100dvh-5rem)] sticky top-14 flex flex-col min-h-0 bg-canvas border-r border-hairline">
             <RailTabStrip
@@ -291,7 +297,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </aside>
         ) : null}
 
-        <section>
+        <section className="min-h-[calc(100dvh-7rem)] flex flex-col">
           {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
           {view.plan.body === null ? (
             <EmptyPlanState />
@@ -483,10 +489,12 @@ function RailTabStrip({
 
 function EmptyPlanState() {
   return (
-    <div className="border border-dashed border-hairline rounded-md p-6 text-center">
-      <p className="text-sm text-ink-subtle">
-        The Agent hasn't drafted a Plan yet. When it does, edits appear here live.
-      </p>
+    <div className="flex-1 flex items-center justify-center">
+      <div className="border border-dashed border-hairline rounded-md p-8 text-center max-w-md w-full">
+        <p className="text-sm text-ink-subtle">
+          The Agent hasn't drafted a Plan yet. When it does, edits appear here live.
+        </p>
+      </div>
     </div>
   );
 }
