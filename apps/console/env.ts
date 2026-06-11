@@ -22,14 +22,16 @@ if (!parsed.success && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error(`Invalid Console env:\n${z.prettifyError(parsed.error)}`);
 }
 
-export const env = parsed.success ? parsed.data : {
-  DATABASE_URL: 'postgresql://localhost/placeholder',
-  CONSOLE_URL: 'http://localhost:3000',
-  NODE_ENV: 'production' as const,
-  LOG_LEVEL: 'info' as const,
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_build_placeholder',
-  CLERK_SECRET_KEY: 'sk_build_placeholder',
-  CLERK_WEBHOOK_SECRET: undefined,
-  RESEND_API_KEY: undefined,
-  RESEND_FROM_EMAIL: undefined,
-};
+export const env = parsed.success
+  ? parsed.data
+  : {
+      DATABASE_URL: 'postgresql://localhost/placeholder',
+      CONSOLE_URL: 'http://localhost:3000',
+      NODE_ENV: 'production' as const,
+      LOG_LEVEL: 'info' as const,
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_build_placeholder',
+      CLERK_SECRET_KEY: 'sk_build_placeholder',
+      CLERK_WEBHOOK_SECRET: undefined,
+      RESEND_API_KEY: undefined,
+      RESEND_FROM_EMAIL: undefined,
+    };

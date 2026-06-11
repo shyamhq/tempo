@@ -2,8 +2,8 @@ import type { WebhookEvent } from '@clerk/nextjs/server';
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import { Webhook } from 'svix';
-import { handleClerkEvent } from '../../../../server/clerk-webhook';
 import { logger } from '../../../../logger';
+import { handleClerkEvent } from '../../../../server/clerk-webhook';
 
 const SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -34,7 +34,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     await handleClerkEvent(event);
     return NextResponse.json({ ok: true });
   } catch (e) {
-    logger.error({ err: (e as Error).message, eventType: event.type }, 'clerk-webhook: handler failed');
+    logger.error(
+      { err: (e as Error).message, eventType: event.type },
+      'clerk-webhook: handler failed',
+    );
     // Return 500 so Clerk retries — the handlers are idempotent.
     return new NextResponse('handler error', { status: 500 });
   }

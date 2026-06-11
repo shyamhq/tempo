@@ -3,10 +3,7 @@ import { authFromRequest } from '../../../../../server/actor';
 import { err, ok } from '../../../../../server/http';
 import { revokeInvitation } from '../../../../../server/workspaces';
 
-export async function DELETE(
-  req: NextRequest,
-  ctx: { params: Promise<{ invitationId: string }> },
-) {
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ invitationId: string }> }) {
   const auth = await authFromRequest(req);
   if (auth?.actor !== 'user' || auth.role !== 'admin') return err('forbidden', 403);
   const { invitationId } = await ctx.params;

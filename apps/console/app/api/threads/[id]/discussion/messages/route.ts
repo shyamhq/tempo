@@ -1,9 +1,9 @@
 import { CreateDiscussionMessageRequest } from '@tempo/contracts/http';
 import type { NextRequest } from 'next/server';
 import { authFromRequest, authorOf } from '../../../../../../server/actor';
-import { threadBelongsToWorkspace } from '../../../../../../server/threads';
 import { postMessage } from '../../../../../../server/discussion';
 import { err, ok, parseBody } from '../../../../../../server/http';
+import { threadBelongsToWorkspace } from '../../../../../../server/threads';
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);

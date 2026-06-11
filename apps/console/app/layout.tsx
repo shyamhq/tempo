@@ -1,4 +1,4 @@
-import {ClerkProvider} from '@clerk/nextjs';
+import { ClerkProvider } from '@clerk/nextjs';
 import { GeistMono } from 'geist/font/mono';
 import { Inter } from 'next/font/google';
 import type { ReactNode } from 'react';

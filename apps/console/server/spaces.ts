@@ -15,28 +15,26 @@ import {
 import { newSpaceId } from './ids';
 
 // React.cache so the root layout + the home page share one DB hit per request.
-export const listSpaces = cache(
-  async (workspaceId: string): Promise<Space[]> => {
-    const rows = await db
-      .select({
-        id: spaces.id,
-        name: spaces.name,
-        sort_order: spaces.sort_order,
-        thread_count: sql<number>`count(${threads.id})`,
-      })
-      .from(spaces)
-      .leftJoin(threads, eq(threads.space_id, spaces.id))
-      .where(eq(spaces.workspace_id, workspaceId))
-      .groupBy(spaces.id)
-      .orderBy(asc(spaces.sort_order), asc(spaces.created_at));
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      sort_order: r.sort_order,
-      thread_count: Number(r.thread_count),
-    }));
-  },
-);
+export const listSpaces = cache(async (workspaceId: string): Promise<Space[]> => {
+  const rows = await db
+    .select({
+      id: spaces.id,
+      name: spaces.name,
+      sort_order: spaces.sort_order,
+      thread_count: sql<number>`count(${threads.id})`,
+    })
+    .from(spaces)
+    .leftJoin(threads, eq(threads.space_id, spaces.id))
+    .where(eq(spaces.workspace_id, workspaceId))
+    .groupBy(spaces.id)
+    .orderBy(asc(spaces.sort_order), asc(spaces.created_at));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    sort_order: r.sort_order,
+    thread_count: Number(r.thread_count),
+  }));
+});
 
 export async function createSpace(name: string, workspaceId: string): Promise<Space> {
   const id = newSpaceId();
@@ -71,10 +69,7 @@ export async function updateSpace(
 // SQLite FKs are unenforced in this repo (AGENTS.md → Spotted but not fixed)
 // and the schema has no ON DELETE CASCADE, so we walk the same chain that
 // deleteThread(threads.ts) walks per-Thread, but bulk-keyed by space.
-export async function deleteSpace(
-  spaceId: string,
-  workspaceId: string,
-): Promise<void> {
+export async function deleteSpace(spaceId: string, workspaceId: string): Promise<void> {
   await db.transaction(async (tx) => {
     const [sp] = await tx
       .select({ id: spaces.id })

@@ -254,4 +254,3 @@ export async function threadBelongsToWorkspace(
     .limit(1);
   return row?.workspace_id === workspaceId;
 }
-

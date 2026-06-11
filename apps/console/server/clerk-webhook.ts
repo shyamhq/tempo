@@ -1,5 +1,5 @@
-import { clerkClient } from '@clerk/nextjs/server';
 import type { WebhookEvent } from '@clerk/nextjs/server';
+import { clerkClient } from '@clerk/nextjs/server';
 import { logger } from '../logger';
 import { getOrCreateWorkspaceForOrg, renameWorkspaceForOrg } from './workspaces';
 

@@ -21,6 +21,7 @@ const PlanEditor = dynamic(
   () => import('@/components/thread/editor/plan-editor').then((m) => m.PlanEditor),
   { ssr: false },
 );
+
 import { type SaveStatus, usePlanAutoSave } from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';

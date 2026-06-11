@@ -1,8 +1,8 @@
 'use client';
 
 import { useOrganizationList } from '@clerk/nextjs';
-import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function OnboardingPage() {
   const { userMemberships, setActive, isLoaded } = useOrganizationList({
@@ -21,7 +21,9 @@ export default function OnboardingPage() {
   }, [isLoaded, userMemberships.data]);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+    <div
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}
+    >
       <p>Setting up your workspace…</p>
     </div>
   );

@@ -1,7 +1,6 @@
 import { UpdateBlockInput } from '@tempo/contracts/mcp';
 import type { NextRequest } from 'next/server';
 import { authFromRequest, authorOf } from '../../../../../../../server/actor';
-import { threadBelongsToWorkspace } from '../../../../../../../server/threads';
 import { err, ok, parseBody } from '../../../../../../../server/http';
 import {
   BlockNotFoundError,
@@ -9,6 +8,7 @@ import {
   InvalidPlanBodyError,
   updateBlock,
 } from '../../../../../../../server/plan';
+import { threadBelongsToWorkspace } from '../../../../../../../server/threads';
 
 // The route takes `block_id` from the URL path, so the body schema drops it.
 const UpdateBlockBody = UpdateBlockInput.pick({ html: true });
@@ -20,7 +20,8 @@ export async function PUT(
   const { id, blockId } = await ctx.params;
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
-  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('unauthorized', 401);
+  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id)))
+    return err('unauthorized', 401);
   const parsed = await parseBody(req, UpdateBlockBody);
   if (!parsed.ok) return parsed.response;
   try {
@@ -40,7 +41,8 @@ export async function DELETE(
   const { id, blockId } = await ctx.params;
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
-  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('unauthorized', 401);
+  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id)))
+    return err('unauthorized', 401);
   try {
     await deleteBlock(id, blockId, authorOf(auth));
   } catch (e) {

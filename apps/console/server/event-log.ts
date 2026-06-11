@@ -12,7 +12,9 @@ type AppendPayload = Event extends infer E
   : never;
 
 export async function appendEvent(threadId: string, payload: AppendPayload): Promise<Event> {
-  const seqResult = await db.execute(sql`SELECT nextval(pg_get_serial_sequence('events', 'seq')) AS n`);
+  const seqResult = await db.execute(
+    sql`SELECT nextval(pg_get_serial_sequence('events', 'seq')) AS n`,
+  );
   const row = seqResult.rows[0];
   if (!row) throw new Error('nextval returned no row');
   // pg returns bigint as a string — build the ID without Number() to avoid
