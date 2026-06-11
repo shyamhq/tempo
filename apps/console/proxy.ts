@@ -16,7 +16,13 @@ const isAgentApi = createRouteMatcher([
 // explicitly so the matcher fails loudly if a new path is added.
 const isUserApi = createRouteMatcher(['/api/workspace/(.*)']);
 
-const isPublic = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)', '/api/webhooks/(.*)']);
+const isPublic = createRouteMatcher([
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/onboarding(.*)',
+  '/api/webhooks/(.*)',
+  '/api/health',
+]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isPublic(req)) return;
@@ -45,6 +51,14 @@ export default clerkMiddleware(async (auth, req) => {
 
   // UI pages: redirect to /sign-in if unauthenticated.
   await auth.protect();
+
+  // If signed in but no active org, activate it client-side via /onboarding.
+  const { orgId } = await auth();
+  if (!orgId && !req.nextUrl.pathname.startsWith('/onboarding')) {
+    const url = req.nextUrl.clone();
+    url.pathname = '/onboarding';
+    return NextResponse.redirect(url);
+  }
 });
 
 export const config = {
