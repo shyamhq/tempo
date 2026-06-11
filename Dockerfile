@@ -17,9 +17,7 @@ COPY apps/console ./apps/console
 
 WORKDIR /repo/apps/console
 RUN bun run build
-# Bundle migration script into a self-contained JS file so node can run it
-# at deploy time without bun or TypeScript in the runtime image.
-RUN bun build db/migrate.ts --target=node --bundle --outfile=.next/standalone/apps/console/migrate.js
+RUN bun build db/migrate.ts --target=node --bundle --outfile=.next/standalone/apps/console/db/migrate.js
 
 # Stage 2: production runtime. Next standalone bundles its own minimal
 # node_modules tree; we just need Node and the three emitted artefacts.
