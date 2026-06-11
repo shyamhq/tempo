@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "bun run build && node dist/cli.js",
-    "build": "bun build --target=node --bundle src/cli.ts --outfile dist/cli.js",
+    "build": "bun build --target=node --bundle src/cli.ts --outfile dist/cli.js --loader=.md:text",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit"
   },

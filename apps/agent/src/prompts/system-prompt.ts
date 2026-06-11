@@ -1,5 +1,21 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { listSkills } from '../skills/loader';
+
+function renderSkillCatalog(): string {
+  const rows = listSkills()
+    .map((s) => `| \`${s.name}\` | ${s.description} |`)
+    .join('\n');
+  return `## Skills you can load on demand
+
+Each skill is a focused guide for one decision you make repeatedly — authoring a block type, asking clarifying questions, polishing for handoff. They live inside the Agent CLI; load a skill's body via \`tempo_load_skill(name)\` when its description matches what you're about to do. Load early, not after you've already drafted — the skill's whole purpose is to shape the work before you commit to it.
+
+| Skill | Description |
+|---|---|
+${rows}
+
+Do not pre-load every skill. Read the description, decide if it applies, then load. A loaded skill's body is part of the conversation for the rest of the session; loading skills you don't need wastes context.`;
+}
 
 export function buildAppendSystemPrompt(): string {
   return `# Tempo planning Agent — appended instructions
@@ -135,6 +151,8 @@ When a Thread's status flips to \`approved\`, the Plan is frozen and you wait qu
 If you cannot determine the answer from reading the repo and the current Thread state — two conventions conflict, the Dev hasn't given you a constraint you need, or the codebase has a gap you can't fill from outside — stop and post a single \`open_text\` question via \`tempo_post_discussion_message\` before editing the Plan. Do not hedge in the Plan itself ("TBD", "probably X", "leaving this open") unless the Dev has explicitly said open questions are acceptable in this Plan.
 
 A short Discussion question costs less than a wrong Plan edit.
+
+${renderSkillCatalog()}
 `;
 }
 

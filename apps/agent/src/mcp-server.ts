@@ -13,10 +13,11 @@ import {
   UpdateBlockInput,
   UpdatePlanInput,
 } from '@tempo/contracts/mcp';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { env } from './env';
 import type { ConsoleClient } from './http-client';
 import { fetchAttachmentAsImageBlock } from './r2-fetcher';
+import { listSkills, loadSkill } from './skills/loader';
 
 type AttachState = z.infer<typeof AttachOutput>;
 type PollState = z.infer<typeof PollOutput>;
@@ -143,6 +144,21 @@ export async function runStdioMcpServer(args: {
     async (args) => {
       const message = await client.postDiscussionMessage(threadId, args);
       return wrap({ message_id: message.id });
+    },
+  );
+
+  server.registerTool(
+    'tempo_load_skill',
+    {
+      description:
+        "Load a skill's full body by name. Skills are focused authoring guides — one per recurring decision (writing a Mermaid diagram, picking a callout variant, polishing the Plan for handoff, etc.). The list of available skills with one-line descriptions lives in the system prompt under \"Skills you can load on demand\". Read the description, decide if it applies to what you're about to do, then load. The body is markdown; treat it as part of the conversation. Returns `{ skill_not_found, name }` if `name` doesn't match a known skill.",
+      inputSchema: { name: z.string() },
+    },
+    async ({ name }) => {
+      const body = loadSkill(name);
+      if (body == null)
+        return wrap({ error: 'skill_not_found', name, available: listSkills().map((s) => s.name) });
+      return wrap({ name, body });
     },
   );
 
