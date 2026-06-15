@@ -1,5 +1,6 @@
 import { db } from '@tempo/db/client';
 import { threads, workspaces } from '@tempo/db/schema';
+import { latestEventId } from '@tempo/server';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
@@ -57,5 +58,6 @@ export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, r
     return;
   }
 
-  res.json(row);
+  const latest_event_id = await latestEventId(threadId);
+  res.json({ ...row, latest_event_id });
 };

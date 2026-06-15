@@ -120,12 +120,3 @@ export async function sessionBelongsToWorkspace(
     .limit(1);
   return row?.workspace_id === workspaceId;
 }
-
-export async function getConnectedSessionLastSeenMs(threadId: string): Promise<number | null> {
-  const [s] = await db
-    .select({ last_seen_at: sessions.last_seen_at })
-    .from(sessions)
-    .where(and(eq(sessions.thread_id, threadId), eq(sessions.status, 'connected')))
-    .limit(1);
-  return s?.last_seen_at?.getTime() ?? null;
-}

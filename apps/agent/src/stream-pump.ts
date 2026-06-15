@@ -19,8 +19,12 @@ export function startStreamPump(args: {
   threadId: ThreadId;
   token: string; // sk_user_*
   workerUrl: string;
+  // Invoked once when claude emits its `system.init` line, carrying the
+  // session_id we use for `--resume` on subsequent Turns. Optional — Turn
+  // 1 needs it; nudged Turns already know the id.
+  onSessionId?: (id: string) => void;
 }): void {
-  const { stdout, threadId, token, workerUrl } = args;
+  const { stdout, threadId, token, workerUrl, onSessionId } = args;
 
   const rl = createInterface({ input: stdout });
 
@@ -38,8 +42,19 @@ export function startStreamPump(args: {
       const m = msg as Record<string, unknown>;
       logger.debug({ type: m.type, subtype: m.subtype }, 'claude line');
     }
+    if (onSessionId && isInitMessage(msg)) {
+      onSessionId(msg.session_id);
+    }
     handleMessage(msg, threadId, token, workerUrl);
   });
+}
+
+function isInitMessage(
+  msg: unknown,
+): msg is { type: 'system'; subtype: 'init'; session_id: string } {
+  if (typeof msg !== 'object' || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  return m.type === 'system' && m.subtype === 'init' && typeof m.session_id === 'string';
 }
 
 function handleMessage(msg: unknown, threadId: ThreadId, token: string, workerUrl: string): void {

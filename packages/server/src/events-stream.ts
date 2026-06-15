@@ -1,10 +1,8 @@
 import type { Event } from '@tempo/contracts';
 import { latestEventId, readEventsAfter } from './event-log';
-import { getConnectedSessionLastSeenMs } from './sessions';
 
 const POLL_INTERVAL_MS = 500;
 const SSE_HEARTBEAT_MS = 25_000;
-const PRESENCE_THRESHOLD_MS = 45_000;
 const PRESENCE_CHECK_MS = 5_000;
 
 export async function longPoll(
@@ -27,7 +25,15 @@ export async function longPoll(
   }
 }
 
-export function sseStream(threadId: string, cursor: string): Response {
+// `isFresh` is a process-scoped lookup the caller injects. When omitted
+// the SSE stream skips presence frames entirely — the contract is "ask
+// or don't ask," never "guess." Worker passes apps/worker presence.isFresh;
+// other callers (none today) pay no presence cost.
+export function sseStream(
+  threadId: string,
+  cursor: string,
+  opts: { isFresh?: (threadId: string) => boolean } = {},
+): Response {
   const encoder = new TextEncoder();
   let closed = false;
   let current = cursor;
@@ -50,10 +56,9 @@ export function sseStream(threadId: string, cursor: string): Response {
 
       try {
         while (!closed) {
-          if (Date.now() >= nextPresenceAt) {
+          if (opts.isFresh && Date.now() >= nextPresenceAt) {
             nextPresenceAt = Date.now() + PRESENCE_CHECK_MS;
-            const seenMs = await getConnectedSessionLastSeenMs(threadId);
-            const fresh = seenMs !== null && Date.now() - seenMs < PRESENCE_THRESHOLD_MS;
+            const fresh = opts.isFresh(threadId);
             if (fresh !== lastFresh) {
               enqueue(`event: presence\ndata: ${JSON.stringify({ fresh })}\n\n`);
               lastFresh = fresh;

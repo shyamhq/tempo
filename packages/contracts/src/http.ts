@@ -320,11 +320,14 @@ export const CliRefreshResponse = CliExchangeResponse;
 export type CliRefreshResponse = z.infer<typeof CliRefreshResponse>;
 
 // GET /api/threads/:id/access — thread membership check for CLI callers.
+// `latest_event_id` seeds the CLI's SSE-cursor so the first nudge after
+// Turn 1 anchors at the same point Turn 1's tempo_attach observed.
 export const ThreadAccessResponse = z.object({
   thread_id: ThreadId,
   thread_title: z.string(),
   workspace_id: z.string(),
   workspace_name: z.string(),
+  latest_event_id: z.string(),
 });
 export type ThreadAccessResponse = z.infer<typeof ThreadAccessResponse>;
 

@@ -1,15 +1,26 @@
 'use client';
 
+import type { SessionStatus } from '@tempo/contracts';
 import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useLiveActivityGroup } from '@/hooks/use-thread-events';
 import { ActivityCard } from './activity-card';
 
-// B2 floating Activity surface. Lives only while the Agent's turn is active —
-// the Stop hook flips `turnActive` false and the widget unmounts. Click
-// toggles the mini-card and the expanded V2 card in the same corner;
-// outside-click and Escape collapse.
-export function ActivityWidget({ threadId }: { threadId: string }) {
+// B2 floating Activity surface. Mounts whenever the Agent has something
+// the Dev should see: a live Turn (Stop hook drives `turnActive`), the
+// boot dead-zone before the first tool call (`session_status='initiating'`),
+// or a terminal boot failure (`session_status='failed'` with reason).
+// Click toggles the mini-card and the expanded V2 card; outside-click and
+// Escape collapse.
+export function ActivityWidget({
+  threadId,
+  sessionStatus,
+  failedReason,
+}: {
+  threadId: string;
+  sessionStatus: SessionStatus;
+  failedReason?: string | null;
+}) {
   const { todos, entries, turnActive } = useLiveActivityGroup(threadId);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -32,15 +43,39 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
     };
   }, [open]);
 
-  if (!turnActive) return null;
+  // Render during a live Turn OR during the boot dead-zone OR on terminal
+  // failure. session_connected + no live Turn = nothing to surface here;
+  // the header pill carries that.
+  const lifecycleVisible = sessionStatus === 'initiating' || sessionStatus === 'failed';
+  if (!turnActive && !lifecycleVisible) return null;
 
   const active = todos?.find((t) => t.status === 'in_progress');
   const firstPending = todos?.find((t) => t.status === 'pending');
   const done = todos?.filter((t) => t.status === 'completed').length ?? 0;
-  const progress = todos?.length ? `${done} of ${todos.length}` : 'Agent activity';
+  const progress = todos?.length
+    ? `${done} of ${todos.length}`
+    : sessionStatus === 'failed'
+      ? 'Agent failed'
+      : sessionStatus === 'initiating'
+        ? 'Agent starting'
+        : 'Agent activity';
   const topLine =
-    active?.activeForm ?? active?.content ?? firstPending?.content ?? 'Agent working…';
-  const latestEntry = entries[0] ?? null;
+    sessionStatus === 'failed'
+      ? 'Agent failed to start'
+      : sessionStatus === 'initiating' && !turnActive
+        ? 'Initiating…'
+        : (active?.activeForm ?? active?.content ?? firstPending?.content ?? 'Agent working…');
+  const dotClass =
+    sessionStatus === 'failed'
+      ? 'bg-danger'
+      : sessionStatus === 'initiating' && !turnActive
+        ? 'bg-accent animate-pulse'
+        : 'bg-accent animate-pulse';
+  const latestEntry =
+    entries[0] ??
+    (sessionStatus === 'failed' && failedReason
+      ? ({ kind: 'text', text: failedReason } as const)
+      : null);
 
   return (
     <div ref={containerRef} className="fixed bottom-5 right-5 z-10">
@@ -70,7 +105,7 @@ export function ActivityWidget({ threadId }: { threadId: string }) {
           <div className="flex items-center gap-2 text-caption font-medium text-ink">
             <span
               aria-hidden
-              className="inline-block h-[7px] w-[7px] shrink-0 rounded-full bg-accent animate-pulse"
+              className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${dotClass}`}
             />
             <span className="truncate">{topLine}</span>
           </div>

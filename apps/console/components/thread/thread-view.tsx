@@ -375,7 +375,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           )}
         </section>
 
-        <ActivityWidget threadId={threadId} />
+        <ActivityWidget
+          threadId={threadId}
+          sessionStatus={view.session_status}
+          failedReason={view.session_failed_reason ?? null}
+        />
       </div>
 
       {planUpdatedAt ? (
