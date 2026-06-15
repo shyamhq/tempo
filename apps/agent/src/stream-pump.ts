@@ -1,290 +1,164 @@
-import { type ChildProcessByStdio, spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
-import { AgentTodo, type Event, type SessionId, type ThreadId } from '@tempo/contracts';
-import { z } from 'zod';
-import { CANCEL_NOTICE, findCancelForSession } from './cancel';
-import { bestEffortDisconnect, DISCONNECT_TIMEOUT_MS } from './disconnect-on-exit';
-import { env } from './env';
-import { createEventStream } from './event-stream';
-import { ConsoleClient } from './http-client';
+import type { ThreadId } from '@tempo/contracts';
 import { logger } from './logger';
-import { writeMcpConfigFile } from './mcp-config';
-import { buildNudge } from './nudge';
-import { ALLOWED_TOOLS } from './prompts/allowed-tools';
-import { INITIAL_PROMPT } from './prompts/initial-prompt';
-import { writeAppendSystemPromptFile } from './prompts/system-prompt';
-import { clip, summarizeToolInput } from './tool-summary';
 
-const TEXT_MAX = 8000;
-const SIGINT_TO_SIGKILL_MS = 5_000;
-// Tail of stderr + non-JSON stdout we keep around to surface on non-zero
-// exit. claude's auth / rate-limit / quota errors land here and would
-// otherwise vanish silently.
-const ERROR_TAIL_MAX = 4_000;
-const TodosPayload = z.array(AgentTodo).max(50);
+// Parse and forward claude's --output-format stream-json output to Worker's
+// /api/agent-events. One JSON object per line; each line maps to one event
+// kind from AgentEventRequest. POST failures are retried 3x with exponential
+// backoff (250ms, 500ms, 1000ms) then dropped — a missed activity event is
+// observable but never blocks the agent's progress.
 
-export async function runStreamPump(args: {
-  sessionId: SessionId;
-  threadId: ThreadId;
-  agentApiKey: string;
-}): Promise<number> {
-  // Post-handshake: bearer is the workspace agent_api_key, session id is
-  // pinned so every request carries X-Tempo-Session.
-  const client = new ConsoleClient(env.TEMPO_CONSOLE_URL, args.agentApiKey, args.sessionId);
-  const stream = createEventStream({ client, threadId: args.threadId });
-  const { configPath, configDir } = writeMcpConfigFile({
-    sessionId: args.sessionId,
-    threadId: args.threadId,
-    agentApiKey: args.agentApiKey,
-  });
-  const systemPromptPath = writeAppendSystemPromptFile(configDir);
-
-  // claude's own session id, captured from the first `system:init` row and
-  // re-used as `--resume` on subsequent spawns. Null until init lands; if a
-  // turn crashes before init, the next spawn starts a fresh claude session and
-  // loses prior in-memory context — acceptable for v1.
-  let claudeSessionId: string | null = null;
-  let state: 'IDLE' | 'RUNNING' = 'IDLE';
-  let pending: Event[] = [];
-  let currentChild: ChildProcessByStdio<null, Readable, Readable> | null = null;
-  let cancelled = false;
-  let resolveExit: (code: number) => void = () => {};
-
-  const cleanup = (): void => {
-    rmSync(configDir, { force: true, recursive: true });
-  };
-  process.once('exit', cleanup);
-
-  const onSigint = (): void => {
-    stream.stop();
-    // Fire-and-forget: bestEffortDisconnect has its own DISCONNECT_TIMEOUT_MS
-    // abort ceiling. The exit timer is that ceiling + 100ms scheduler slack;
-    // a hung Console must not strand the CLI past that bound.
-    void bestEffortDisconnect({ sessionId: args.sessionId, agentApiKey: args.agentApiKey });
-    setTimeout(() => {
-      cleanup();
-      process.exit(130);
-    }, DISCONNECT_TIMEOUT_MS + 100).unref();
-  };
-  process.on('SIGINT', onSigint);
-  process.on('SIGTERM', onSigint);
-
-  function drainAndSpawn(): void {
-    const prompt = pending.length > 0 ? buildNudge(pending) : INITIAL_PROMPT;
-    pending = [];
-    if (!prompt) {
-      state = 'IDLE';
-      return;
-    }
-    state = 'RUNNING';
-    // Reset on real re-engage so a second Stop after a fresh comment works.
-    cancelled = false;
-    const child = spawnClaude(configPath, systemPromptPath, claudeSessionId, prompt);
-    currentChild = child;
-    let errorTail = '';
-    const captureError = (chunk: string): void => {
-      errorTail = (errorTail + chunk).slice(-ERROR_TAIL_MAX);
-    };
-    pipeJsonl(
-      child,
-      args.sessionId,
-      client,
-      (sid) => {
-        claudeSessionId = sid;
-      },
-      captureError,
-    );
-    child.once('exit', (code) => {
-      state = 'IDLE';
-      if (currentChild === child) currentChild = null;
-      if (code !== 0) {
-        logger.warn({ code, hasPending: pending.length > 0 }, 'claude exited non-zero');
-        if (!cancelled) surfaceClaudeFailure(client, args.threadId, code, errorTail);
-      } else {
-        // End-of-turn signal — unmounts the Console's Activity widget.
-        void post(client.postAgentTurnEnded(args.sessionId));
-      }
-      if (pending.length > 0) {
-        drainAndSpawn();
-      } else if (code !== 0) {
-        resolveExit(code ?? 1);
-      }
-    });
-    child.once('error', (err) => {
-      logger.error({ err }, 'claude spawn failed');
-      state = 'IDLE';
-      resolveExit(1);
-    });
-  }
-
-  return new Promise<number>((resolve) => {
-    resolveExit = (code) => {
-      stream.stop();
-      process.off('SIGINT', onSigint);
-      process.off('SIGTERM', onSigint);
-      void bestEffortDisconnect({
-        sessionId: args.sessionId,
-        agentApiKey: args.agentApiKey,
-      }).finally(() => resolve(code));
-    };
-    // Order matters: bootstrap first so `state = 'RUNNING'` is set before any
-    // event-batch callback can fire and race a second `INITIAL_PROMPT` past
-    // the empty-pending guard.
-    drainAndSpawn();
-    stream.start(async (events) => {
-      if (!cancelled && findCancelForSession(events, args.sessionId)) {
-        cancelled = true;
-        await post(client.postDiscussionMessage(args.threadId, { text: CANCEL_NOTICE }));
-        // Drop the in-flight queue so the child's exit doesn't immediately
-        // respawn to drain events that arrived before the Dev hit Stop.
-        // The CLI sits IDLE until a future event arrives in a later batch.
-        pending = [];
-        const c = currentChild;
-        if (c) {
-          c.kill('SIGINT');
-          setTimeout(() => c.kill('SIGKILL'), SIGINT_TO_SIGKILL_MS).unref();
-        }
-        return;
-      }
-      pending.push(...events);
-      if (state === 'IDLE') drainAndSpawn();
-    });
-  });
-}
-
-function spawnClaude(
-  configPath: string,
-  systemPromptPath: string,
-  resumeSessionId: string | null,
-  prompt: string,
-): ChildProcessByStdio<null, Readable, Readable> {
-  const args = [
-    '-p',
-    '--output-format',
-    'stream-json',
-    '--verbose',
-    '--model',
-    env.TEMPO_AGENT_MODEL,
-    '--mcp-config',
-    configPath,
-    '--append-system-prompt-file',
-    systemPromptPath,
-    '--allowedTools',
-    ALLOWED_TOOLS.join(','),
-  ];
-  if (resumeSessionId) args.push('--resume', resumeSessionId);
-  args.push('--', prompt);
-  return spawn('claude', args, {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    // CLI v2.1.142+ defaults to the Task tools (TaskCreate/...) which would
-    // split a TodoWrite call into per-item events keyed by taskId — server
-    // state accumulation we haven't built.
-    env: { ...process.env, CLAUDE_CODE_ENABLE_TASKS: '0' },
-  });
-}
-
-function pipeJsonl(
-  child: ChildProcessByStdio<null, Readable, Readable>,
-  sessionId: SessionId,
-  client: ConsoleClient,
-  onClaudeSessionId: (sid: string) => void,
-  captureError: (chunk: string) => void,
-): void {
-  const rl = createInterface({ input: child.stdout });
-  rl.on('line', (line) => {
-    if (!line) return;
-    let msg: unknown;
-    try {
-      msg = JSON.parse(line);
-    } catch {
-      // Plain-text on stdout means claude bailed before JSONL — keep the
-      // line so the exit handler can surface it (e.g. "Not logged in").
-      captureError(`${line}\n`);
-      return;
-    }
-    handleMessage(msg, sessionId, client, onClaudeSessionId);
-  });
-  child.stderr.on('data', (chunk) => {
-    const text = chunk.toString();
-    captureError(text);
-    logger.debug({ stderr: text }, 'claude stderr');
-  });
-}
-
-function surfaceClaudeFailure(
-  client: ConsoleClient,
-  threadId: ThreadId,
-  code: number | null,
-  tail: string,
-): void {
-  const trimmed = tail.trim();
-  const header = `agent failed (exit ${code ?? '?'})`;
-  // Dev terminal: write loud so a Dev who started the CLI from a shell
-  // sees the actual reason (login required, rate limit, etc.).
-  if (trimmed) {
-    process.stderr.write(`\n${header}:\n${trimmed}\n\n`);
-  } else {
-    process.stderr.write(`\n${header} (no stderr captured)\n\n`);
-  }
-  // Console Discussion: same content, fenced so it renders verbatim. Gives
-  // the Dev the failure reason even when they're driving from the UI.
-  const body = trimmed
-    ? `**${header}**\n\n\`\`\`\n${trimmed}\n\`\`\``
-    : `**${header}** (no stderr captured)`;
-  void post(client.postDiscussionMessage(threadId, { text: body }));
-}
+const RETRY_DELAYS_MS = [250, 500, 1000] as const;
 
 type AssistantContentBlock =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; name: string; input: unknown }
   | { type: string };
 
-function handleMessage(
-  msg: unknown,
-  sessionId: SessionId,
-  client: ConsoleClient,
-  onClaudeSessionId: (sid: string) => void,
-): void {
+export function startStreamPump(args: {
+  stdout: Readable;
+  threadId: ThreadId;
+  token: string; // sk_user_*
+  workerUrl: string;
+}): void {
+  const { stdout, threadId, token, workerUrl } = args;
+
+  const rl = createInterface({ input: stdout });
+
+  rl.on('line', (line) => {
+    if (!line.trim()) return;
+    let msg: unknown;
+    try {
+      msg = JSON.parse(line);
+    } catch {
+      // claude bailed before emitting JSON — not an event we can forward.
+      logger.debug({ line }, 'stream-pump: non-JSON stdout line');
+      return;
+    }
+    handleMessage(msg, threadId, token, workerUrl);
+  });
+}
+
+function handleMessage(msg: unknown, threadId: ThreadId, token: string, workerUrl: string): void {
   if (typeof msg !== 'object' || msg === null) return;
   const m = msg as Record<string, unknown>;
-  if (m.type === 'system') {
-    if (m.subtype === 'init' && typeof m.session_id === 'string') {
-      onClaudeSessionId(m.session_id);
-    }
-    return; // hook_* / rate_limit_event / other system noise
-  }
-  if (m.type !== 'assistant') return;
-  const inner = m.message as Record<string, unknown> | undefined;
-  const content = Array.isArray(inner?.content) ? (inner.content as AssistantContentBlock[]) : [];
-  for (const block of content) {
-    if (block.type === 'text' && 'text' in block && block.text.trim()) {
-      void post(client.postAgentNarration(sessionId, clip(block.text, TEXT_MAX)));
-    } else if (block.type === 'tool_use' && 'name' in block) {
-      // Invalid TodoWrite payloads fall through so the tool-use signal isn't dropped.
-      if (block.name === 'TodoWrite') {
-        const raw =
-          block.input && typeof block.input === 'object'
-            ? (block.input as Record<string, unknown>).todos
-            : undefined;
-        const parsed = TodosPayload.safeParse(raw);
-        if (parsed.success) {
-          void post(client.postAgentTodosUpdated(sessionId, parsed.data));
-          continue;
+
+  if (m.type === 'assistant') {
+    const inner = m.message as Record<string, unknown> | undefined;
+    const content = Array.isArray(inner?.content) ? (inner.content as AssistantContentBlock[]) : [];
+    for (const block of content) {
+      if (block.type === 'text' && 'text' in block && block.text.trim()) {
+        void postEvent(workerUrl, token, {
+          thread_id: threadId,
+          event: {
+            kind: 'agent_narration',
+            text: block.text.slice(0, 8000),
+          },
+        });
+      } else if (block.type === 'tool_use' && 'name' in block) {
+        void postEvent(workerUrl, token, {
+          thread_id: threadId,
+          event: {
+            kind: 'agent_tool_use',
+            tool: block.name.slice(0, 64),
+            summary: (summarizeInput(block.input) ?? '').slice(0, 200),
+          },
+        });
+
+        // TodoWrite → agent_todos_updated. Map each entry to the AgentTodo
+        // shape Console renders: { content, status, activeForm? }.
+        if (block.name === 'TodoWrite') {
+          const raw =
+            block.input && typeof block.input === 'object'
+              ? (block.input as Record<string, unknown>).todos
+              : undefined;
+          if (Array.isArray(raw)) {
+            const todos = raw
+              .map((t) => {
+                if (!t || typeof t !== 'object') return null;
+                const o = t as Record<string, unknown>;
+                const content = typeof o.content === 'string' ? o.content.slice(0, 500) : null;
+                const status =
+                  o.status === 'pending' || o.status === 'in_progress' || o.status === 'completed'
+                    ? o.status
+                    : null;
+                if (!content || !status) return null;
+                const todo: { content: string; status: string; activeForm?: string } = {
+                  content,
+                  status,
+                };
+                if (typeof o.activeForm === 'string') todo.activeForm = o.activeForm.slice(0, 500);
+                return todo;
+              })
+              .filter(
+                (t): t is { content: string; status: string; activeForm?: string } => t !== null,
+              )
+              .slice(0, 50);
+            void postEvent(workerUrl, token, {
+              thread_id: threadId,
+              event: { kind: 'agent_todos_updated', todos },
+            });
+          }
         }
       }
-      void post(client.postAgentToolUse(sessionId, block.name, summarizeToolInput(block.input)));
     }
+    return;
+  }
+
+  if (m.type === 'result') {
+    void postEvent(workerUrl, token, {
+      thread_id: threadId,
+      event: { kind: 'agent_turn_ended' },
+    });
   }
 }
 
-async function post(p: Promise<unknown>): Promise<void> {
-  try {
-    await p;
-  } catch (err) {
-    // A dropped narration/tool-use event leaves a gap in the Console activity
-    // feed — observable to the Dev, so log loud enough to show up in prod.
-    logger.warn({ err }, 'console post failed');
+function summarizeInput(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const obj = input as Record<string, unknown>;
+  // Prefer the most semantically useful fields
+  for (const key of ['command', 'path', 'file_path', 'pattern', 'query', 'description']) {
+    if (typeof obj[key] === 'string') return String(obj[key]).slice(0, 200);
   }
+  return undefined;
+}
+
+async function postEvent(
+  workerUrl: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  // RETRY_DELAYS_MS controls inter-attempt sleeps; total attempts = length.
+  // attempt = 0..length-1 inclusive; delay applied at end of each iteration
+  // except the last (no sleep after the final attempt before dropping).
+  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const res = await fetch(`${workerUrl}/api/agent-events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (res.ok || res.status < 500) return; // 4xx are client errors — don't retry
+      logger.debug({ status: res.status, attempt }, 'stream-pump: server error, will retry');
+    } catch (err) {
+      logger.debug({ err, attempt }, 'stream-pump: network error, will retry');
+    }
+    if (attempt < RETRY_DELAYS_MS.length - 1) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by loop guard
+      await delay(RETRY_DELAYS_MS[attempt]!);
+    }
+  }
+  // Drop after final failure — don't block the agent.
+  logger.warn(
+    { event: (body.event as Record<string, unknown>)?.kind },
+    `stream-pump: dropped event after ${RETRY_DELAYS_MS.length} failures`,
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

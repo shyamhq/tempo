@@ -1,3 +1,4 @@
+// TODO(slice-1c-2b): moves to apps/worker/src/skills
 // Inlined at bundle time via bun's `.md:text` loader (see package.json
 // `build` script). Adding a skill is two lines: drop a `<name>.md` here
 // and append `[<name>]: <name>Source` to the map below.

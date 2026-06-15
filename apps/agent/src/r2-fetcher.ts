@@ -1,3 +1,4 @@
+// TODO(slice-1c-2b): moves to apps/worker/src/lib/r2.ts
 import type { AttachmentRef } from '@tempo/contracts';
 import { env } from './env';
 

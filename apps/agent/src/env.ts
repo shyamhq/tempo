@@ -2,18 +2,18 @@ import { z } from 'zod';
 
 const Env = z.object({
   TEMPO_CONSOLE_URL: z.string().url().default('http://localhost:3000'),
+  // Worker URL — CLI exchanges codes, refreshes tokens, checks thread access,
+  // and posts agent events here. Defaults to Worker's local-dev port (3001,
+  // matching apps/worker/src/env.ts PORT default). In prod, set to
+  // https://worker.tempo.dev.
+  TEMPO_WORKER_URL: z.string().url().default('http://localhost:3001'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  // Passed as `--model` to `claude -p`. Accepts an alias (`haiku`, `sonnet`,
+  // Passed as `--model` to `claude`. Accepts an alias (`haiku`, `sonnet`,
   // `opus`) or a full model ID.
   TEMPO_AGENT_MODEL: z.string().default('sonnet'),
-  // tempo_attach inlines image bytes for the last N Discussion messages so
-  // Claude sees recent screenshots without spending its first turn fetching
-  // them. Older messages return refs only; tempo_poll auto-fetches every
-  // new live attachment regardless of N.
-  ATTACH_INLINE_RECENT_MESSAGES: z.coerce.number().int().positive().default(5),
-  // Origin allowlist for the agent's attachment fetcher — guards against
-  // SSRF if the Console response is ever tampered. Defaults to the local
-  // MinIO endpoint; in prod, set to the R2 endpoint.
+  // TODO(slice-1c-2b): moves to Worker with r2-fetcher. Origin allowlist for
+  // the attachment fetcher — guards against SSRF if the response is tampered.
+  // Defaults to the local MinIO endpoint; in prod, set to the R2 endpoint.
   TEMPO_ATTACHMENT_ORIGIN: z.string().url().default('http://127.0.0.1:9000'),
 });
 

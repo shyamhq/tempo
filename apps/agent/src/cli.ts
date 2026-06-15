@@ -1,78 +1,33 @@
 #!/usr/bin/env node
-// Force stderr-bound logs before any module that loads pino runs. The MCP
-// stdio transport reserves stdout for protocol framing; defense-in-depth in
-// case a Dev runs `tempo-agent mcp-stdio` directly without the env var the
-// parent normally injects.
-if (process.argv[2] === 'mcp-stdio') {
-  process.env.TEMPO_LOG_TO_STDERR = '1';
-}
+import { connectCommand } from './commands/connect';
+import { initCommand } from './commands/init';
 
-import { ConnectToken, SessionId, ThreadId } from '@tempo/contracts';
-import { z } from 'zod';
-import { connect } from './connect';
-import { env } from './env';
-import { toDevMessage } from './errors';
-import { ConsoleClient } from './http-client';
-import { logger } from './logger';
-import { runStdioMcpServer } from './mcp-server';
+const [, , subcommand, ...rest] = process.argv;
 
-async function main(): Promise<void> {
-  const [, , command, ...rest] = process.argv;
+switch (subcommand) {
+  case 'init':
+    initCommand().catch((err) => {
+      process.stderr.write(
+        `tempo init failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    });
+    break;
 
-  if (command === 'mcp-stdio') {
-    await runMcpStdio();
-    return;
-  }
+  case 'connect':
+    connectCommand(rest[0]).catch((err) => {
+      process.stderr.write(
+        `tempo connect failed: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+      process.exit(1);
+    });
+    break;
 
-  if (command === 'connect') {
-    const [token, ...extra] = rest;
-    if (!token || extra.length > 0) {
-      usage();
-    }
-    const parsed = ConnectToken.safeParse(token);
-    if (!parsed.success) {
-      process.stderr.write('failed: token must look like tmp_<32+ chars>\n');
-      process.exit(2);
-    }
-    await connect(parsed.data);
-    return;
-  }
-
-  usage();
-}
-
-function usage(): never {
-  process.stderr.write('usage: tempo-agent connect <token>\n');
-  process.exit(2);
-}
-
-async function runMcpStdio(): Promise<void> {
-  const McpStdioEnv = z.object({
-    // Workspace-scoped agent key, written into the MCP config by the parent
-    // CLI after its handshake. Same shape the server validates on Bearer.
-    TEMPO_AGENT_API_KEY: z.string().regex(/^sk_agent_/),
-    TEMPO_SESSION_ID: SessionId,
-    TEMPO_THREAD_ID: ThreadId,
-  });
-  const parsed = McpStdioEnv.safeParse(process.env);
-  if (!parsed.success) {
-    process.stderr.write(`mcp-stdio: invalid env\n${z.prettifyError(parsed.error)}\n`);
+  default:
+    process.stderr.write(
+      `unknown subcommand "${subcommand ?? ''}"\n` +
+        `usage: tempo-agent init\n` +
+        `       tempo-agent connect <thread-id>\n`,
+    );
     process.exit(2);
-  }
-  const client = new ConsoleClient(
-    env.TEMPO_CONSOLE_URL,
-    parsed.data.TEMPO_AGENT_API_KEY,
-    parsed.data.TEMPO_SESSION_ID,
-  );
-  await runStdioMcpServer({
-    client,
-    sessionId: parsed.data.TEMPO_SESSION_ID,
-    threadId: parsed.data.TEMPO_THREAD_ID,
-  });
 }
-
-main().catch((err) => {
-  logger.debug({ err }, 'fatal');
-  process.stderr.write(`${toDevMessage(err)}\n`);
-  process.exit(1);
-});

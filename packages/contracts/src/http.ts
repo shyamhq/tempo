@@ -323,31 +323,35 @@ export const ThreadAccessResponse = z.object({
 export type ThreadAccessResponse = z.infer<typeof ThreadAccessResponse>;
 
 // POST /api/agent-events — structured events emitted by the new CLI.
-// Each event kind carries kind-specific fields; discriminated union keeps
-// the parse unambiguous and the error messages precise.
+// Shape mirrors the existing event-log union in packages/contracts/src/events.ts
+// minus the server-stamped id + created_at fields (Worker adds those on append).
+// Using the same `agent_*` kind strings means Console's UI renders these
+// without any UI-side changes.
+
+export const AgentTodoInput = z.object({
+  content: z.string().max(500),
+  status: z.enum(['pending', 'in_progress', 'completed']),
+  activeForm: z.string().max(500).optional(),
+});
 
 export const AgentToolUseEvent = z.object({
-  kind: z.literal('tool_use'),
-  tool_name: z.string(),
-  summary: z.string().optional(),
-  started_at_ms: z.number(),
+  kind: z.literal('agent_tool_use'),
+  tool: z.string().max(64),
+  summary: z.string().max(200),
 });
 
 export const AgentNarrationEvent = z.object({
-  kind: z.literal('narration'),
-  text: z.string(),
-  emitted_at_ms: z.number(),
+  kind: z.literal('agent_narration'),
+  text: z.string().min(1).max(8000),
 });
 
 export const AgentTodosUpdatedEvent = z.object({
-  kind: z.literal('todos_updated'),
-  todos: z.array(z.string()),
+  kind: z.literal('agent_todos_updated'),
+  todos: z.array(AgentTodoInput).max(50),
 });
 
 export const AgentTurnEndedEvent = z.object({
-  kind: z.literal('turn_ended'),
-  duration_ms: z.number(),
-  reason: z.enum(['done', 'error', 'cancelled']),
+  kind: z.literal('agent_turn_ended'),
 });
 
 export const AgentEventRequest = z.object({

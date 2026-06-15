@@ -22,12 +22,18 @@ export async function appendEvent(
   const seqStr = String(row.n);
   const id = newEventId(seqStr);
   const seq = Number(seqStr);
+  const created_at_date = new Date();
+  // payload_json carries the full Event-shaped object (id + created_at + the
+  // kind-specific fields) so Console's UI parses it as a complete Event from
+  // packages/contracts/src/events.ts without needing the row's other columns.
+  const event = { id, created_at: created_at_date.toISOString(), ...payload };
   await db.insert(events).values({
     id,
     seq,
     thread_id: threadId,
     kind: payload.kind,
-    payload_json: payload as Record<string, unknown>,
+    payload_json: event as Record<string, unknown>,
+    created_at: created_at_date,
   });
   return { id, seq };
 }
