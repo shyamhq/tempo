@@ -4,14 +4,13 @@ import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
 import { logger } from '../../logger';
 
-// POST /api/agent-events — sk_user_* only.
+// POST /api/agent-events — sk_user_* (Local CLI) or sk_hosted_* (Hosted VM).
 // The threadId arrives in the body so we can't use ensureThreadAccess (which
 // reads :id from the URL). We authorize inline after parsing.
 //
-// CLI-only because this is a User attribution surface; agent keys are
-// workspace-scoped and have no userId to attribute the event to.
+// Agent workspace keys are blocked: they have no per-Thread identity.
 export const agentEventsHandler: RequestHandler = async (req, res) => {
-  if (req.caller.kind !== 'cli') {
+  if (req.caller.kind !== 'cli' && req.caller.kind !== 'hosted') {
     res.status(403).json({ error: 'forbidden' });
     return;
   }

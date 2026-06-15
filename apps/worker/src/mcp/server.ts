@@ -6,6 +6,7 @@ import { runAttach } from './tools/attach';
 import { registerDeleteBlock } from './tools/delete-block';
 import { registerLoadSkill } from './tools/load-skill';
 import { registerPoll } from './tools/poll';
+import { registerPollHosted } from './tools/poll-hosted';
 import { registerPostDiscussionMessage } from './tools/post-discussion-message';
 import { registerPostReply } from './tools/post-reply';
 import { registerPullPlan } from './tools/pull-plan';
@@ -50,6 +51,7 @@ export function createMcpServer(
   registerPostDiscussionMessage(server, getMcpSessionId);
   registerSetThreadMeta(server, getMcpSessionId);
   registerLoadSkill(server, getMcpSessionId);
+  registerPollHosted(server, caller);
 
   return server;
 }

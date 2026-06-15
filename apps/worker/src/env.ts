@@ -27,6 +27,9 @@ const schema = z.object({
   // Sandbox provider (E2B) — provisioning API key, Worker-only; never
   // reaches the Sandbox itself.
   E2B_API_KEY: z.string().min(1),
+  // Anthropic API key — Worker holds it; provision.ts injects it into the
+  // Sandbox per-Session so the Claude Agent SDK loop can make model calls.
+  ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
   // Public URL the Sandbox uses to reach Worker's MCP endpoint. Must be
   // reachable from inside the E2B sandbox network.
   WORKER_PUBLIC_URL: z.string().url().default('http://localhost:3001'),

@@ -56,6 +56,7 @@ export async function provision(opts: {
         // what it's used for inside the runner) even though the Worker env
         // var is `WORKER_PUBLIC_URL`.
         WORKER_MCP_URL: env.WORKER_PUBLIC_URL,
+        ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
         ...(repoUrl ? { REPO_URL: repoUrl } : {}),
         ...(ghToken ? { GITHUB_APP_TOKEN: ghToken } : {}),
       },
