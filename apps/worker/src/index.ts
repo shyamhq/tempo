@@ -3,6 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
 import { env } from './env';
+import { startSupervisor, stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
 import { agentEventsHandler } from './routes/agent-events/index';
@@ -101,15 +102,21 @@ const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'worker started');
 });
 
+// Hosted supervisor — LISTEN mailbox + boot sweep + VM lifecycle.
+void startSupervisor().catch((err) => logger.error({ err }, 'supervisor: boot failed'));
+
 // Graceful shutdown — let in-flight MCP streams drain before the process exits.
-const shutdown = (signal: string) => {
+const shutdown = async (signal: string) => {
   logger.info({ signal }, 'worker shutting down');
+  // Force-exit after 10 s if anything hangs (supervisor teardown or socket drain).
+  setTimeout(() => process.exit(1), 10_000).unref();
+  await stopSupervisor().catch((err) =>
+    logger.warn({ err }, 'supervisor: shutdown error (continuing)'),
+  );
   server.close(() => {
     logger.info('worker stopped');
     process.exit(0);
   });
-  // Force-exit after 10 s if connections don't drain.
-  setTimeout(() => process.exit(1), 10_000).unref();
 };
-process.once('SIGTERM', () => shutdown('SIGTERM'));
-process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));
