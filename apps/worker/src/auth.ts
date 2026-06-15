@@ -3,6 +3,7 @@ import { db } from '@tempo/db/client';
 import { comments, threads } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
+import * as jose from 'jose';
 import { env } from './env';
 import { logger } from './logger';
 import {
@@ -13,13 +14,14 @@ import {
   ThreadNotFoundError,
 } from './server/auth-lookup';
 
-// The three Bearer flavors Worker accepts, after middleware identification.
+// The four Bearer flavors Worker accepts, after middleware identification.
 // Routes never branch on `kind` — they call authorizeThread / authorizeComment
 // which folds the dispatch into one place.
 export type Caller =
   | { kind: 'agent'; workspaceId: string }
   | { kind: 'cli'; userId: string }
-  | { kind: 'browser'; userId: string };
+  | { kind: 'browser'; userId: string }
+  | { kind: 'hosted'; threadId: string; workspaceId: string; sessionId: string };
 
 export class ForbiddenError extends Error {
   constructor(public readonly reason: string) {
@@ -55,6 +57,34 @@ async function identify(header: string | undefined): Promise<Caller> {
     return { kind: 'cli', userId: row.user_id };
   }
 
+  if (token.startsWith('sk_hosted_')) {
+    const jwt = token.slice('sk_hosted_'.length);
+    try {
+      const { payload } = await jose.jwtVerify(
+        jwt,
+        new TextEncoder().encode(env.HOSTED_AUTH_SECRET),
+      );
+      if (
+        payload.kind !== 'hosted' ||
+        typeof payload.thread_id !== 'string' ||
+        typeof payload.workspace_id !== 'string' ||
+        typeof payload.session_id !== 'string'
+      ) {
+        throw new ForbiddenError('bad_hosted_token');
+      }
+      return {
+        kind: 'hosted',
+        threadId: payload.thread_id,
+        workspaceId: payload.workspace_id,
+        sessionId: payload.session_id,
+      };
+    } catch (err) {
+      if (err instanceof ForbiddenError) throw err;
+      logger.debug({ err }, 'auth: hosted jwt verification failed');
+      throw new ForbiddenError('bad_hosted_token');
+    }
+  }
+
   try {
     const claims = await clerkVerifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
     return { kind: 'browser', userId: claims.sub };
@@ -82,6 +112,12 @@ export async function authorizeThread(caller: Caller, threadId: string): Promise
       throw new ForbiddenError('cross_workspace');
     }
     return thread.workspace_id;
+  }
+  if (caller.kind === 'hosted') {
+    // Hosted is pre-authorized to its own Thread only — the JWT itself is
+    // the proof. Any cross-Thread access attempt is an immediate 403.
+    if (caller.threadId !== threadId) throw new ForbiddenError('cross_thread');
+    return caller.workspaceId;
   }
   try {
     const { workspaceId } = await assertMembership(caller.userId, threadId);
@@ -161,10 +197,13 @@ export const ensureCommentAccess: RequestHandler<{ id: string }> = async (req, r
   }
 };
 
-// SSE and other user-facing routes that don't accept workspace API keys.
-// Mount after bearerAuth, before ensureThreadAccess.
+// SSE and other user-facing routes — reject any non-User caller. Hosted
+// is also rejected (a Sandbox-side agent has no business reading the SSE
+// feed; its wake-up channel is Mailbox). Name kept as `rejectAgent` for
+// the one mount site; rename to `rejectNonUser` when a third non-User
+// kind appears.
 export const rejectAgent: RequestHandler = (req, res, next) => {
-  if (req.caller.kind === 'agent') {
+  if (req.caller.kind === 'agent' || req.caller.kind === 'hosted') {
     res.status(403).json({ error: 'forbidden' });
     return;
   }

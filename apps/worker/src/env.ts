@@ -10,6 +10,11 @@ const schema = z.object({
   // CLI auth — shared secret between Console (code mint) and Worker (verify).
   // Must be at least 32 bytes of entropy. Same value in both processes.
   CLI_AUTH_SECRET: z.string().min(32),
+  // Hosted Session JWT signing secret — same shape as CLI_AUTH_SECRET, but
+  // distinct so rotating one doesn't blast-radius the other. Worker mints
+  // sk_hosted_* JWTs at VM-provision time and verifies them on every
+  // incoming MCP call from the Sandbox.
+  HOSTED_AUTH_SECRET: z.string().min(32),
   // Token hash pepper — added to SHA-256 input so a stolen DB dump cannot be
   // brute-forced without this value. Rotate requires re-issuing all tokens.
   TOKEN_HASH_PEPPER: z.string().min(32),

@@ -16,9 +16,10 @@ import { logger } from '../../logger';
 export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, res) => {
   const threadId = req.params.id;
 
-  // Agent tokens are workspace-scoped and don't represent a User; this
-  // preflight is meant for CLI + browser users only.
-  if (req.caller.kind === 'agent') {
+  // Agent + Hosted tokens don't represent a User; this preflight is meant
+  // for CLI + browser users only. Hosted Sandboxes get their thread/workspace
+  // identity straight from their own JWT claims — no need for this route.
+  if (req.caller.kind === 'agent' || req.caller.kind === 'hosted') {
     res.status(403).json({ error: 'forbidden' });
     return;
   }

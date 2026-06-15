@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createClerkClient } from '@clerk/backend';
 import { db } from '@tempo/db/client';
-import { userTokens } from '@tempo/db/schema';
+import { threads, userTokens } from '@tempo/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import * as jose from 'jose';
 import { customAlphabet } from 'nanoid';
@@ -201,4 +201,41 @@ export async function refreshUserToken(refreshTokenPlaintext: string): Promise<{
     user_id: result.userId,
     email,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Hosted Session tokens — stateless HS256 JWT, no DB row, no in-memory map.
+// Worker mints one at VM-provision time (Task 2.5) and the Sandbox carries it
+// as Bearer for every MCP call. ~2-hour expiry covers the longest reasonable
+// single Turn; the VM is reaped at ~10 min idle (Task 2.6), so practical
+// token lifetime ceiling is one Turn's wall clock — not session length.
+
+const HOSTED_TOKEN_TTL_MS = 2 * 60 * 60 * 1000;
+
+export async function issueHostedToken(threadId: string): Promise<{
+  token: string;
+  session_id: string;
+  expires_at: Date;
+}> {
+  const [thread] = await db
+    .select({ workspace_id: threads.workspace_id })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+  if (!thread) throw new Error(`issueHostedToken: thread ${threadId} not found`);
+
+  const sessionId = `hst_${rowId()}`;
+  const expiresAt = new Date(Date.now() + HOSTED_TOKEN_TTL_MS);
+  const secret = new TextEncoder().encode(env.HOSTED_AUTH_SECRET);
+  const jwt = await new jose.SignJWT({
+    kind: 'hosted',
+    thread_id: threadId,
+    workspace_id: thread.workspace_id,
+    session_id: sessionId,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime(expiresAt)
+    .sign(secret);
+  return { token: `sk_hosted_${jwt}`, session_id: sessionId, expires_at: expiresAt };
 }
