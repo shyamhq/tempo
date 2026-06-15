@@ -12,7 +12,12 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "dev:worker": "bun run --filter @tempo/worker dev",
+    "build:worker": "bun run --filter @tempo/worker build",
+    "start:worker": "bun run --filter @tempo/worker start",
+    "typecheck:worker": "bun run --filter @tempo/worker typecheck",
+    "lint:worker": "bun run --filter @tempo/worker lint"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
