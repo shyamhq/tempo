@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { Actor, AgentPlanBlocks, AgentPlanState, Plan } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
+import { readPlanRow } from '@tempo/db/queries/plans';
 import { plans, threads } from '@tempo/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { logger } from '../logger';
-import { readPlanRow } from './db-queries/plans';
 import { appendEvent } from './event-log';
 import {
   blocksToPmDoc,

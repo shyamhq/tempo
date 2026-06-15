@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./mcp": "./src/mcp.ts",
     "./http": "./src/http.ts",
-    "./events": "./src/events.ts"
+    "./events": "./src/events.ts",
+    "./workflow": "./src/workflow.ts"
   },
   "scripts": {
     "lint": "biome check src",

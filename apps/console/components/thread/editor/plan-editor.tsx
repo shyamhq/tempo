@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Comment } from '@tempo/contracts';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useWorkerApi } from '@/hooks/use-worker-api';
 import { alertBlockTypeItems, alertSlashItems } from '@/lib/blocks/alert-block';
 import { htmlBlockTypeItem, htmlSlashItem } from '@/lib/blocks/html-block';
 import { planSchemaClient } from '@/lib/plan-schema-client';
@@ -135,6 +136,7 @@ export function PlanEditor({
   readOnly?: boolean;
 }) {
   const qc = useQueryClient();
+  const wApi = useWorkerApi();
   const rootRef = useRef<HTMLDivElement>(null);
   const commentsRef = useRef(comments);
   commentsRef.current = comments;
@@ -163,6 +165,7 @@ export function PlanEditor({
       new CommentThreadBridge({
         threadId,
         devUser: DEV_USER,
+        wApi,
         getCommentsSnapshot: () => commentsRef.current,
         onCommentsChanged: (next) => {
           commentsRef.current = next;
@@ -173,7 +176,7 @@ export function PlanEditor({
         invalidate: () => qc.invalidateQueries({ queryKey: ['thread', threadId] }),
         captureAnchor: () => readAnchor(editorRef.current),
       }),
-    [threadId, qc],
+    [threadId, qc, wApi],
   );
 
   // Fire a bridge.emitChange whenever the comments snapshot changes so any

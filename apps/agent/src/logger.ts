@@ -6,10 +6,16 @@ import { env } from './env';
 // stderr is the conventional channel for tool diagnostics — matches gh, aws,
 // terraform, etc. The pino-pretty transport's `destination` accepts an FD
 // number; 2 = stderr.
+// verbose mode forces debug level so the per-tempo-call / per-event traces in
+// stream-pump and connect become visible.
+const level = env.TEMPO_LOG_MODE === 'verbose' ? 'debug' : env.LOG_LEVEL;
+
 export const logger = pino({
-  level: env.LOG_LEVEL,
+  level,
   transport: {
     target: 'pino-pretty',
     options: { colorize: true, destination: 2 },
   },
 });
+
+export const verbose = env.TEMPO_LOG_MODE === 'verbose';

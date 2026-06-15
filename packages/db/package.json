@@ -6,7 +6,8 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
     "./client": "./src/client.ts",
-    "./ids": "./src/ids.ts"
+    "./ids": "./src/ids.ts",
+    "./queries/plans": "./src/queries/plans.ts"
   },
   "scripts": {
     "lint": "biome check src",

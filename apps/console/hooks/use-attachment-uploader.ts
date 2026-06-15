@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api-client';
+import { useWorkerApi } from '@/hooks/use-worker-api';
 
 // One pending upload's lifecycle: hold the local preview blob URL the
 // composer renders into the thumbnail tray, the eventual attachment id the
@@ -35,6 +35,7 @@ function isAllowedMime(m: string): m is (typeof ALLOWED_MIMES)[number] {
 }
 
 export function useAttachmentUploader(threadId: string) {
+  const wApi = useWorkerApi();
   const [items, setItems] = useState<PendingAttachment[]>([]);
   // Track local blob URLs so we can revoke them on remove / unmount. The
   // hook owns this lifecycle entirely; consumers only read `localUrl`.
@@ -98,7 +99,7 @@ export function useAttachmentUploader(threadId: string) {
       await Promise.all(
         queued.map(async (q) => {
           try {
-            const init = await api.initAttachment(threadId, {
+            const init = await wApi.initAttachment(threadId, {
               mime: q.mime,
               byte_len: q.byteLen,
             });
@@ -127,7 +128,7 @@ export function useAttachmentUploader(threadId: string) {
         }),
       );
     },
-    [threadId],
+    [threadId, wApi],
   );
 
   const reset = useCallback(() => {

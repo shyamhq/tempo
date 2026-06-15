@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import type { ThreadId } from '@tempo/contracts';
-import { logger } from './logger';
+import { logger, verbose } from './logger';
 
 // Parse and forward claude's --output-format stream-json output to Worker's
 // /api/agent-events. One JSON object per line; each line maps to one event
@@ -36,6 +36,10 @@ export function startStreamPump(args: {
       logger.debug({ line }, 'stream-pump: non-JSON stdout line');
       return;
     }
+    if (verbose) {
+      const m = msg as Record<string, unknown>;
+      logger.debug({ type: m.type, subtype: m.subtype }, 'claude line');
+    }
     handleMessage(msg, threadId, token, workerUrl);
   });
 }
@@ -57,6 +61,14 @@ function handleMessage(msg: unknown, threadId: ThreadId, token: string, workerUr
           },
         });
       } else if (block.type === 'tool_use' && 'name' in block) {
+        // Verbose trace: every tempo MCP call. Claude prefixes MCP tools with
+        // `mcp__<server>__<tool>` — surface just the bare tool name.
+        if (block.name.startsWith('mcp__tempo__')) {
+          logger.debug(
+            { tool: block.name.replace(/^mcp__tempo__/, ''), input: block.input },
+            'tempo call',
+          );
+        }
         void postEvent(workerUrl, token, {
           thread_id: threadId,
           event: {
@@ -142,7 +154,13 @@ async function postEvent(
         },
         body: JSON.stringify(body),
       });
-      if (res.ok || res.status < 500) return; // 4xx are client errors — don't retry
+      if (res.ok || res.status < 500) {
+        logger.debug(
+          { kind: (body.event as Record<string, unknown>)?.kind, status: res.status },
+          'event',
+        );
+        return; // 4xx are client errors — don't retry
+      }
       logger.debug({ status: res.status, attempt }, 'stream-pump: server error, will retry');
     } catch (err) {
       logger.debug({ err, attempt }, 'stream-pump: network error, will retry');

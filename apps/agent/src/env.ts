@@ -8,13 +8,12 @@ const Env = z.object({
   // https://worker.tempo.dev.
   TEMPO_WORKER_URL: z.string().url().default('http://localhost:3001'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // `verbose` bumps LOG_LEVEL to debug and surfaces every tempo MCP tool call
+  // and every event POSTed to Worker. Useful when `connect` appears stuck.
+  TEMPO_LOG_MODE: z.enum(['normal', 'verbose']).default('normal'),
   // Passed as `--model` to `claude`. Accepts an alias (`haiku`, `sonnet`,
   // `opus`) or a full model ID.
   TEMPO_AGENT_MODEL: z.string().default('sonnet'),
-  // TODO(slice-1c-2b): moves to Worker with r2-fetcher. Origin allowlist for
-  // the attachment fetcher — guards against SSRF if the response is tampered.
-  // Defaults to the local MinIO endpoint; in prod, set to the R2 endpoint.
-  TEMPO_ATTACHMENT_ORIGIN: z.string().url().default('http://127.0.0.1:9000'),
 });
 
 const parsed = Env.safeParse(process.env);

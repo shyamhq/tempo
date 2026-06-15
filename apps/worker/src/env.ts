@@ -15,6 +15,10 @@ const schema = z.object({
   TOKEN_HASH_PEPPER: z.string().min(32),
   // Clerk secret key — used by @clerk/backend to verify JWTs and query memberships.
   CLERK_SECRET_KEY: z.string().startsWith('sk_'),
+  // CORS origin for browser → Worker requests. Single origin; the `cors`
+  // package does NOT split on commas. In dev: http://localhost:3000.
+  // In prod: https://console.tempo.dev.
+  CONSOLE_ORIGIN: z.string().url().default('http://localhost:3000'),
 });
 
 const parsed = schema.safeParse(process.env);

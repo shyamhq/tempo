@@ -5,7 +5,7 @@ import { Loader2, RefreshCcw } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
-import { api } from '@/lib/api-client';
+import { useWorkerApi } from '@/hooks/use-worker-api';
 
 // Dev-initiated "go look at the Plan again" nudge. Auto-save no longer pings
 // the Agent on every edit; the Dev clicks this when they're ready for a
@@ -21,6 +21,7 @@ export function RecheckPlanButton({
   threadId: string;
   sessionStatus: SessionStatus;
 }) {
+  const wApi = useWorkerApi();
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>('idle');
 
@@ -31,7 +32,7 @@ export function RecheckPlanButton({
     if (disabled) return;
     setSending(true);
     try {
-      await api.recheckPlan(threadId);
+      await wApi.recheckPlan(threadId);
       setFeedback('sent');
     } catch {
       setFeedback('failed');

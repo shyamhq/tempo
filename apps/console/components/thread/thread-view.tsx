@@ -22,13 +22,15 @@ const PlanEditor = dynamic(
   { ssr: false },
 );
 
+import { useAuth } from '@clerk/nextjs';
 import { type SaveStatus, usePlanAutoSave } from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
 import { SessionPill } from '@/components/thread/pills';
 import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
 import { Button } from '@/components/ui/button';
 import { useLiveActivityGroup, useThreadEvents } from '@/hooks/use-thread-events';
-import { api } from '@/lib/api-client';
+import { useWorkerApi } from '@/hooks/use-worker-api';
+import { api, WORKER_URL } from '@/lib/api-client';
 import { useThreadUi } from '@/store/thread-ui';
 
 type View = z.infer<typeof GetThreadResponse>;
@@ -37,6 +39,31 @@ const SAVED_PILL_FADE_MS = 2000;
 
 export function ThreadView({ threadId, initial }: { threadId: string; initial: View }) {
   const qc = useQueryClient();
+  const wApi = useWorkerApi();
+  const { getToken } = useAuth();
+
+  // unloadBeacon needs a Bearer token synchronously (page is closing — an
+  // async getToken() won't resolve in time). Keep the latest Clerk JWT in a
+  // ref, refreshed every 30s (Clerk tokens expire in ~60s). Best-effort: if
+  // the user navigates between the 30s ticks the ref may briefly be stale.
+  const beaconTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const t = await getToken();
+        if (!cancelled) beaconTokenRef.current = t;
+      } catch {
+        // ignore — beacon will silently skip on missing token
+      }
+    };
+    refresh();
+    const interval = setInterval(refresh, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [getToken]);
   const { data } = useQuery<View>({
     queryKey: ['thread', threadId],
     queryFn: () => api.getThread(threadId),
@@ -117,13 +144,14 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           : prev,
       );
       try {
-        await api.writePlan(threadId, { pm_json: pmJson });
+        await wApi.writePlan(threadId, { pm_json: pmJson });
       } catch (e) {
         qc.invalidateQueries({ queryKey: ['thread', threadId] });
         throw e;
       }
     },
-    [threadId, qc],
+    // biome-ignore lint/correctness/useExhaustiveDependencies: wApi is stable (memoized in useWorkerApi); adding wApi.writePlan would cause biome to warn about the whole object.
+    [threadId, qc, wApi],
   );
 
   const unloadBeacon = useCallback(
@@ -136,9 +164,18 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       // save may still survive unload on some browsers.
       const body = JSON.stringify({ pm_json: pmJson });
       if (body.length > 60_000) return;
-      fetch(`/api/threads/${threadId}/plan`, {
+      // The plan POST handler lives on Worker (slice 1c-2b). Bearer JWT must
+      // be set synchronously since async token fetch cannot resolve before
+      // page unload — read from beaconTokenRef which a separate effect keeps
+      // refreshed every 30s (Clerk JWTs expire in ~60s).
+      const token = beaconTokenRef.current;
+      if (!token) return; // best-effort; no token = skip beacon
+      fetch(`${WORKER_URL}/api/threads/${threadId}/plan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body,
         keepalive: true,
       }).catch(() => {});

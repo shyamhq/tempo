@@ -30,7 +30,7 @@ The user runs **their own Claude Code**; Tempo is a remote MCP server it connect
 - Zero inference COGS for us.
 - Strongest privacy story: source code never leaves the user's machine.
 - Agent-agnostic for free — Cursor, Codex, etc. connect to the same MCP endpoint.
-- Onboarding: `npx tempo-agent init` writes `.mcp.json` + subagent defs + a `/tempo-plan` command into the repo, checked in. Teammates 2..N get zero-setup; one person runs `init` once per repo.
+- Onboarding: `tempo-agent init` runs an OAuth login and saves the user-scoped token to `~/.tempo/credentials.json` — it does **not** write any repo file. `tempo-agent connect <thread-id>` writes an ephemeral `/tmp/tempo-<pid>.json` MCP config carrying the Bearer token and spawns the user's own `claude` binary against it; the temp file is unlinked when the wrapper exits. Teammates each run `tempo-agent init` once (per machine) to mint their own credential; there is nothing to check in.
 - **Limit:** synchronous only. The agent works while the user's session is open. Async (a comment 40 min later) is owned by the hosted runtime, by design.
 
 ### Hosted (paid tier, Tempo-operated)

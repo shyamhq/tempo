@@ -1,0 +1,79 @@
+import { CreateCommentRequest } from '@tempo/contracts/http';
+import type { RequestHandler } from 'express';
+import { logger } from '../../logger';
+import {
+  CommentNotFoundError,
+  createComment,
+  deleteComment,
+  resolveComment,
+  unresolveComment,
+} from '../../server/comments';
+
+// POST /api/threads/:id/comments — ensureThreadAccess middleware authorizes.
+export const createCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  const parsed = CreateCommentRequest.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'invalid_input', details: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const comment = await createComment({
+      threadId: req.params.id,
+      ...parsed.data,
+      anchor_block_id: parsed.data.anchor_block_id ?? null,
+    });
+    res.json({ comment });
+  } catch (err) {
+    logger.error({ err }, 'createComment failed');
+    res.status(500).json({ error: 'internal_error' });
+  }
+};
+
+// DELETE /api/comments/:id — ensureCommentAccess middleware authorizes.
+export const deleteCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  try {
+    await deleteComment(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      res.status(404).json({ error: 'comment_not_found' });
+      return;
+    }
+    if ((err as Error).message === 'thread_approved') {
+      res.status(409).json({ error: 'thread_approved' });
+      return;
+    }
+    logger.error({ err }, 'deleteComment failed');
+    res.status(500).json({ error: 'internal_error' });
+  }
+};
+
+// POST /api/comments/:id/resolve
+export const resolveCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  try {
+    await resolveComment(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    if ((err as Error).message === 'comment_not_found') {
+      res.status(404).json({ error: 'comment_not_found' });
+      return;
+    }
+    logger.error({ err }, 'resolveComment failed');
+    res.status(500).json({ error: 'internal_error' });
+  }
+};
+
+// POST /api/comments/:id/unresolve
+export const unresolveCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  try {
+    await unresolveComment(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    if ((err as Error).message === 'comment_not_found') {
+      res.status(404).json({ error: 'comment_not_found' });
+      return;
+    }
+    logger.error({ err }, 'unresolveComment failed');
+    res.status(500).json({ error: 'internal_error' });
+  }
+};

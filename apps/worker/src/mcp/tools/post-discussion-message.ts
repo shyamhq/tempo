@@ -1,0 +1,69 @@
+import { PostDiscussionMessageInput } from '@tempo/contracts/mcp';
+import { getThreadIdForMcpSession } from '../../server/auth-lookup';
+import { postMessage } from '../../server/discussion';
+
+export function registerPostDiscussionMessage(
+  server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
+  getMcpSessionId: () => string | undefined,
+): void {
+  server.tool(
+    'tempo_post_discussion_message',
+    'Post a Discussion Message to the Thread. Use for free-form prose replies to the Dev, or to post a batch of structured questions (questions array). The Dev sees question batches as a stepper card. Only agents may set questions; dev messages are text-only.',
+    PostDiscussionMessageInput.shape,
+    async (args) => {
+      const mcpSessionId = getMcpSessionId();
+      if (!mcpSessionId) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: 'session_not_found',
+                message: 'call tempo_attach before this tool',
+              }),
+            },
+          ],
+        };
+      }
+      const threadId = await getThreadIdForMcpSession(mcpSessionId);
+      if (!threadId) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: 'session_not_found',
+                message: 'you must call tempo_attach before this tool',
+              }),
+            },
+          ],
+        };
+      }
+      try {
+        const message = await postMessage(threadId, 'agent', args);
+        return { content: [{ type: 'text', text: JSON.stringify({ message_id: message.id }) }] };
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === 'invalid_input') {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: 'invalid_input',
+                  message: 'message must carry text, questions, or attachments',
+                }),
+              },
+            ],
+          };
+        }
+        if (msg === 'thread_approved') {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'thread_approved' }) }],
+          };
+        }
+        throw err;
+      }
+    },
+  );
+}

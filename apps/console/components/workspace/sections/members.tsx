@@ -45,9 +45,7 @@ export function MembersSection() {
   // clicks a row the store carries an explicit id; until then we don't write
   // to the store from an effect — derive inline.
   const selected =
-    members.find((m) => m.user_id === selectedMemberId) ??
-    members.find((m) => m.user_id) ??
-    null;
+    members.find((m) => m.user_id === selectedMemberId) ?? members.find((m) => m.user_id) ?? null;
 
   return (
     <div className="flex h-full">

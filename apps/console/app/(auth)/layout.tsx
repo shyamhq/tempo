@@ -5,8 +5,6 @@ import type { ReactNode } from 'react';
 // an org pinned or before the user is signed in at all.
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-canvas px-4">
-      {children}
-    </main>
+    <main className="flex min-h-dvh items-center justify-center bg-canvas px-4">{children}</main>
   );
 }

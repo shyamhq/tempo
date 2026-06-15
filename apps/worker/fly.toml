@@ -1,6 +1,9 @@
 app = "tempo-worker"
 primary_region = "iad"
 
+# Custom domain: worker.tempo.dev → tempo-worker.fly.dev (CNAME at Cloudflare).
+# TLS cert: `fly certs create worker.tempo.dev` (Dev manual step after deploy).
+
 [build]
   dockerfile = "Dockerfile"
 
@@ -15,6 +18,11 @@ primary_region = "iad"
   auto_stop_machines = "stop"
   auto_start_machines = true
   min_machines_running = 0
+  # Long-poll connections hold up to 30 s; Fly's idle timeout must exceed that.
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
 
   [[http_service.checks]]
     interval = "10s"

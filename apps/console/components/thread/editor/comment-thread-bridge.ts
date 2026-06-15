@@ -3,7 +3,7 @@
 import type { CommentBody, CommentData, ThreadData, User } from '@blocknote/core/comments';
 import { DefaultThreadStoreAuth, ThreadStore } from '@blocknote/core/comments';
 import type { Comment, Reply } from '@tempo/contracts';
-import { api } from '@/lib/api-client';
+import type { workerApi } from '@/lib/api-client';
 
 // "Comment thread" in BlockNote's vocabulary is the annotation entity that
 // holds an anchored Comment + its Replies. In Tempo's vocabulary the same
@@ -24,6 +24,9 @@ import { api } from '@/lib/api-client';
 export type CommentThreadBridgeOptions = {
   threadId: string;
   devUser: User;
+  /** Worker API client (Bearer Clerk JWT). Passed from the React parent via
+   * useWorkerApi() so the bridge does not need to call hooks directly. */
+  wApi: ReturnType<typeof workerApi>;
   /** Pulled fresh on every read — we never cache; the parent already keeps
    * one authoritative snapshot via TanStack Query. */
   getCommentsSnapshot: () => Comment[];
@@ -41,6 +44,7 @@ export type CommentThreadBridgeOptions = {
 export class CommentThreadBridge extends ThreadStore {
   private readonly threadId: string;
   private readonly devUser: User;
+  private readonly wApi: ReturnType<typeof workerApi>;
   private readonly getCommentsSnapshot: () => Comment[];
   private readonly onCommentsChanged: (comments: Comment[]) => void;
   private readonly invalidate: () => void;
@@ -51,6 +55,7 @@ export class CommentThreadBridge extends ThreadStore {
     super(new DefaultThreadStoreAuth(opts.devUser.id, 'editor'));
     this.threadId = opts.threadId;
     this.devUser = opts.devUser;
+    this.wApi = opts.wApi;
     this.getCommentsSnapshot = opts.getCommentsSnapshot;
     this.onCommentsChanged = opts.onCommentsChanged;
     this.invalidate = opts.invalidate;
@@ -68,7 +73,7 @@ export class CommentThreadBridge extends ThreadStore {
   }): Promise<ThreadData> {
     const text = extractText(options.initialComment.body);
     const anchor = this.captureAnchor();
-    const created = await api.createComment(this.threadId, {
+    const created = await this.wApi.createComment(this.threadId, {
       // Read the PM selection BEFORE the POST — BlockNote awaits this method
       // before stamping the `comment` mark on the doc (see
       // `@blocknote/core/src/comments/extension.ts` createThread), so the
@@ -90,7 +95,7 @@ export class CommentThreadBridge extends ThreadStore {
     comment: { body: CommentBody; metadata?: unknown };
   }): Promise<CommentData> {
     const text = extractText(options.comment.body);
-    const reply = await api.createReply(options.threadId, {
+    const reply = await this.wApi.createReply(options.threadId, {
       payload: { text },
       attachments: [],
     });
@@ -104,7 +109,7 @@ export class CommentThreadBridge extends ThreadStore {
   }
 
   async resolveThread(options: { threadId: string }): Promise<void> {
-    await api.resolveComment(options.threadId);
+    await this.wApi.resolveComment(options.threadId);
     const next = this.getCommentsSnapshot().map((c) =>
       c.id === options.threadId ? { ...c, resolved_by: 'dev' as const } : c,
     );
@@ -112,7 +117,7 @@ export class CommentThreadBridge extends ThreadStore {
   }
 
   async unresolveThread(options: { threadId: string }): Promise<void> {
-    await api.unresolveComment(options.threadId);
+    await this.wApi.unresolveComment(options.threadId);
     const next = this.getCommentsSnapshot().map((c) =>
       c.id === options.threadId ? { ...c, resolved_by: null } : c,
     );
@@ -128,7 +133,7 @@ export class CommentThreadBridge extends ThreadStore {
   }
 
   async deleteThread(options: { threadId: string }): Promise<void> {
-    await api.deleteComment(options.threadId);
+    await this.wApi.deleteComment(options.threadId);
     const next = this.getCommentsSnapshot().filter((c) => c.id !== options.threadId);
     this.commitComments(next);
   }

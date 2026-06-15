@@ -1,11 +1,14 @@
 'use client';
 
+import { useAuth } from '@clerk/nextjs';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTodo } from '@tempo/contracts';
 import { Event, EventKind } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { useEffect, useRef } from 'react';
 import type { z } from 'zod';
+import { workerEventsUrl } from '../lib/api-client';
 
 type ThreadView = z.infer<typeof GetThreadResponse>;
 
@@ -67,71 +70,87 @@ export function useThreadEvents(
   onPlanEditedByAgent?: () => void,
 ) {
   const qc = useQueryClient();
+  const { getToken } = useAuth();
   const cursorRef = useRef(initialCursor);
   cursorRef.current = initialCursor;
   // Latest-ref so a new callback identity on every parent render doesn't
-  // re-subscribe the EventSource (the effect deps are [threadId, qc] only).
+  // re-subscribe (the effect deps are [threadId, qc] only).
   const planEditedByAgentRef = useRef(onPlanEditedByAgent);
   planEditedByAgentRef.current = onPlanEditedByAgent;
 
   useEffect(() => {
     if (!threadId) return;
-    let stopped = false;
-    let es: EventSource | null = null;
+    // AbortController lets us cancel the fetchEventSource stream on cleanup.
+    const controller = new AbortController();
 
-    const open = () => {
-      if (stopped) return;
-      const url = `/api/threads/${threadId}/events?cursor=${encodeURIComponent(cursorRef.current)}`;
-      es = new EventSource(url);
-      const handle = (msg: MessageEvent) => {
-        try {
-          const parsed = Event.safeParse(JSON.parse(msg.data));
-          if (!parsed.success) return;
-          const ev = parsed.data;
-          cursorRef.current = ev.id;
-          apply(qc, threadId, ev);
-          if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
-        } catch {
-          // ignore malformed frame
-        }
-      };
-      // Server emits `event: <kind>` frames — EventSource routes those to
-      // named listeners, not onmessage. Subscribe to every known kind.
-      for (const kind of EventKind.options) {
-        es.addEventListener(kind, handle as EventListener);
-      }
-      // Ephemeral `presence` frames are SSE-only (never persisted) and carry
-      // { fresh: boolean }. Mirror into the LiveActivity cache so the pill
-      // can flip on heartbeat staleness without a refetch.
-      es.addEventListener('presence', (evt) => {
-        try {
-          const data = JSON.parse((evt as MessageEvent).data);
-          if (typeof data?.fresh !== 'boolean') return;
-          qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
-            ...(prev ?? EMPTY_ACTIVITY),
-            agentPresent: data.fresh,
-          }));
-        } catch {
-          // ignore malformed frame
-        }
+    const run = async () => {
+      await fetchEventSource(workerEventsUrl(threadId, cursorRef.current), {
+        signal: controller.signal,
+        // Override the underlying fetch so the library calls this on every
+        // (re)connect. We fetch a fresh Clerk JWT each attempt — without this,
+        // the library reuses headers captured at the first call, and a JWT
+        // expiry mid-session permanently 401s the stream.
+        fetch: async (input, init) => {
+          const token = await getToken();
+          return globalThis.fetch(input, {
+            ...init,
+            headers: {
+              ...init?.headers,
+              Authorization: token ? `Bearer ${token}` : '',
+            },
+          });
+        },
+        onopen: async (res) => {
+          if (!res.ok) throw new Error(`SSE open failed: ${res.status}`);
+        },
+        onmessage: (msg) => {
+          if (msg.event === 'presence') {
+            try {
+              const data = JSON.parse(msg.data);
+              if (typeof data?.fresh !== 'boolean') return;
+              qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
+                ...(prev ?? EMPTY_ACTIVITY),
+                agentPresent: data.fresh,
+              }));
+            } catch {
+              // ignore malformed frame
+            }
+            return;
+          }
+          // All other events carry a typed Event payload.
+          if (!msg.event || !EventKind.options.includes(msg.event as z.infer<typeof EventKind>))
+            return;
+          try {
+            const parsed = Event.safeParse(JSON.parse(msg.data));
+            if (!parsed.success) return;
+            const ev = parsed.data;
+            cursorRef.current = ev.id;
+            apply(qc, threadId, ev);
+            if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
+          } catch {
+            // ignore malformed frame
+          }
+        },
+        onerror: (err) => {
+          // Re-throw to let fetchEventSource retry with backoff. If aborted,
+          // the library will not retry.
+          throw err;
+        },
+      }).catch(() => {
+        // Swallow abort errors on cleanup; other errors are retried by the library.
       });
-      es.onerror = () => {
-        es?.close();
-        if (stopped) return;
-        // brief backoff before reconnect
-        setTimeout(open, 1500);
-      };
     };
-    open();
+
+    run();
+
     return () => {
-      stopped = true;
-      es?.close();
+      controller.abort();
       // Drop the live activity entry so a remount or thread-switch doesn't
       // flash the previous Agent run's last todos or tool calls before fresh
       // events arrive.
       qc.removeQueries({ queryKey: liveActivityKey(threadId), exact: true });
     };
-  }, [threadId, qc]);
+  }, [threadId, qc, getToken]);
 }
 
 function apply(

@@ -3,7 +3,7 @@
 import type { DiscussionMessage, Question } from '@tempo/contracts';
 import { Check, ChevronDown, Sparkles } from 'lucide-react';
 import { useState } from 'react';
-import { api } from '@/lib/api-client';
+import { useWorkerApi } from '@/hooks/use-worker-api';
 import { MarkdownText } from '../markdown-text';
 import { AgentIdentity } from './agent-identity';
 
@@ -85,6 +85,7 @@ export function LiveQuestionCard({
 }
 
 function Stepper({ questions, threadId }: { questions: Question[]; threadId: string }) {
+  const wApi = useWorkerApi();
   const total = questions.length;
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<DraftMap>(() => initDraft(questions));
@@ -135,7 +136,7 @@ function Stepper({ questions, threadId }: { questions: Question[]; threadId: str
     setSubmitting(true);
     setError(null);
     try {
-      await api.postDiscussionMessage(threadId, { text });
+      await wApi.postDiscussionMessage(threadId, { text });
       // No further UI work — when the new Dev message lands via SSE, the
       // liveCard derivation flips and this card unmounts automatically.
     } catch (e) {

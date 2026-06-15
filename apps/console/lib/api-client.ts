@@ -74,6 +74,10 @@ const CreateInvitationResponse = z.object({
 export type WorkspaceMember = z.infer<typeof MembersResponse>['members'][number];
 export type WorkspaceInvitation = z.infer<typeof InvitationsResponse>['invitations'][number];
 
+// ---------------------------------------------------------------------------
+// Console-side request helper (session cookie auth, relative paths)
+// ---------------------------------------------------------------------------
+
 async function request<T>(
   method: string,
   path: string,
@@ -107,6 +111,40 @@ async function request<T>(
   return responseSchema.parse(json);
 }
 
+// ---------------------------------------------------------------------------
+// Worker-side request helper (Bearer Clerk JWT, absolute Worker URL)
+// The token getter is passed per-call so callers can supply useAuth().getToken.
+// ---------------------------------------------------------------------------
+
+export const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:3001';
+
+async function workerRequest<T>(
+  method: string,
+  path: string,
+  body: unknown,
+  responseSchema: z.ZodType<T>,
+  getToken: () => Promise<string | null>,
+): Promise<T> {
+  const token = await getToken();
+  if (!token) throw new ApiError(401, 'no_clerk_token', path);
+  const url = `${WORKER_URL}${path}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new ApiError(res.status, text || res.statusText, path);
+  }
+  const json = await res.json();
+  return responseSchema.parse(json);
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -116,6 +154,11 @@ export class ApiError extends Error {
     super(`API ${status} on ${path}: ${bodyText.slice(0, 200)}`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Console-bound API (session cookie, server-relative paths)
+// These routes live in Console and do NOT migrate to Worker.
+// ---------------------------------------------------------------------------
 
 export const api = {
   listThreads: (spaceId?: string) =>
@@ -153,27 +196,6 @@ export const api = {
   getConnectToken: (threadId: string) =>
     request('GET', `/api/threads/${threadId}/connect-token`, undefined, GetConnectTokenResponse),
 
-  writePlan: (threadId: string, input: z.infer<typeof WritePlanRequest>) =>
-    request('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),
-
-  recheckPlan: (threadId: string) =>
-    request('POST', `/api/threads/${threadId}/plan/recheck`, {}, RecheckPlanResponse),
-
-  createComment: (threadId: string, input: z.input<typeof CreateCommentRequest>) =>
-    request('POST', `/api/threads/${threadId}/comments`, input, CreateCommentResponse),
-
-  resolveComment: (commentId: string) =>
-    request('POST', `/api/comments/${commentId}/resolve`, {}, ResolveCommentResponse),
-
-  unresolveComment: (commentId: string) =>
-    request('POST', `/api/comments/${commentId}/unresolve`, {}, UnresolveCommentResponse),
-
-  deleteComment: (commentId: string) =>
-    request('DELETE', `/api/comments/${commentId}`, undefined, DeleteCommentResponse),
-
-  createReply: (commentId: string, input: z.input<typeof CreateReplyRequest>) =>
-    request('POST', `/api/comments/${commentId}/replies`, input, CreateReplyResponse),
-
   approveThread: (threadId: string) =>
     request('POST', `/api/threads/${threadId}/approve`, {}, ApproveThreadResponse),
 
@@ -185,20 +207,6 @@ export const api = {
 
   updateThread: (threadId: string, input: z.infer<typeof UpdateThreadRequest>) =>
     request('PATCH', `/api/threads/${encodeURIComponent(threadId)}`, input, UpdateThreadResponse),
-
-  postDiscussionMessage: (
-    threadId: string,
-    input: z.input<typeof CreateDiscussionMessageRequest>,
-  ) =>
-    request(
-      'POST',
-      `/api/threads/${threadId}/discussion/messages`,
-      input,
-      CreateDiscussionMessageResponse,
-    ),
-
-  initAttachment: (threadId: string, input: z.input<typeof InitAttachmentInput>) =>
-    request('POST', `/api/threads/${threadId}/attachments/init`, input, InitAttachmentResult),
 
   updateWorkspace: (input: { name?: string }) =>
     request('PATCH', '/api/workspace', input, OkResponse),
@@ -222,3 +230,57 @@ export const api = {
   revokeInvitation: (id: string) =>
     request('DELETE', `/api/workspace/invitations/${id}`, undefined, OkResponse),
 };
+
+// ---------------------------------------------------------------------------
+// Worker-bound API factory (Bearer Clerk JWT, absolute Worker URL)
+// Pass getToken from useAuth().getToken(); Worker reads sub + org_id from the
+// default Clerk session JWT — no custom JWT template needed.
+// These are the routes migrated from Console → Worker in slice 1c-2b.
+// ---------------------------------------------------------------------------
+
+export function workerApi(getToken: () => Promise<string | null>) {
+  const w = <T>(method: string, path: string, body: unknown, schema: z.ZodType<T>) =>
+    workerRequest(method, path, body, schema, getToken);
+
+  return {
+    writePlan: (threadId: string, input: z.input<typeof WritePlanRequest>) =>
+      w('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),
+
+    recheckPlan: (threadId: string) =>
+      w('POST', `/api/threads/${threadId}/plan/recheck`, {}, RecheckPlanResponse),
+
+    createComment: (threadId: string, input: z.input<typeof CreateCommentRequest>) =>
+      w('POST', `/api/threads/${threadId}/comments`, input, CreateCommentResponse),
+
+    resolveComment: (commentId: string) =>
+      w('POST', `/api/comments/${commentId}/resolve`, {}, ResolveCommentResponse),
+
+    unresolveComment: (commentId: string) =>
+      w('POST', `/api/comments/${commentId}/unresolve`, {}, UnresolveCommentResponse),
+
+    deleteComment: (commentId: string) =>
+      w('DELETE', `/api/comments/${commentId}`, undefined, DeleteCommentResponse),
+
+    createReply: (commentId: string, input: z.input<typeof CreateReplyRequest>) =>
+      w('POST', `/api/comments/${commentId}/replies`, input, CreateReplyResponse),
+
+    postDiscussionMessage: (
+      threadId: string,
+      input: z.input<typeof CreateDiscussionMessageRequest>,
+    ) =>
+      w(
+        'POST',
+        `/api/threads/${threadId}/discussion/messages`,
+        input,
+        CreateDiscussionMessageResponse,
+      ),
+
+    initAttachment: (threadId: string, input: z.input<typeof InitAttachmentInput>) =>
+      w('POST', `/api/threads/${threadId}/attachments/init`, input, InitAttachmentResult),
+  };
+}
+
+// Convenience: the Worker SSE URL for use with fetchEventSource.
+export function workerEventsUrl(threadId: string, cursor: string): string {
+  return `${WORKER_URL}/api/threads/${threadId}/events?cursor=${encodeURIComponent(cursor)}`;
+}

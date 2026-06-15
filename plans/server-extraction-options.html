@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tempo — Server-Domain Extraction Options</title>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#0E0E11',
+      primaryColor: '#1C1C22',
+      primaryBorderColor: '#2A2A33',
+      primaryTextColor: '#E4E4E7',
+      lineColor: '#52525B',
+      secondaryColor: '#27272A',
+      tertiaryColor: '#18181B',
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+    },
+    flowchart: { htmlLabels: true, curve: 'basis' },
+  });
+</script>
+<style>
+  :root {
+    --bg: #0E0E11;
+    --bg-elev: #16161B;
+    --bg-elev-2: #1C1C22;
+    --border: #2A2A33;
+    --text: #E4E4E7;
+    --muted: #A1A1AA;
+    --dim: #71717A;
+    --accent: #818CF8;
+    --accent-soft: rgba(129, 140, 248, 0.12);
+    --warn: #FBBF24;
+    --done: #34D399;
+    --reject: #F87171;
+    --pending: #94A3B8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif; line-height: 1.55; font-size: 15px; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace; }
+
+  .wrap { display: grid; grid-template-columns: 260px 1fr; max-width: 1400px; margin: 0 auto; }
+
+  nav.toc { position: sticky; top: 0; height: 100vh; padding: 32px 24px; border-right: 1px solid var(--border); overflow-y: auto; }
+  nav.toc h1 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+  nav.toc .subtitle { font-size: 12px; color: var(--dim); margin-bottom: 28px; }
+  nav.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: nav; }
+  nav.toc li { counter-increment: nav; margin: 2px 0; }
+  nav.toc li::before { content: counter(nav, decimal-leading-zero); color: var(--dim); margin-right: 10px; font-size: 11px; font-family: ui-monospace, monospace; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  nav.toc a:hover { color: var(--text); }
+
+  main { padding: 56px 64px; max-width: 100%; overflow: hidden; }
+  main > header { margin-bottom: 48px; padding-bottom: 28px; border-bottom: 1px solid var(--border); }
+  main > header h1 { font-size: 30px; margin: 0 0 8px; font-weight: 600; letter-spacing: -0.5px; }
+  main > header .tagline { color: var(--muted); font-size: 15px; max-width: 760px; }
+
+  section { margin-bottom: 56px; }
+  section > h2 { font-size: 22px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.3px; }
+  section > .lead { color: var(--muted); margin: 0 0 20px; max-width: 800px; }
+  section > h3 { font-size: 15px; margin: 24px 0 10px; font-weight: 600; color: var(--text); text-transform: uppercase; letter-spacing: 0.4px; }
+
+  .option { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; padding: 28px; margin: 20px 0; }
+  .option > h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  .option > h2 .pill { margin-left: 8px; }
+  .option .summary { color: var(--muted); margin: 0 0 20px; max-width: 760px; }
+  .option h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--dim); margin: 18px 0 8px; font-weight: 600; }
+
+  pre.tree { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 6px; padding: 14px 18px; overflow-x: auto; font-size: 12.5px; color: var(--text); line-height: 1.6; margin: 0; }
+  pre.tree .root { color: var(--accent); }
+  pre.tree .new { color: var(--done); }
+  pre.tree .gone { color: var(--reject); text-decoration: line-through; }
+  pre.tree .stay { color: var(--muted); }
+
+  .diagram { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin: 12px 0; overflow-x: auto; }
+  .diagram .mermaid { display: flex; justify-content: center; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; vertical-align: middle; margin-right: 4px; }
+  .pill.recommend { background: rgba(52, 211, 153, 0.16); color: var(--done); }
+  .pill.viable { background: rgba(129, 140, 248, 0.14); color: var(--accent); }
+  .pill.reject { background: rgba(248, 113, 113, 0.14); color: var(--reject); }
+  .pill.warn { background: rgba(251, 191, 36, 0.14); color: var(--warn); }
+
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-elev-2); }
+  td.label { color: var(--dim); width: 140px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+  td code { background: var(--bg-elev-2); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+
+  .verdict { background: var(--bg-elev-2); border-left: 3px solid var(--accent); padding: 14px 18px; margin: 16px 0 0; font-size: 14px; }
+  .verdict.good { border-left-color: var(--done); }
+  .verdict.bad { border-left-color: var(--reject); }
+  .verdict strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .glossary { display: grid; grid-template-columns: 140px 1fr; gap: 6px 18px; margin: 0; padding: 16px 20px; background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+  .glossary dt { color: var(--accent); font-weight: 600; }
+  .glossary dd { margin: 0; color: var(--muted); }
+
+  .biz-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 16px 0 0; }
+  .biz-card { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+  .biz-card h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+  .biz-card p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  .compare { width: 100%; font-size: 13px; }
+  .compare th { font-size: 11px; }
+  .compare td:first-child { color: var(--muted); width: 180px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .compare .yes { color: var(--done); }
+  .compare .no { color: var(--reject); }
+  .compare .mid { color: var(--warn); }
+
+  ul.tight { margin: 8px 0 12px; padding-left: 22px; }
+  ul.tight li { margin: 4px 0; color: var(--text); }
+  ul.tight li.muted { color: var(--muted); }
+  ul.tight code { background: var(--bg-elev-2); padding: 1px 6px; border-radius: 3px; font-size: 12px; }
+
+  .footnote { color: var(--dim); font-size: 12px; margin-top: 8px; font-style: italic; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <h1>Server Extraction</h1>
+  <div class="subtitle">Tempo · Architecture Options</div>
+  <ol>
+    <li><a href="#business">Business shape</a></li>
+    <li><a href="#problem">The duplication</a></li>
+    <li><a href="#vocab">Vocabulary</a></li>
+    <li><a href="#option-a">Option A · Shared package</a></li>
+    <li><a href="#option-b">Option B · Worker absorbs all</a></li>
+    <li><a href="#option-c">Option C · Vertical packages</a></li>
+    <li><a href="#option-d">Option D · Worker + client</a></li>
+    <li><a href="#compare">Side-by-side</a></li>
+    <li><a href="#recommend">Recommendation</a></li>
+    <li><a href="#migration">Migration sketch</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header>
+  <h1>Server-Domain Extraction · Options</h1>
+  <div class="tagline">Worker owns agent-touched data. Console is UI + Workspace admin. Today, seven server modules live in both. Four ways to fix it — judged by the deletion test and the leverage they earn.</div>
+</header>
+
+<section id="business">
+  <h2>Business shape (binding)</h2>
+  <p class="lead">The Plan is the deliverable. Everything else is scaffolding.</p>
+  <div class="biz-grid">
+    <div class="biz-card">
+      <h4>Agent</h4>
+      <p>One LLM identity. Two runtimes: Local (Member's <code>claude</code> over remote MCP) and Hosted (Agent SDK in a per-session VM driven by Worker). Same <code>tempo_*</code> contract.</p>
+    </div>
+    <div class="biz-card">
+      <h4>Worker</h4>
+      <p>Owns every agent-touched table. Hosts the MCP endpoint. Runs the Gateway (allowlist · approve-gate · grant resolution · execution · audit). Drives the Hosted Agent.</p>
+    </div>
+    <div class="biz-card">
+      <h4>Console</h4>
+      <p>UI + Workspace admin only. Renders the Plan, accepts Dev edits, hosts the Discussion panel. <em>No</em> LLM lives here. No agent-data writes.</p>
+    </div>
+  </div>
+</section>
+
+<section id="problem">
+  <h2>The duplication, measured</h2>
+  <p class="lead">Slice 1c-2b migrated write paths into Worker. The server modules were copied, not moved.</p>
+  <table>
+    <thead>
+      <tr><th>Module</th><th>Console</th><th>Worker</th><th>Real divergence</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>ids.ts</code></td><td>10</td><td>10</td><td><span class="pill warn">byte-identical</span></td></tr>
+      <tr><td><code>replies.ts</code></td><td>44</td><td>44</td><td><span class="pill warn">byte-identical</span></td></tr>
+      <tr><td><code>discussion.ts</code></td><td>98</td><td>92</td><td>comments only</td></tr>
+      <tr><td><code>event-log.ts</code></td><td>148</td><td>135</td><td>comments only</td></tr>
+      <tr><td><code>comments.ts</code></td><td>168</td><td>157</td><td>comments only</td></tr>
+      <tr><td><code>attachments.ts</code></td><td>141</td><td>123</td><td>comments only</td></tr>
+      <tr><td><code>sessions.ts</code></td><td>147</td><td>132</td><td>comments + one inline type</td></tr>
+      <tr><td><code>threads.ts</code></td><td>256</td><td>105</td><td>Worker = strict subset of Console</td></tr>
+      <tr><td><code>plan.ts</code></td><td>349</td><td>269</td><td>Worker = Agent-write subset</td></tr>
+      <tr><td><code>plan/block-html.ts</code></td><td>~100</td><td>~100</td><td>comments only</td></tr>
+      <tr><td><code>lib/r2.ts</code></td><td>~80</td><td>~80</td><td>identical adapter</td></tr>
+    </tbody>
+  </table>
+  <p class="footnote">Reading: 6 of 11 are pure copies; <code>threads</code> and <code>plan</code> are subsets, not variants. The non-trivial split is shaped only by which routes survived where, not by behavioural difference.</p>
+</section>
+
+<section id="vocab">
+  <h2>How candidates are judged</h2>
+  <p class="lead">Vocabulary borrowed from <code>improve-codebase-architecture/LANGUAGE.md</code>. Each option is graded on these.</p>
+  <dl class="glossary">
+    <dt>Module</dt><dd>Anything with an interface and an implementation — a package counts.</dd>
+    <dt>Interface</dt><dd>Everything a caller must know: types, invariants, errors, ordering.</dd>
+    <dt>Depth</dt><dd>Behaviour-per-interface-byte. Deep = small interface, big payoff.</dd>
+    <dt>Seam</dt><dd>Where an interface lives — a place behaviour can swap without in-place edits.</dd>
+    <dt>Leverage</dt><dd>What callers get from depth.</dd>
+    <dt>Locality</dt><dd>What maintainers get from depth — change, bugs, knowledge in one place.</dd>
+    <dt>Deletion test</dt><dd>If you delete the module, does complexity vanish (it was a pass-through) or reappear concentrated across callers (it earned its keep)?</dd>
+  </dl>
+</section>
+
+<!-- ============= OPTION A ============= -->
+<section id="option-a">
+  <div class="option">
+  <h2>Option A · Single shared package <span class="pill viable">Viable</span></h2>
+  <p class="summary">Extract every duplicated module into <code>@tempo/server</code>. Both apps import from it directly. Console keeps its DB connection and SSR reads; Worker keeps the MCP write paths.</p>
+
+  <h4>Proposed layout</h4>
+<pre class="tree"><span class="root">packages/server/</span>
+├── src/
+│   ├── ids.ts            <span class="new">← from worker (canonical)</span>
+│   ├── r2.ts             <span class="new">← from worker/lib</span>
+│   ├── event-log.ts
+│   ├── attachments.ts
+│   ├── replies.ts
+│   ├── comments.ts
+│   ├── discussion.ts
+│   ├── sessions.ts
+│   ├── threads.ts        <span class="new">union of both surfaces</span>
+│   ├── plan.ts           <span class="new">union of both surfaces</span>
+│   └── plan/block-html.ts
+
+<span class="root">apps/console/server/</span>
+├── actor.ts              <span class="stay">stays · Clerk bridge</span>
+├── workspaces.ts         <span class="stay">stays · admin</span>
+├── spaces.ts             <span class="stay">stays · admin</span>
+├── clerk-webhook.ts      <span class="stay">stays</span>
+├── email.ts              <span class="stay">stays</span>
+├── http.ts               <span class="stay">stays</span>
+└── <span class="gone">comments.ts · plan.ts · threads.ts · …</span>
+
+<span class="root">apps/worker/src/server/</span>
+├── auth-lookup.ts        <span class="stay">stays · token resolution</span>
+├── cli-auth.ts           <span class="stay">stays</span>
+├── events-stream.ts      <span class="stay">stays · long-poll loop</span>
+└── <span class="gone">comments.ts · plan.ts · …</span></pre>
+
+  <h4>Module · Interface · Depth</h4>
+  <table>
+    <tr><td class="label">Module</td><td><code>@tempo/server</code> — Tempo's server-domain operations on Postgres+R2.</td></tr>
+    <tr><td class="label">Interface</td><td>~30 named exports (one per domain verb: <code>writePlan</code>, <code>appendComment</code>, <code>getThread</code>, …) + a few types.</td></tr>
+    <tr><td class="label">Depth</td><td>Medium — interface tracks the schema's verb count.</td></tr>
+    <tr><td class="label">Seam</td><td>Package boundary. In-process; no network.</td></tr>
+  </table>
+
+  <h4>Deletion test</h4>
+  <p>Delete <code>@tempo/server</code> → complexity reappears as duplicate trees in both apps (exactly today's state). <span class="pill recommend">Passes.</span> Concentrates, doesn't move.</p>
+
+  <h4>Locality · Leverage</h4>
+  <ul class="tight">
+    <li><strong>Locality</strong> — a schema change is one file edit.</li>
+    <li><strong>Leverage</strong> — Console, Worker, and the upcoming Hosted-Agent driver all import the same surface.</li>
+    <li class="muted">Console keeps direct DB access. That contradicts the strict reading of "Worker owns all agent-touched data" — Console can still write events if a route bypasses Worker.</li>
+  </ul>
+
+  <div class="verdict">
+    <strong>Verdict</strong>
+    Cheapest win. Kills the drift. But it doesn't reshape the model — Console retains the <em>ability</em> to write agent-touched rows, even if no current route does. The seam stops drift, not access.
+  </div>
+  </div>
+</section>
+
+<!-- ============= OPTION B ============= -->
+<section id="option-b">
+  <div class="option">
+  <h2>Option B · Worker absorbs everything <span class="pill recommend">Recommended shape</span></h2>
+  <p class="summary">Worker is the only home of agent-touched data. Console has no DB code for Plans, Comments, Discussion, Sessions, Threads. Console's SSR pages and surviving routes fetch Worker over HTTP using Clerk JWTs.</p>
+
+  <h4>Proposed layout</h4>
+<pre class="tree"><span class="root">apps/worker/src/server/</span>     <span class="stay">← canonical home of every agent-touched module</span>
+├── event-log.ts · ids.ts
+├── attachments.ts · lib/r2.ts
+├── comments.ts · replies.ts
+├── discussion.ts · sessions.ts
+├── threads.ts · plan.ts · plan/block-html.ts
+├── auth-lookup.ts · cli-auth.ts · events-stream.ts
+└── …
+
+<span class="root">apps/console/server/</span>          <span class="stay">← UI + Workspace admin only</span>
+├── actor.ts · workspaces.ts · spaces.ts
+├── clerk-webhook.ts · email.ts · http.ts
+└── <span class="gone">every agent-touched module — deleted</span>
+
+<span class="root">apps/console/app/</span>
+├── (app)/threads/[id]/page.tsx   <span class="new">SSR fetches Worker</span>
+└── api/threads/route.ts          <span class="new">thin proxy / removed</span></pre>
+
+  <div class="diagram">
+    <div class="mermaid">
+flowchart LR
+  Browser["Console UI"] -->|Clerk JWT| ConsoleSSR["Console SSR / RSC"]
+  ConsoleSSR -->|HTTP + Clerk JWT| Worker
+  Browser -->|HTTP + Clerk JWT| Worker
+  Agent["Agent (Local / Hosted)"] -->|tempo_* MCP| Worker
+  Worker --> PG[(Postgres)]
+  Worker --> R2[(R2)]
+  ConsoleSSR -. only for .-> AdminPG[(Postgres · admin tables only)]
+    </div>
+  </div>
+
+  <h4>Module · Interface · Depth</h4>
+  <table>
+    <tr><td class="label">Module</td><td>Worker — the privileged backend.</td></tr>
+    <tr><td class="label">Interface</td><td>Two surfaces only: the <code>tempo_*</code> MCP contract (for Agents) and the browser HTTP routes (for Console). Both already exist; both already live in <code>packages/contracts</code>.</td></tr>
+    <tr><td class="label">Depth</td><td>Maximum. Tiny interface, enormous behaviour.</td></tr>
+    <tr><td class="label">Seam</td><td>Process boundary — already there. We stop pretending the seam is anywhere else.</td></tr>
+  </table>
+
+  <h4>Deletion test</h4>
+  <p>Delete Worker → everything disappears. It <em>is</em> the backend. <span class="pill recommend">Passes maximally.</span> The seam is real, two adapters exist (MCP + browser HTTP), invariants concentrate.</p>
+
+  <h4>Locality · Leverage</h4>
+  <ul class="tight">
+    <li><strong>Locality</strong> — one home. A new event kind, a new block type, a new connector all land in one process.</li>
+    <li><strong>Leverage</strong> — Console SSR, Hosted-Agent driver, future Slack app, future CLI all read the same backend through the same wire.</li>
+    <li><strong>Honours the business model literally.</strong> "Worker owns all agent-touched data" becomes a structural invariant, not a discipline note.</li>
+  </ul>
+
+  <h4>Costs</h4>
+  <ul class="tight">
+    <li>SSR adds one HTTP hop per page render (~10ms in same Fly region). Acceptable for an editor dashboard; cacheable.</li>
+    <li>Console SSR availability depends on Worker uptime. Mitigated by co-location and Worker's existing health checks.</li>
+    <li>~2–3 new Worker browser routes needed to cover Console's existing reads (<code>GET /browser/threads?space_id=</code>, approve, reopen).</li>
+    <li>Console SSR pages need a Clerk JWT helper to authenticate to Worker. Standard Clerk pattern, no new primitive.</li>
+  </ul>
+
+  <div class="verdict good">
+    <strong>Verdict</strong>
+    Strongest alignment with the business model. The duplication doesn't get a shared seam — it disappears, because Console no longer needs the code at all. Hosted-Agent SDK driver lands naturally inside Worker with zero ceremony.
+  </div>
+  </div>
+</section>
+
+<!-- ============= OPTION C ============= -->
+<section id="option-c">
+  <div class="option">
+  <h2>Option C · Vertical domain packages <span class="pill reject">Premature</span></h2>
+  <p class="summary">One package per CONTEXT.md noun: <code>@tempo/plan</code>, <code>@tempo/comments</code>, <code>@tempo/discussion</code>, <code>@tempo/threads</code>, <code>@tempo/events</code>, <code>@tempo/attachments</code>, <code>@tempo/ids</code>. Apps compose what they need.</p>
+
+  <h4>Module · Interface · Depth</h4>
+  <table>
+    <tr><td class="label">Modules</td><td>Seven small packages, each tracking one noun.</td></tr>
+    <tr><td class="label">Interfaces</td><td>Each one is small per package, but the total surface across seven packages equals Option A's single surface.</td></tr>
+    <tr><td class="label">Depth</td><td>Shallow per package — most packages would be 100–200 lines behind a similarly-sized interface.</td></tr>
+  </table>
+
+  <h4>Deletion test (on the split itself)</h4>
+  <p>Collapse all seven into <code>@tempo/server</code> → nothing reappears. Imports rename, the DAG inside is the same, no behaviour moves. <span class="pill reject">Fails.</span> The split is a pass-through.</p>
+
+  <h4>Why we'd reject it today</h4>
+  <ul class="tight">
+    <li>"One adapter is hypothetical." There is exactly one consumer pattern per domain (Console SSR + Worker MCP write); a per-noun seam earns nothing.</li>
+    <li>Build cost: 7 × <code>package.json</code>, <code>tsconfig.json</code>, Biome config. Real ceremony, no leverage.</li>
+    <li>Cross-domain edges (<code>comments → events + attachments</code>, <code>plan → events</code>) just become workspace dep declarations — same DAG, more paperwork.</li>
+  </ul>
+
+  <div class="verdict bad">
+    <strong>Verdict</strong>
+    Premature seams. Revisit only if a second-consumer story appears for one of the nouns (e.g. a standalone Plan renderer service) — at which point that <em>one</em> noun graduates.
+  </div>
+  </div>
+</section>
+
+<!-- ============= OPTION D ============= -->
+<section id="option-d">
+  <div class="option">
+  <h2>Option D · Option B + a typed client package <span class="pill viable">Strong companion</span></h2>
+  <p class="summary">Same data home as Option B (Worker owns everything). Plus a small <code>@tempo/worker-client</code> package — the typed surface Console and any other consumer uses to call Worker. Contracts come from <code>@tempo/contracts</code>; the client is the seam.</p>
+
+  <h4>Proposed layout</h4>
+<pre class="tree"><span class="root">packages/worker-client/</span>      <span class="new">~150 lines, hand-written</span>
+└── src/
+    ├── client.ts                <span class="stay">createWorkerClient({ baseUrl, getToken })</span>
+    └── index.ts
+
+<span class="root">apps/console/</span>
+├── hooks/use-worker-api.ts      <span class="new">thin wrapper around createWorkerClient</span>
+└── lib/api-client.ts            <span class="gone">workerApi() factory — deleted</span>
+
+<span class="root">apps/worker/</span>                  <span class="stay">unchanged from Option B</span></pre>
+
+  <h4>Module · Interface · Depth</h4>
+  <table>
+    <tr><td class="label">Module</td><td><code>@tempo/worker-client</code> — the typed handle to Worker.</td></tr>
+    <tr><td class="label">Interface</td><td>One factory + N methods, signatures derived from <code>@tempo/contracts</code>. <strong>The interface is the wire contract.</strong></td></tr>
+    <tr><td class="label">Depth</td><td>Medium — small implementation, but the interface is the test surface for every consumer.</td></tr>
+    <tr><td class="label">Seam</td><td>The client itself. Two consumers exist immediately (Console SSR + Console browser); Hosted-Agent driver and any future app are #3, #4.</td></tr>
+  </table>
+
+  <h4>Hono <code>hc()</code> vs hand-written</h4>
+  <p>Worker uses Hono in some routes (per Bun + workspace conventions), but mixing handler-typed RPC with our current Zod-validated route style would couple the client to internal route shapes. Hand-written keeps the client locked to the <em>contract</em>, not the handler. ~150 lines, no codegen.</p>
+
+  <h4>Deletion test</h4>
+  <p>Delete <code>@tempo/worker-client</code> → every consumer rebuilds the same fetch + Zod-parse + token logic. Two consumers (Console SSR + Console browser) already prove it. <span class="pill recommend">Passes.</span></p>
+
+  <div class="verdict good">
+    <strong>Verdict</strong>
+    Pairs with B. Without B, this is just a thin facade. With B, it earns its keep because Console SSR, Console browser, the Hosted-Agent driver, and any future consumer all reach Worker the same way.
+  </div>
+  </div>
+</section>
+
+<!-- ============= COMPARISON ============= -->
+<section id="compare">
+  <h2>Side-by-side</h2>
+  <table class="compare">
+    <thead>
+      <tr><th></th><th>A · Shared package</th><th>B · Worker absorbs</th><th>C · Vertical packages</th><th>D · B + client</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Kills duplication</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td><td class="yes">yes</td></tr>
+      <tr><td>Console still writes Postgres for agent-touched rows</td><td class="mid">can</td><td class="yes">no</td><td class="mid">can</td><td class="yes">no</td></tr>
+      <tr><td>Honours "Worker owns agent-touched data" literally</td><td class="no">partial</td><td class="yes">yes</td><td class="no">partial</td><td class="yes">yes</td></tr>
+      <tr><td>Hosted-Agent driver fits naturally</td><td class="mid">imports package</td><td class="yes">local calls</td><td class="mid">imports many</td><td class="yes">local calls</td></tr>
+      <tr><td>SSR latency cost</td><td class="yes">none</td><td class="mid">+1 HTTP hop</td><td class="yes">none</td><td class="mid">+1 HTTP hop</td></tr>
+      <tr><td>New code to write</td><td class="yes">~0</td><td class="mid">~3 routes</td><td class="no">7× boilerplate</td><td class="mid">~3 routes + client</td></tr>
+      <tr><td>Earns the seam (two real consumers)</td><td class="mid">yes</td><td class="yes">yes</td><td class="no">no</td><td class="yes">yes</td></tr>
+      <tr><td>Risk of silent drift</td><td class="yes">eliminated</td><td class="yes">eliminated</td><td class="yes">eliminated</td><td class="yes">eliminated</td></tr>
+      <tr><td>Effort (rough)</td><td class="yes">½ day</td><td class="mid">2–3 days</td><td class="no">3–4 days</td><td class="mid">2–3 days</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============= RECOMMENDATION ============= -->
+<section id="recommend">
+  <h2>Recommendation</h2>
+  <p class="lead">Pick the option that makes the business model a structural invariant, not a discipline rule.</p>
+
+  <p><strong>Option B</strong>, with <strong>Option D</strong> as a follow-on once a second non-Console consumer arrives (the Hosted-Agent driver). Reasoning, in order:</p>
+
+  <ul class="tight">
+    <li><strong>The business shape already chose for us.</strong> Worker owns agent-touched data. Option A leaves Console with the <em>ability</em> to write that data; Option B removes it. The architecture should match the policy.</li>
+    <li><strong>The seam already exists.</strong> Worker is a separate process with a Zod-validated HTTP surface and an MCP surface. Option B doesn't create a new seam — it stops pretending one isn't there.</li>
+    <li><strong>Hosted Agent ships next.</strong> Slice 2 puts an Agent SDK loop inside Worker. In Option B, that driver has zero ceremony (local function calls). In Option A, it would import the shared package and pretend to be in Console's situation.</li>
+    <li><strong>Option C fails the deletion test on the split itself.</strong> Premature seams, no leverage, ceremony cost. Park it.</li>
+    <li><strong>Option D is right but not first.</strong> Build the client when the second consumer (Hosted-Agent driver) lands and proves the seam. Until then, Console's existing <code>useWorkerApi</code> + <code>workerApi()</code> factory is already half of D — promoting it to a package is a half-day move whenever you want.</li>
+  </ul>
+
+  <p>Fallback: if SSR latency turns out to be unacceptable in measured load tests for a specific page (the Plan editor's first paint), pull <em>that page's</em> reads into a thin shared module under <code>packages/server</code>. Hybrid is cheap; don't pre-empt it.</p>
+</section>
+
+<!-- ============= MIGRATION ============= -->
+<section id="migration">
+  <h2>Migration sketch · Option B</h2>
+  <p class="lead">Five small commits, no destructive moves until the new path is proven.</p>
+  <ol>
+    <li><strong>Add Worker browser routes that don't yet exist</strong> — <code>GET /browser/threads?space_id=</code>, <code>POST /browser/threads/:id/approve</code>, <code>POST /browser/threads/:id/reopen</code>. Console keeps its old paths for now.</li>
+    <li><strong>Rewire Console SSR + surviving routes to fetch Worker</strong> — page by page. Old DB-reading code stays parallel; new fetch path lives behind a feature flag or just per-route swap. Verify each page works.</li>
+    <li><strong>Delete Console's copies</strong> of <code>comments.ts</code>, <code>discussion.ts</code>, <code>event-log.ts</code>, <code>sessions.ts</code>, <code>replies.ts</code>, <code>plan.ts</code>, <code>plan/block-html.ts</code>, <code>attachments.ts</code>, <code>ids.ts</code>, <code>lib/r2.ts</code>. Compile errors point to anything that snuck a DB access in.</li>
+    <li><strong>Unify <code>threads.ts</code></strong> — Worker's surface becomes the union of both. Console-only helpers (<code>createThread</code>, <code>listThreads</code>, <code>approveThread</code>, <code>getConnectToken</code>, <code>deleteThread</code>) move to Worker; Console calls them via HTTP.</li>
+    <li><strong>Console SSR auth</strong> — wire the Clerk JWT pass-through helper that signs Worker calls server-side. Standard Clerk pattern.</li>
+  </ol>
+  <p class="footnote">Each commit is independently revertable. The duplication is removed only in step 3, after the network path is proven in step 2.</p>
+</section>
+
+</main>
+</div>
+</body>
+</html>

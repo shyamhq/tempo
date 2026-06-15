@@ -9,7 +9,7 @@ import {
   useAttachmentSurface,
 } from '@/components/thread/attachments/attachment-tray';
 import { useAttachmentUploader } from '@/hooks/use-attachment-uploader';
-import { api } from '@/lib/api-client';
+import { useWorkerApi } from '@/hooks/use-worker-api';
 
 const MIN_ROWS = 1;
 const MAX_ROWS = 6;
@@ -28,6 +28,7 @@ export function MessageComposer({
   disabledReason: string | null;
   autoFocus: boolean;
 }) {
+  const wApi = useWorkerApi();
   const [draft, setDraft] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
@@ -55,7 +56,7 @@ export function MessageComposer({
     setPhase('sending');
     setSendError(null);
     try {
-      await api.postDiscussionMessage(threadId, {
+      await wApi.postDiscussionMessage(threadId, {
         ...(text.length > 0 ? { text } : {}),
         attachments: uploader.readyIds,
       });

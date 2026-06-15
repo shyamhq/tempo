@@ -53,6 +53,13 @@ export class NotAMemberError extends Error {
   }
 }
 
+export class ThreadNotFoundError extends Error {
+  constructor(threadId: string) {
+    super(`thread ${threadId} not found`);
+    this.name = 'ThreadNotFoundError';
+  }
+}
+
 // Verifies that a Clerk user is a member of the workspace owning the given
 // thread, and returns the resolved workspaceId and the Clerk membershipId.
 //
@@ -71,7 +78,7 @@ export async function assertMembership(
     .from(threads)
     .where(eq(threads.id, threadId))
     .limit(1);
-  if (!threadRow) throw new NotAMemberError(userId, threadId);
+  if (!threadRow) throw new ThreadNotFoundError(threadId);
 
   const [wsRow] = await db
     .select({ id: workspaces.id, clerk_org_id: workspaces.clerk_org_id })
@@ -104,4 +111,17 @@ export async function getSessionByMcpId(
     .where(and(eq(sessions.mcp_session_id, mcpSessionId), eq(sessions.thread_id, threadId)))
     .limit(1);
   return row ?? null;
+}
+
+// Resolves a thread_id from a sticky MCP session UUID. Called by every
+// MCP tool other than tempo_attach (which establishes the mapping).
+// Returns null when no session row exists for this MCP session UUID,
+// which means the Agent never called tempo_attach for this connection.
+export async function getThreadIdForMcpSession(mcpSessionId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ thread_id: sessions.thread_id })
+    .from(sessions)
+    .where(eq(sessions.mcp_session_id, mcpSessionId))
+    .limit(1);
+  return row?.thread_id ?? null;
 }

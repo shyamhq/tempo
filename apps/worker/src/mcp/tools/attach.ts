@@ -7,6 +7,7 @@ import type {
   ThreadStatus,
 } from '@tempo/contracts';
 import type { AttachOutput } from '@tempo/contracts/mcp';
+import { WORKFLOW } from '@tempo/contracts/workflow';
 import { db } from '@tempo/db/client';
 import { newEventId } from '@tempo/db/ids';
 import {
@@ -21,11 +22,8 @@ import {
 import { asc, desc, eq, inArray } from 'drizzle-orm';
 import { customAlphabet } from 'nanoid';
 import type { z } from 'zod';
-import { assertMembership, getSessionByMcpId, NotAMemberError } from '../../server/auth-lookup';
-import type { AuthContext } from '../transport';
-// TODO(slice-1b-review): WORKFLOW is inlined here pending Dev decision per judge note 3.
-// Options presented in the slice-1b implementation report; Dev resolves before 1c.
-import { WORKFLOW } from './workflow-stub';
+import { authorizeThread, type Caller, ForbiddenError } from '../../auth';
+import { getSessionByMcpId } from '../../server/auth-lookup';
 
 // ULID alphabet (Crockford base32, uppercase) — matches Console's ses_${ulid()} format.
 const ulidAlphabet = customAlphabet('0123456789ABCDEFGHJKMNPQRSTVWXYZ', 26);
@@ -36,19 +34,26 @@ type AttachResult = z.infer<typeof AttachOutput>;
 // Reads the six data sources that Console's GET /api/sessions/[id]/state reads,
 // using the same @tempo/db queries. Returns the identical AttachOutput shape.
 //
-// thread_id is the attach input (per AttachInput from contracts).
-// auth carries the caller's identity. For 'cli' callers (sk_user_*) we resolve
-// workspace via assertMembership(userId, threadId) and 403 if not a Member.
-// For 'agent' (sk_agent_*) and 'browser' (Clerk JWT) callers we use the
-// workspaceId already resolved in middleware and verify thread isolation.
 // mcpSessionId is the UUID assigned by the MCP transport layer — used to
 // establish a sticky session row so reconnects resume the same session.
 export async function runAttach(
   threadId: string,
-  auth: AuthContext,
+  caller: Caller,
   mcpSessionId: string | undefined,
 ): Promise<AttachResult | { error: string }> {
-  // Resolve thread.
+  // Authorize: agent → cross-workspace check; cli/browser → membership.
+  // ForbiddenError reasons map to the AttachOutput error string the SDK expects.
+  try {
+    await authorizeThread(caller, threadId);
+  } catch (err) {
+    if (err instanceof ForbiddenError) {
+      if (err.reason === 'thread_not_found') return { error: 'thread_not_found' };
+      if (err.reason === 'not_member') return { error: 'not_a_member' };
+      return { error: 'unauthorized' };
+    }
+    throw err;
+  }
+
   const [thread] = await db
     .select({
       id: threads.id,
@@ -61,23 +66,6 @@ export async function runAttach(
     .where(eq(threads.id, threadId))
     .limit(1);
   if (!thread) return { error: 'thread_not_found' };
-
-  // Auth check, by source.
-  if (auth.source === 'cli') {
-    try {
-      await assertMembership(auth.userId, thread.id);
-    } catch (err) {
-      if (err instanceof NotAMemberError) return { error: 'not_a_member' };
-      throw err;
-    }
-  } else {
-    // agent + browser both carry workspaceId in the AuthContext.
-    // For 'agent' it's required; for 'browser' it's only set when the Clerk
-    // JWT had an active org claim — missing means "no active org → reject".
-    if (!auth.workspaceId || thread.workspace_id !== auth.workspaceId) {
-      return { error: 'unauthorized' };
-    }
-  }
 
   // Sticky session: find or create a sessions row keyed by MCP session UUID.
   // This allows the Agent to reconnect (e.g. after a network blip) and resume

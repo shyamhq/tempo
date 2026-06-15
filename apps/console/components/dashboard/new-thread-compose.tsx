@@ -13,6 +13,7 @@ import {
   useAttachmentSurface,
 } from '@/components/thread/attachments/attachment-tray';
 import type { PendingAttachment } from '@/hooks/use-attachment-uploader';
+import { useWorkerApi } from '@/hooks/use-worker-api';
 import { ApiError, api } from '@/lib/api-client';
 
 type Phase =
@@ -54,6 +55,7 @@ function pendingClientId() {
 export function NewThreadCompose({ space }: { space: Space }) {
   const router = useRouter();
   const qc = useQueryClient();
+  const wApi = useWorkerApi();
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>({ kind: 'compose' });
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +160,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
       // existing two-step orphan pattern, not worsened.
       const attachmentIds: string[] = [];
       for (const p of pending) {
-        const init = await api.initAttachment(res.thread.id, {
+        const init = await wApi.initAttachment(res.thread.id, {
           mime: p.mime,
           byte_len: p.byteLen,
         });
@@ -170,7 +172,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
         if (!putRes.ok) throw new Error(`upload failed: ${putRes.status}`);
         attachmentIds.push(init.id);
       }
-      await api.postDiscussionMessage(res.thread.id, {
+      await wApi.postDiscussionMessage(res.thread.id, {
         text: trimmed,
         attachments: attachmentIds,
       });
