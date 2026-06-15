@@ -1,10 +1,10 @@
 import type { Actor, AttachmentRef, DiscussionMessage, Question } from '@tempo/contracts';
 import type { PostDiscussionMessageInput } from '@tempo/contracts/mcp';
+import { db } from '@tempo/db/client';
+import { discussion_messages, threads } from '@tempo/db/schema';
 import { asc, eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
 import type { z } from 'zod';
-import { db } from '../db';
-import { discussion_messages, threads } from '../db/schema';
 import {
   insertAttachmentRows,
   listAttachmentsForParents,

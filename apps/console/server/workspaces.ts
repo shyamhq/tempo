@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { clerkClient } from '@clerk/nextjs/server';
+import { db } from '@tempo/db/client';
+import { spaces, workspaces } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
 import { ulid } from 'ulid';
-import { db } from '../db';
-import { spaces, workspaces } from '../db/schema';
 
 // `sk_agent_<random>` — workspace-scoped Bearer token the CLI uses for every
 // request after handshake. Rotation invalidates active CLI sessions.

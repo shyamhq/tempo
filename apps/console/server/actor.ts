@@ -1,8 +1,8 @@
 import { auth as clerkAuth, clerkClient } from '@clerk/nextjs/server';
+import { db } from '@tempo/db/client';
+import { workspaces } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
 import type { NextRequest } from 'next/server';
-import { db } from '../db';
-import { workspaces } from '../db/schema';
 import { getOrCreateWorkspaceForOrg } from './workspaces';
 
 // Auth contract:

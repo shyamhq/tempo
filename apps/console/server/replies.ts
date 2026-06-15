@@ -1,7 +1,7 @@
 import type { Actor, Reply, ReplyPayload } from '@tempo/contracts';
+import { db } from '@tempo/db/client';
+import { comments, replies } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
-import { db } from '../db';
-import { comments, replies } from '../db/schema';
 import {
   insertAttachmentRows,
   listAttachmentsForParents,

@@ -1,8 +1,8 @@
 import type { AttachmentRef, Event } from '@tempo/contracts';
+import { db } from '@tempo/db/client';
+import { newEventId } from '@tempo/db/ids';
+import { events } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
-import { db } from '../db';
-import { newEventId } from '../db/ids';
-import { events } from '../db/schema';
 import { listAttachmentsForParents } from './attachments';
 
 type AppendPayload = Event extends infer E
@@ -18,9 +18,10 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
   const row = seqResult.rows[0];
   if (!row) throw new Error('nextval returned no row');
   // pg returns bigint as a string — build the ID without Number() to avoid
-  // precision loss at values beyond Number.MAX_SAFE_INTEGER.
+  // precision loss at values beyond Number.MAX_SAFE_INTEGER. We pass the
+  // string straight to newEventId so it shares the canonical padding shape.
   const seqStr = String(row.n);
-  const id = `evt_${seqStr.padStart(14, '0')}`;
+  const id = newEventId(seqStr);
   const n = Number(seqStr);
   const created_at_date = new Date();
   const created_at = created_at_date.toISOString();

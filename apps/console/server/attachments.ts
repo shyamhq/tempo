@@ -1,9 +1,9 @@
 import type { AttachmentRef } from '@tempo/contracts';
 import type { InitAttachmentInput, InitAttachmentResult } from '@tempo/contracts/http';
+import { db } from '@tempo/db/client';
+import { attachments, threads } from '@tempo/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import type { z } from 'zod';
-import { db } from '../db';
-import { attachments, threads } from '../db/schema';
 import { headObject, objectKey, signGetUrl, signPutUrl } from '../lib/r2';
 import { newAttachmentId } from './ids';
 

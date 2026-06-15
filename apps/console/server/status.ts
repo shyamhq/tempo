@@ -1,7 +1,7 @@
 import type { AgentTodo } from '@tempo/contracts';
+import { db } from '@tempo/db/client';
+import { sessions } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
-import { db } from '../db';
-import { sessions } from '../db/schema';
 import { appendEvent } from './event-log';
 
 export async function recordAgentToolUse(

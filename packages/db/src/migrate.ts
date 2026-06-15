@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { db, pool } from './index';
+import { db, pool } from './client';
 
-const migrationsFolder = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
+const migrationsFolder = path.join(path.dirname(fileURLToPath(import.meta.url)), '../drizzle');
 
 async function main() {
   await migrate(db, { migrationsFolder });

@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 import * as schema from './schema';
 
 const url = process.env.DATABASE_URL;
-if (!url && process.env.NEXT_PHASE !== 'phase-production-build') {
+if (url === undefined && process.env.NEXT_PHASE !== 'phase-production-build') {
   throw new Error('DATABASE_URL is required');
 }
 

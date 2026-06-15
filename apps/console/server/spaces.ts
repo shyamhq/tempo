@@ -1,7 +1,5 @@
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import { cache } from 'react';
-import { db } from '../db';
+import { db } from '@tempo/db/client';
 import {
   comments,
   discussion_messages,
@@ -11,7 +9,9 @@ import {
   sessions,
   spaces,
   threads,
-} from '../db/schema';
+} from '@tempo/db/schema';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { cache } from 'react';
 import { newSpaceId } from './ids';
 
 // React.cache so the root layout + the home page share one DB hit per request.

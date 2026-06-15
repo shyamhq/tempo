@@ -1,6 +1,6 @@
+import { db } from '@tempo/db/client';
+import { plans, threads } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
-import { db } from '../../db';
-import { plans, threads } from '../../db/schema';
 
 export type PlanRow = {
   status: 'unapproved' | 'approved';

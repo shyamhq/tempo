@@ -1,7 +1,7 @@
 import type { AttachmentRef, Comment, Reply } from '@tempo/contracts';
+import { db } from '@tempo/db/client';
+import { comments, replies, threads } from '@tempo/db/schema';
 import { asc, eq, inArray } from 'drizzle-orm';
-import { db } from '../db';
-import { comments, replies, threads } from '../db/schema';
 import {
   insertAttachmentRows,
   listAttachmentsForParents,
@@ -104,9 +104,10 @@ export async function deleteComment(commentId: string): Promise<void> {
   // would silently desynchronise the editor's `comment` marks from the DB.
   if (row.thread_status === 'approved') throw new Error('thread_approved');
 
-  // SQLite FKs are off in this project (AGENTS.md spotted-but-not-fixed),
-  // so cascades run manually. Attachment rows on the deleted replies become
-  // orphans for the R2 lifecycle sweep — matching deleteThread's scope.
+  // FKs in the schema use the Postgres default (NO ACTION) — no ON DELETE
+  // CASCADE — so cascades run manually here. Attachment rows on the deleted
+  // replies become orphans for the R2 lifecycle sweep — matching deleteThread's
+  // scope.
   await db.transaction(async (tx) => {
     await tx.delete(replies).where(eq(replies.comment_id, commentId));
     await tx.delete(comments).where(eq(comments.id, commentId));

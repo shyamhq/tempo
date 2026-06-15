@@ -4,8 +4,8 @@ const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is required');
 
 export default {
-  schema: './db/schema.ts',
-  out: './db/migrations',
+  schema: './src/schema.ts',
+  out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: { url },
 } satisfies Config;

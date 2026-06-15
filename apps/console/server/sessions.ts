@@ -1,6 +1,6 @@
+import { db } from '@tempo/db/client';
+import { sessions, threads, workspaces } from '@tempo/db/schema';
 import { and, eq } from 'drizzle-orm';
-import { db } from '../db';
-import { sessions, threads, workspaces } from '../db/schema';
 import { appendEvent } from './event-log';
 import { newSessionId } from './ids';
 

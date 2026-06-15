@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const config: NextConfig = {
-  transpilePackages: ['@tempo/contracts'],
+  transpilePackages: ['@tempo/contracts', '@tempo/db'],
   // Standalone build emits a minimal `server.js` + node_modules tree that the
   // production Dockerfile copies into a `node:20-slim` runtime stage (T11).
   output: 'standalone',

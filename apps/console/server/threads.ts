@@ -1,7 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import type { ThreadSummary } from '@tempo/contracts';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
-import { db } from '../db';
+import { db } from '@tempo/db/client';
 import {
   attachments,
   comments,
@@ -12,7 +11,8 @@ import {
   sessions,
   spaces,
   threads,
-} from '../db/schema';
+} from '@tempo/db/schema';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { deletePrefix } from '../lib/r2';
 import { logger } from '../logger';
 import { appendEvent } from './event-log';
@@ -122,9 +122,9 @@ export async function deleteThread(threadId: string): Promise<void> {
     if (commentIds.length > 0) {
       await tx.delete(replies).where(inArray(replies.comment_id, commentIds));
     }
-    // Cascade is silently unenforced (PRAGMA foreign_keys not set — see
-    // AGENTS.md "Spotted but not fixed"). Delete explicitly to be safe; the
-    // R2 prefix-delete below removes the underlying bytes.
+    // FKs in the schema use the Postgres default (NO ACTION) — no ON DELETE
+    // CASCADE — so we delete dependent rows explicitly. The R2 prefix-delete
+    // below removes the underlying bytes.
     await tx.delete(attachments).where(eq(attachments.thread_id, threadId));
     await tx.delete(comments).where(eq(comments.thread_id, threadId));
     await tx.delete(discussion_messages).where(eq(discussion_messages.thread_id, threadId));
