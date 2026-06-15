@@ -1,5 +1,6 @@
-import { RecheckPlanResponse, WritePlanRequest } from '@tempo/contracts/http';
+import { RecheckPlanResponse, WritePlanRequest, WritePlanResponse } from '@tempo/contracts/http';
 import type { RequestHandler } from 'express';
+import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 import { InvalidPlanBodyError, requestPlanRecheck, writePlan } from '../../server/plan';
 
@@ -13,7 +14,7 @@ export const writePlanHandler: RequestHandler<{ id: string }> = async (req, res)
   }
   try {
     const result = await writePlan(req.params.id, parsed.data.pm_json, 'dev');
-    res.json({ ok: true, updated_at: result.updated_at });
+    send(res, WritePlanResponse)({ ok: true, updated_at: result.updated_at });
   } catch (err) {
     if (err instanceof InvalidPlanBodyError) {
       res.status(400).json({ error: 'invalid_input', message: err.message });
@@ -28,7 +29,7 @@ export const writePlanHandler: RequestHandler<{ id: string }> = async (req, res)
 export const recheckPlanHandler: RequestHandler<{ id: string }> = async (req, res) => {
   try {
     const result = await requestPlanRecheck(req.params.id);
-    res.json(RecheckPlanResponse.parse({ ok: true, updated_at: result.updated_at }));
+    send(res, RecheckPlanResponse)({ ok: true, updated_at: result.updated_at });
   } catch (err) {
     if ((err as Error).message?.includes('thread_not_found')) {
       res.status(404).json({ error: 'thread_not_found' });

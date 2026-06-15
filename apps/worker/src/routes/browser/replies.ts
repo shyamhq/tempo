@@ -1,5 +1,6 @@
-import { CreateReplyRequest } from '@tempo/contracts/http';
+import { CreateReplyRequest, CreateReplyResponse } from '@tempo/contracts/http';
 import type { RequestHandler } from 'express';
+import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 import { postReply } from '../../server/replies';
 
@@ -17,7 +18,7 @@ export const createReplyHandler: RequestHandler<{ id: string }> = async (req, re
       'dev',
       parsed.data.attachments,
     );
-    res.json({ reply });
+    send(res, CreateReplyResponse)(reply);
   } catch (err) {
     if ((err as Error).message === 'comment_not_found') {
       res.status(404).json({ error: 'comment_not_found' });

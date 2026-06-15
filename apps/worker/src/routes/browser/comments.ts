@@ -1,5 +1,12 @@
-import { CreateCommentRequest } from '@tempo/contracts/http';
+import {
+  CreateCommentRequest,
+  CreateCommentResponse,
+  DeleteCommentResponse,
+  ResolveCommentResponse,
+  UnresolveCommentResponse,
+} from '@tempo/contracts/http';
 import type { RequestHandler } from 'express';
+import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 import {
   CommentNotFoundError,
@@ -22,7 +29,7 @@ export const createCommentHandler: RequestHandler<{ id: string }> = async (req, 
       ...parsed.data,
       anchor_block_id: parsed.data.anchor_block_id ?? null,
     });
-    res.json({ comment });
+    send(res, CreateCommentResponse)(comment);
   } catch (err) {
     logger.error({ err }, 'createComment failed');
     res.status(500).json({ error: 'internal_error' });
@@ -33,7 +40,7 @@ export const createCommentHandler: RequestHandler<{ id: string }> = async (req, 
 export const deleteCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
   try {
     await deleteComment(req.params.id);
-    res.json({ ok: true });
+    send(res, DeleteCommentResponse)({ ok: true });
   } catch (err) {
     if (err instanceof CommentNotFoundError) {
       res.status(404).json({ error: 'comment_not_found' });
@@ -52,7 +59,7 @@ export const deleteCommentHandler: RequestHandler<{ id: string }> = async (req, 
 export const resolveCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
   try {
     await resolveComment(req.params.id);
-    res.json({ ok: true });
+    send(res, ResolveCommentResponse)({ ok: true });
   } catch (err) {
     if ((err as Error).message === 'comment_not_found') {
       res.status(404).json({ error: 'comment_not_found' });
@@ -67,7 +74,7 @@ export const resolveCommentHandler: RequestHandler<{ id: string }> = async (req,
 export const unresolveCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
   try {
     await unresolveComment(req.params.id);
-    res.json({ ok: true });
+    send(res, UnresolveCommentResponse)({ ok: true });
   } catch (err) {
     if ((err as Error).message === 'comment_not_found') {
       res.status(404).json({ error: 'comment_not_found' });

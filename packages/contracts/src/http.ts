@@ -195,6 +195,9 @@ export const CreateCommentRequest = z.object({
 });
 export const CreateCommentResponse = Comment;
 
+// DELETE /api/comments/:id
+export const DeleteCommentResponse = z.object({ ok: z.literal(true) });
+
 // POST /api/comments/:id/replies
 export const CreateReplyRequest = z.object({
   payload: ReplyPayload,

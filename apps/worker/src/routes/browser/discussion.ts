@@ -1,5 +1,9 @@
-import { CreateDiscussionMessageRequest } from '@tempo/contracts/http';
+import {
+  CreateDiscussionMessageRequest,
+  CreateDiscussionMessageResponse,
+} from '@tempo/contracts/http';
 import type { RequestHandler } from 'express';
+import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 import { postMessage } from '../../server/discussion';
 
@@ -16,7 +20,7 @@ export const createDiscussionMessageHandler: RequestHandler<{ id: string }> = as
       text: parsed.data.text,
       attachments: parsed.data.attachments,
     });
-    res.json({ message });
+    send(res, CreateDiscussionMessageResponse)(message);
   } catch (err) {
     const msg = (err as Error).message;
     if (msg === 'thread_not_found') {
