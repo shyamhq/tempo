@@ -36,9 +36,9 @@ const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 const OkResponse = z.object({ ok: z.literal(true) });
 
 // Workspace identity is read client-side from Clerk's hooks
-// (`useOrganization`, `useOrganizationList`); no GET schemas live here.
-// Only mutation-response shapes for routes that hit our DB or the Clerk
-// admin SDK belong below.
+// (`useOrganization`, `useOrganizationList`). Schemas below cover routes that
+// hit our DB or the Clerk admin SDK — not data already available client-side.
+const WorkspaceFlagsResponse = z.object({ hosted_enabled: z.boolean() });
 const MemberRole = z.enum(['admin', 'member']);
 
 const MembersResponse = z.object({
@@ -208,8 +208,10 @@ export const api = {
   updateThread: (threadId: string, input: z.infer<typeof UpdateThreadRequest>) =>
     request('PATCH', `/api/threads/${encodeURIComponent(threadId)}`, input, UpdateThreadResponse),
 
-  updateWorkspace: (input: { name?: string }) =>
+  updateWorkspace: (input: { name?: string; hosted_enabled?: boolean }) =>
     request('PATCH', '/api/workspace', input, OkResponse),
+
+  getWorkspaceFlags: () => request('GET', '/api/workspace', undefined, WorkspaceFlagsResponse),
 
   deleteWorkspace: () => request('DELETE', '/api/workspace', undefined, OkResponse),
 
