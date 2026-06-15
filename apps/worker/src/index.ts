@@ -1,3 +1,4 @@
+import { enqueueMailboxIfHosted, setAfterAppendHook } from '@tempo/server';
 import cors from 'cors';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
@@ -20,6 +21,16 @@ import { cliRefreshHandler } from './routes/cli/refresh';
 import { sseHandler } from './routes/events/sse';
 import { healthHandler } from './routes/health';
 import { threadAccessHandler } from './routes/threads/access';
+import { isFresh } from './server/presence';
+
+// Hosted Mailbox wake-up: when no Local CLI is connected to a Thread,
+// dev-originated events enqueue into mailbox_events so the supervisor
+// (Task 2.7) can wake a Hosted VM. Console registers the shared writer
+// directly in instrumentation.ts.
+setAfterAppendHook(async (threadId, event) => {
+  if (isFresh(threadId)) return;
+  await enqueueMailboxIfHosted(threadId, event);
+});
 
 const app = express();
 

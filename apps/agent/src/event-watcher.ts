@@ -1,42 +1,16 @@
-import type { Event, EventKind, ThreadId } from '@tempo/contracts';
+import { type Event, shouldWake, type ThreadId } from '@tempo/contracts';
 import { logger } from './logger';
 
 // CLI-side SSE consumer for /api/threads/:id/events. Filters to the
-// Dev-originated events that should wake a Turn; queues during a running
-// Turn; drains the queue the instant the consumer asks for the next batch.
+// Dev-originated events that should wake a Turn (shared `shouldWake` from
+// `@tempo/contracts`; same predicate used server-side for Hosted Mailbox).
+// Queues during a running Turn; drains the queue the instant the consumer
+// asks for the next batch.
 //
 // Reconnect: native EventSource isn't available before Node 22 and won't
 // carry an Authorization header on the request anyway, so we hand-roll
 // the framing on top of `fetch`. Reconnect with `?cursor=<lastSeen>` so
 // no event is skipped across a transient drop.
-//
-// `agent_*`/`session_*`/`plan_edited_by_agent`/`thread_renamed` are all
-// filtered OUT by kind — those originate from the very Claude run we
-// just spawned, or are echoes of our own writes. Waking on them would
-// loop forever. `agent_cancel_requested` is Dev-originated but cancel is
-// handled in-Turn via its own path (SIGINT-equivalent), not via a
-// re-spawn — so it stays out of the wake set deliberately.
-//
-// `reply_added` and `discussion_message_posted` are kind-allowed but
-// MUST be author-filtered: both Dev and Agent emit them, and waking on
-// the Agent's own reply causes a ping-pong loop.
-const WAKE_KINDS = new Set<EventKind>([
-  'comment_added',
-  'reply_added',
-  'comment_resolved',
-  'comment_unresolved',
-  'comment_deleted',
-  'discussion_message_posted',
-  'plan_edited_by_dev',
-  'status_changed',
-]);
-
-function shouldWake(event: Event): boolean {
-  if (!WAKE_KINDS.has(event.kind)) return false;
-  if (event.kind === 'reply_added') return event.reply.author === 'dev';
-  if (event.kind === 'discussion_message_posted') return event.message.author === 'dev';
-  return true;
-}
 
 const MIN_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 30_000;

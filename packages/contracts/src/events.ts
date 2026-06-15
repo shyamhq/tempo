@@ -167,3 +167,30 @@ export const EventKind = z.enum([
   'agent_cancel_requested',
 ]);
 export type EventKind = z.infer<typeof EventKind>;
+
+// Events that should wake the Agent for a new Turn. Dev-originated state
+// changes only; `agent_*`/`session_*`/`plan_edited_by_agent`/`thread_renamed`
+// are echoes the Agent itself produced. `agent_cancel_requested` is handled
+// in-Turn (SIGINT-equivalent), not via re-spawn.
+//
+// `reply_added` and `discussion_message_posted` are kind-allowed but MUST
+// be author-filtered — both Dev and Agent emit them; waking on Agent's own
+// reply causes a ping-pong loop. Same logic applies to both Local CLI
+// (per-Turn nudge) and Hosted Mailbox (per-VM-wake).
+const WAKE_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
+  'comment_added',
+  'reply_added',
+  'comment_resolved',
+  'comment_unresolved',
+  'comment_deleted',
+  'discussion_message_posted',
+  'plan_edited_by_dev',
+  'status_changed',
+]);
+
+export function shouldWake(event: Event): boolean {
+  if (!WAKE_KINDS.has(event.kind)) return false;
+  if (event.kind === 'reply_added') return event.reply.author === 'dev';
+  if (event.kind === 'discussion_message_posted') return event.message.author === 'dev';
+  return true;
+}

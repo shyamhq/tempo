@@ -5,6 +5,7 @@ export * from './discussion';
 export * from './event-log';
 export * from './events-stream';
 export * from './ids';
+export * from './mailbox';
 export * from './plan';
 export * from './r2';
 export * from './replies';

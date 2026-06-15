@@ -11,6 +11,16 @@ export type AppendPayload = Event extends infer E
     : never
   : never;
 
+// Post-append side-effect slot. Worker registers a presence-guarded
+// Mailbox writer; Console registers the shared writer directly. Failures
+// are swallowed below — the polling fallback in Task 2.3 catches missed
+// NOTIFYs, and a failed Mailbox write must not 500 the user's event.
+type AfterAppendHook = (threadId: string, event: Event) => Promise<void>;
+let afterAppend: AfterAppendHook | null = null;
+export function setAfterAppendHook(h: AfterAppendHook | null): void {
+  afterAppend = h;
+}
+
 export async function appendEvent(threadId: string, payload: AppendPayload): Promise<Event> {
   const seqResult = await db.execute(
     sql`SELECT nextval(pg_get_serial_sequence('events', 'seq')) AS n`,
@@ -31,6 +41,22 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
     payload_json: stripAttachmentUrls(event) as unknown as Record<string, unknown>,
     created_at: created_at_date,
   });
+  if (afterAppend) {
+    try {
+      // ponytail: hook awaited inline; if a slow workspace lookup ever shows
+      // up as p99 latency, wrap with AbortSignal.timeout(N) — for now the
+      // failure path is rare and the only consumer is one indexed query.
+      await afterAppend(threadId, event);
+    } catch (err) {
+      // ponytail: console.error matches the existing @tempo/server pattern;
+      // promote to a Pino-style structured logger when the package gets one.
+      console.error('appendEvent: after-append hook failed', {
+        threadId,
+        kind: event.kind,
+        err,
+      });
+    }
+  }
   return event;
 }
 
