@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tempo — Architecture Overview</title>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#0E0E11',
+      primaryColor: '#1C1C22',
+      primaryBorderColor: '#2A2A33',
+      primaryTextColor: '#E4E4E7',
+      lineColor: '#52525B',
+      secondaryColor: '#27272A',
+      tertiaryColor: '#18181B',
+      fontFamily: 'ui-sans-serif, system-ui, -apple-system, sans-serif',
+    },
+    flowchart: { htmlLabels: true, curve: 'basis' },
+    sequence: { showSequenceNumbers: false },
+  });
+</script>
+<style>
+  :root {
+    --bg: #0E0E11;
+    --bg-elev: #16161B;
+    --bg-elev-2: #1C1C22;
+    --border: #2A2A33;
+    --text: #E4E4E7;
+    --muted: #A1A1AA;
+    --dim: #71717A;
+    --accent: #818CF8;
+    --accent-soft: rgba(129, 140, 248, 0.12);
+    --warn: #FBBF24;
+    --done: #34D399;
+    --pending: #94A3B8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif; line-height: 1.5; font-size: 15px; }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace; }
+
+  .wrap { display: grid; grid-template-columns: 260px 1fr; max-width: 1400px; margin: 0 auto; }
+
+  nav.toc { position: sticky; top: 0; height: 100vh; padding: 32px 24px; border-right: 1px solid var(--border); overflow-y: auto; }
+  nav.toc h1 { font-size: 14px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+  nav.toc .subtitle { font-size: 12px; color: var(--dim); margin-bottom: 28px; }
+  nav.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: nav; }
+  nav.toc li { counter-increment: nav; margin: 2px 0; }
+  nav.toc li::before { content: counter(nav, decimal-leading-zero); color: var(--dim); margin-right: 10px; font-size: 11px; font-family: ui-monospace, monospace; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 13px; }
+  nav.toc a:hover { color: var(--text); }
+
+  main { padding: 56px 64px; max-width: 100%; overflow: hidden; }
+  main > header { margin-bottom: 56px; padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+  main > header h1 { font-size: 32px; margin: 0 0 8px; font-weight: 600; letter-spacing: -0.5px; }
+  main > header .tagline { color: var(--muted); font-size: 15px; max-width: 720px; }
+
+  section { margin-bottom: 64px; }
+  section > h2 { font-size: 24px; margin: 0 0 4px; font-weight: 600; letter-spacing: -0.3px; }
+  section > .lead { color: var(--muted); margin: 0 0 24px; max-width: 760px; }
+  section > h3 { font-size: 16px; margin: 32px 0 12px; font-weight: 600; color: var(--text); }
+  section p { color: var(--text); }
+  section p.muted { color: var(--muted); }
+
+  .diagram { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 24px; margin: 16px 0; overflow-x: auto; }
+  .diagram .mermaid { display: flex; justify-content: center; }
+  .diagram-caption { font-size: 12px; color: var(--dim); margin-top: 8px; font-style: italic; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; vertical-align: middle; margin-right: 4px; }
+  .pill.done { background: rgba(52, 211, 153, 0.14); color: var(--done); }
+  .pill.next { background: rgba(129, 140, 248, 0.14); color: var(--accent); }
+  .pill.future { background: rgba(148, 163, 184, 0.14); color: var(--pending); }
+  .pill.warn { background: rgba(251, 191, 36, 0.14); color: var(--warn); }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 14px; }
+  th { text-align: left; padding: 10px 12px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td code { background: var(--bg-elev-2); padding: 1px 6px; border-radius: 3px; font-size: 13px; color: var(--accent); }
+
+  .tree { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 20px 24px; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6; white-space: pre; overflow-x: auto; color: var(--text); }
+  .tree .dir { color: var(--accent); }
+  .tree .comment { color: var(--dim); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+  .card p { margin: 0; color: var(--muted); font-size: 13px; }
+
+  .slice-row { display: grid; grid-template-columns: 80px 1fr; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--border); }
+  .slice-row:last-child { border-bottom: none; }
+  .slice-id { font-family: ui-monospace, monospace; font-size: 13px; color: var(--dim); padding-top: 2px; }
+  .slice-title { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; font-weight: 600; }
+  .slice-body { color: var(--muted); font-size: 14px; }
+  .slice-body ul { margin: 6px 0 0 18px; padding: 0; }
+  .slice-body li { margin: 2px 0; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+  @media (max-width: 960px) {
+    .wrap { grid-template-columns: 1fr; }
+    nav.toc { position: relative; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+    main { padding: 32px 24px; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav class="toc">
+    <h1>Tempo</h1>
+    <div class="subtitle">Architecture overview · 2026-06-15</div>
+    <ol>
+      <li><a href="#thesis">Thesis</a></li>
+      <li><a href="#where">Where we are</a></li>
+      <li><a href="#after-1c">After slice 1c</a></li>
+      <li><a href="#after-2">After slice 2 (Hosted)</a></li>
+      <li><a href="#after-3">After slice 3 (Gateway)</a></li>
+      <li><a href="#full">End-to-end view</a></li>
+      <li><a href="#code">Code structure</a></li>
+      <li><a href="#db">Database ownership</a></li>
+      <li><a href="#flows">Request flows</a></li>
+      <li><a href="#roadmap">Build roadmap</a></li>
+      <li><a href="#vocabulary">Vocabulary</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header>
+      <h1>Tempo — System architecture</h1>
+      <p class="tagline">
+        Single page reference: where we are after slices 1a + 1b, what slice 1c
+        lands, and what the system looks like when slices 2 (Hosted runtime)
+        and 3 (Gateway + Connectors) ship behind it. Authored against
+        <code>plans/agent-harness.md</code> and the slice plans.
+      </p>
+    </header>
+
+    <section id="thesis">
+      <h2>Thesis (one paragraph)</h2>
+      <p>
+        Tempo is the human-in-the-loop planning layer between intent and
+        agent execution. The Plan is the deliverable; everything else is
+        scaffolding. There is one Agent identity (the LLM) reachable through
+        two runtimes — Local (the Member's own <code>claude</code> binary
+        talking to Tempo over remote MCP) and Hosted (an Agent SDK loop in
+        an ephemeral VM, driven by Worker). Both speak the same
+        <code>tempo_*</code> MCP contract against the same Worker. Worker
+        owns all agent-touched data, governs every connector call through
+        the Gateway, and persists artifacts (Plans, Comments, Discussion,
+        events) — never agent process state. Console is UI + Workspace
+        admin only.
+      </p>
+    </section>
+
+    <section id="where">
+      <h2>Where we are <span class="pill done">slices 1a + 1b shipped</span></h2>
+      <p class="lead">
+        Two commits ahead of <code>origin/main</code>:
+        <code>refactor(db): lift schema/client/migrations into @tempo/db</code>
+        and
+        <code>feat(worker): apps/worker skeleton with stub tempo_attach (slice 1b)</code>.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+  subgraph User["Member's machine"]
+    direction TB
+    Browser1["Browser<br/>(Console UI)"]
+    CLI1["tempo-agent CLI<br/>(old: connect &lt;token&gt;<br/>still embedded SDK)"]
+    Claude1["claude binary<br/>spawned by old CLI"]
+  end
+
+  subgraph Tempo["Tempo backend"]
+    direction TB
+    Console1["apps/console<br/>UI + REST + SSE<br/>+ MCP-adjacent routes"]
+    Worker1["apps/worker<br/>stub tempo_attach only"]
+    DB1[("Postgres<br/>via @tempo/db")]
+  end
+
+  Browser1 --> Console1
+  CLI1 -.spawn.-> Claude1
+  Claude1 -- "stdio MCP" --> CLI1
+  CLI1 -- "HTTP (old path)" --> Console1
+  Console1 --> DB1
+  Worker1 --> DB1
+  Worker1 -- "HTTP-streamable MCP<br/>(unused, smoke target)" --> Browser1
+        </pre>
+      </div>
+      <p class="muted">
+        Worker exists, talks to Postgres via <code>@tempo/db</code>, exposes
+        one stub <code>tempo_attach</code> tool. Nothing routes through it
+        in production yet. The old CLI (<code>tempo-agent connect &lt;token&gt;</code>)
+        still embeds the Claude Agent SDK loop and HTTP-calls Console's
+        MCP-adjacent routes.
+      </p>
+    </section>
+
+    <section id="after-1c">
+      <h2>After slice 1c <span class="pill next">in progress</span></h2>
+      <p class="lead">
+        The topology flip completes. All 10 <code>tempo_*</code> tools land
+        on Worker. The CLI is rewritten end-to-end as
+        <code>tempo-agent init</code> + <code>tempo-agent connect
+        &lt;thread-id&gt;</code>. Console keeps only UI + Workspace admin.
+        Hard cutover; no transitional code.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+  subgraph User["Member's machine"]
+    direction TB
+    Browser2["Browser<br/>(Console UI)"]
+    Term2["Terminal"]
+    CLI2["tempo-agent<br/>init / connect"]
+    Claude2["claude binary<br/>(stream-json)"]
+    Creds2[("~/.tempo/<br/>credentials.json")]
+  end
+
+  subgraph Tempo["Tempo backend"]
+    direction TB
+    Console2["apps/console<br/>UI + Workspace admin<br/>+ /cli/authorize"]
+    Worker2["apps/worker<br/>Unified MCP<br/>10 tempo_* tools<br/>+ /api/cli/*<br/>+ /api/agent-events"]
+    DB2[("Postgres<br/>via @tempo/db")]
+  end
+
+  Term2 --> CLI2
+  CLI2 <-- "read/write" --> Creds2
+  CLI2 -. spawn .-> Claude2
+  Claude2 -- "stream-json stdout" --> CLI2
+
+  Browser2 -- "Clerk JWT" --> Console2
+  Browser2 -- "Bearer Clerk JWT" --> Worker2
+  CLI2 -- "OAuth init" --> Console2
+  CLI2 -- "exchange + events<br/>(sk_user_*)" --> Worker2
+  Claude2 -- "HTTP-streamable MCP<br/>(sk_user_*)" --> Worker2
+
+  Console2 --> DB2
+  Worker2 --> DB2
+        </pre>
+      </div>
+      <p class="muted">
+        <code>tempo-agent init</code> runs an OAuth-style browser flow
+        against Console's <code>/cli/authorize</code>, exchanges the code
+        at Worker for a User-scoped token (<code>sk_user_*</code>),
+        saves to <code>~/.tempo/credentials.json</code>. Nothing is
+        written to the repo. <code>tempo-agent connect &lt;thread-id&gt;</code>
+        spawns <code>claude --output-format stream-json --mcp-config
+        /tmp/...</code>, tees JSONL events to Worker, cleans up on exit.
+      </p>
+    </section>
+
+    <section id="after-2">
+      <h2>After slice 2 — Hosted runtime <span class="pill future">future</span></h2>
+      <p class="lead">
+        Worker gains an asynchronous brain: a Postgres-outbox-backed
+        Mailbox that coalesces incoming events (Comment / Message /
+        Recheck) into batched turns, plus an Agent SDK loop running inside
+        an ephemeral, egress-locked VM. Runtime routing per event: if an
+        active Local Session exists, route Local; else (and only if
+        Workspace has Hosted enabled), wake Hosted.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+  subgraph CP["Control plane — Worker (trusted)"]
+    direction TB
+    Mailbox["Mailbox<br/>(Postgres outbox<br/>+ 60s debounce<br/>+ coalescing)"]
+    Router["Runtime Router<br/>(active Session? <br/>Hosted enabled?)"]
+    Provision["VM Provisioner<br/>(Fly Sprites)"]
+    MCP["Unified MCP<br/>(tempo_* tools)"]
+  end
+
+  subgraph VM["Ephemeral VM (per session)"]
+    direction TB
+    Brain["Agent SDK loop<br/>(short-lived key)"]
+    Tools["Local tools<br/>Read · Grep · Bash"]
+    Repo["Repo on disk<br/>+ git App token<br/>(minutes TTL)"]
+  end
+
+  EventIn["Incoming event<br/>(Comment / Message / Recheck)"] --> Mailbox
+  Mailbox --> Router
+  Router -- "Local active" --> EventLog["Event log<br/>(Local picks up via tempo_poll)"]
+  Router -- "Hosted enabled<br/>+ no Local" --> Provision
+  Provision --> Brain
+  Brain --> Tools
+  Tools --> Repo
+  Repo -- "git/gh direct" --> GH["GitHub"]
+  Brain -- "tempo_* calls" --> MCP
+  Brain -- "stream events" --> EventLog
+        </pre>
+      </div>
+      <p class="muted">
+        Brain in the VM; control plane on Worker. Worker never runs
+        agent-generated code. VM teardown on every Plan completion — key,
+        git token, scratch disk all die. Resume = fresh VM + rehydrate
+        from artifact via <code>tempo_attach</code>; no checkpoint saver.
+      </p>
+    </section>
+
+    <section id="after-3">
+      <h2>After slice 3 — Gateway + Connectors <span class="pill future">future</span></h2>
+      <p class="lead">
+        Worker's MCP surface becomes governed. Every connector call flows
+        through a fixed middleware pipeline. Per-Connector auth granularity:
+        Workspace-scoped (GitHub App, Notion internal), Member-scoped
+        (Linear), or hybrid. Grants live in self-hosted Nango; the data
+        path stays in Worker.
+      </p>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart TD
+  Caller["Local Agent or<br/>Hosted Agent SDK loop"]
+  Caller --> Tools["tempo_* tool dispatch"]
+  Tools -- "plan/conversation/coord" --> DirectDB["@tempo/db reads/writes"]
+  Tools -- "governed connector call" --> Gate
+
+  subgraph Gate["Gateway pipeline"]
+    direction TB
+    A1["1 · Allowlist<br/>(enabled for this Thread?)"]
+    A2["2 · Approve-gate<br/>(write tool? Plan approved?)"]
+    A3["3 · Grant resolution<br/>(Workspace / Member / Hybrid)"]
+    A4["4 · Execute<br/>(Worker makes the call)"]
+    A5["5 · Provenance<br/>(stamp source anchor)"]
+    A6["6 · Redact<br/>(strip secrets)"]
+    A7["7 · Audit<br/>(immutable row)"]
+    A1 --> A2 --> A3 --> A4 --> A5 --> A6 --> A7
+  end
+
+  Gate --> Nango["Nango<br/>(self-hosted vault)"]
+  Nango --> Ext["GitHub / Linear / Notion / ..."]
+  Gate --> AuditDB[("audit_log")]
+  Gate --> Console["Console activity feed<br/>(redacted result)"]
+        </pre>
+      </div>
+      <p class="muted">
+        Plan-write, conversation, and coordination tools go straight to
+        <code>@tempo/db</code> (no governance — they target our own
+        artifact). Only connector calls flow through Gateway. The
+        <code>canUseTool</code> SDK hook gates writes via tool
+        availability, not by asking the model to behave.
+      </p>
+    </section>
+
+    <section id="full">
+      <h2>End-to-end view (everything in place)</h2>
+      <div class="diagram">
+        <pre class="mermaid">
+flowchart LR
+  subgraph User["Member's machine"]
+    direction TB
+    B["Browser<br/>Console UI"]
+    CLI["tempo-agent<br/>(init / connect)"]
+    Claude["claude binary"]
+    Creds[("~/.tempo/")]
+  end
+
+  subgraph Tempo["Tempo control plane"]
+    direction TB
+    Console["apps/console<br/>UI + Workspace admin<br/>+ /cli/authorize"]
+    Worker["apps/worker<br/>Unified MCP · Gateway<br/>· Mailbox · VM Driver<br/>· Agent-event ingest"]
+    DB[("Postgres<br/>@tempo/db")]
+    Nango["Nango<br/>(self-hosted vault)"]
+  end
+
+  subgraph Ephemeral["Ephemeral VM (slice 2)"]
+    Brain["Agent SDK loop<br/>(short-lived key)"]
+    Disk["Repo on disk<br/>+ git App token"]
+  end
+
+  GH["GitHub"]
+  Ext["Linear / Notion / Sentry"]
+
+  B -- "Clerk JWT" --> Console
+  B -- "Bearer Clerk JWT" --> Worker
+  CLI <--> Creds
+  CLI -- "OAuth (init)" --> Console
+  CLI -- "exchange + events" --> Worker
+  CLI -. spawn .-> Claude
+  Claude -- "stream-json" --> CLI
+  Claude -- "MCP" --> Worker
+
+  Console --> DB
+  Worker --> DB
+  Worker -- "provision (slice 2)" --> Brain
+  Brain --> Disk
+  Disk -- "direct" --> GH
+  Brain -- "MCP" --> Worker
+
+  Worker -- "governed calls<br/>(slice 3)" --> Nango
+  Nango --> Ext
+        </pre>
+      </div>
+      <p class="muted">
+        Two exit paths from the VM: repo I/O goes direct to GitHub with a
+        scoped git token (the local-disk work the VM exists for); governed
+        connector calls loop back through Worker's Gateway. The VM can
+        reach exactly three things: Anthropic API, GitHub, Worker.
+      </p>
+    </section>
+
+    <section id="code">
+      <h2>Code structure (after slice 3)</h2>
+      <p class="lead">
+        Three apps, three packages. Slice 1c migrates the bulk of
+        <code>apps/console/server/**</code> into <code>apps/worker/</code>;
+        slices 2 and 3 add new sibling directories under
+        <code>apps/worker/src/</code>.
+      </p>
+      <div class="tree">tempo/
+├── <span class="dir">apps/</span>
+│   ├── <span class="dir">console/</span>            <span class="comment"># Next.js — UI + Workspace admin only</span>
+│   │   ├── app/
+│   │   │   ├── (app)/                  <span class="comment"># authenticated app shell</span>
+│   │   │   ├── (auth)/                 <span class="comment"># sign-in / sign-up</span>
+│   │   │   ├── api/
+│   │   │   │   ├── workspace/          <span class="comment"># members, invitations, agent-key</span>
+│   │   │   │   ├── spaces/             <span class="comment"># browser folder org</span>
+│   │   │   │   ├── webhooks/clerk/
+│   │   │   │   └── health/
+│   │   │   ├── cli/authorize/          <span class="comment"># NEW in 1c — OAuth allow/deny</span>
+│   │   │   └── threads/[id]/
+│   │   ├── components/                 <span class="comment"># UI</span>
+│   │   ├── lib/api-client.ts           <span class="comment"># browser → Worker calls</span>
+│   │   └── server/                     <span class="comment"># workspaces, spaces, clerk-webhook</span>
+│   │
+│   ├── <span class="dir">worker/</span>             <span class="comment"># Express + MCP SDK — the agent-shared plane</span>
+│   │   ├── src/
+│   │   │   ├── index.ts                <span class="comment"># Express boot, CORS, routes</span>
+│   │   │   ├── env.ts
+│   │   │   ├── logger.ts
+│   │   │   ├── auth.ts                 <span class="comment"># Bearer middleware (3 token types)</span>
+│   │   │   ├── server/                 <span class="comment"># lifted from apps/console/server/ in 1c</span>
+│   │   │   │   ├── plan.ts
+│   │   │   │   ├── comments.ts
+│   │   │   │   ├── replies.ts
+│   │   │   │   ├── discussion.ts
+│   │   │   │   ├── threads.ts          <span class="comment"># agent-facing methods only</span>
+│   │   │   │   ├── sessions.ts
+│   │   │   │   ├── status.ts
+│   │   │   │   ├── event-log.ts
+│   │   │   │   ├── events-stream.ts
+│   │   │   │   ├── attachments.ts
+│   │   │   │   ├── cli-auth.ts         <span class="comment"># NEW — code-mint + user_tokens</span>
+│   │   │   │   ├── auth-lookup.ts      <span class="comment"># NEW — three lookups (1c)</span>
+│   │   │   │   └── db-queries/plans.ts
+│   │   │   ├── mcp/
+│   │   │   │   ├── server.ts           <span class="comment"># McpServer + tool registration</span>
+│   │   │   │   ├── transport.ts        <span class="comment"># StreamableHTTPServerTransport map</span>
+│   │   │   │   └── tools/              <span class="comment"># one file per tempo_* tool</span>
+│   │   │   │       ├── attach.ts       <span class="comment"># post-1c uses server/ modules</span>
+│   │   │   │       ├── pull-plan.ts
+│   │   │   │       ├── update-plan.ts
+│   │   │   │       ├── update-block.ts
+│   │   │   │       ├── add-blocks.ts
+│   │   │   │       ├── delete-block.ts
+│   │   │   │       ├── poll.ts
+│   │   │   │       ├── post-reply.ts
+│   │   │   │       ├── post-discussion-message.ts
+│   │   │   │       ├── set-thread-meta.ts
+│   │   │   │       └── load-skill.ts
+│   │   │   ├── routes/
+│   │   │   │   ├── health.ts
+│   │   │   │   ├── browser/            <span class="comment"># NEW in 1c (CORS-gated)</span>
+│   │   │   │   ├── cli/                <span class="comment"># NEW in 1c — /api/cli/{exchange,refresh}</span>
+│   │   │   │   ├── agent-events/       <span class="comment"># NEW in 1c — stream-json ingest</span>
+│   │   │   │   └── events/             <span class="comment"># long-poll + SSE</span>
+│   │   │   ├── skills/                 <span class="comment"># MOVED in 1c from apps/agent</span>
+│   │   │   ├── lib/r2.ts               <span class="comment"># MOVED in 1c — attachments</span>
+│   │   │   ├── <span class="dir">mailbox/</span>            <span class="comment"># NEW in slice 2</span>
+│   │   │   │   ├── queue.ts
+│   │   │   │   ├── consumer.ts
+│   │   │   │   ├── scheduler.ts
+│   │   │   │   └── routing.ts
+│   │   │   ├── <span class="dir">hosted/</span>             <span class="comment"># NEW in slice 2</span>
+│   │   │   │   ├── runner.ts
+│   │   │   │   ├── sdk-loop.ts
+│   │   │   │   ├── subagents/          <span class="comment"># lazy — explorer, critic</span>
+│   │   │   │   └── prompts/
+│   │   │   ├── <span class="dir">vm/</span>                 <span class="comment"># NEW in slice 2</span>
+│   │   │   │   ├── provision.ts
+│   │   │   │   ├── egress.ts
+│   │   │   │   ├── teardown.ts
+│   │   │   │   └── lifecycle.ts
+│   │   │   ├── <span class="dir">gateway/</span>            <span class="comment"># NEW in slice 3</span>
+│   │   │   │   ├── allowlist.ts
+│   │   │   │   ├── approve-gate.ts
+│   │   │   │   ├── permission-hook.ts
+│   │   │   │   ├── provenance.ts
+│   │   │   │   ├── redact.ts
+│   │   │   │   └── audit.ts
+│   │   │   ├── <span class="dir">connectors/</span>         <span class="comment"># NEW in slice 3</span>
+│   │   │   │   ├── registry.ts
+│   │   │   │   ├── grants.ts
+│   │   │   │   ├── github/
+│   │   │   │   └── linear/
+│   │   │   └── <span class="dir">nango/</span>              <span class="comment"># NEW in slice 3</span>
+│   │   │       ├── client.ts
+│   │   │       └── deploy/
+│   │   ├── Dockerfile
+│   │   └── fly.toml                    <span class="comment"># worker.tempo.dev</span>
+│   │
+│   └── <span class="dir">agent/</span>              <span class="comment"># Thin CLI — tempo-agent init / connect</span>
+│       └── src/
+│           ├── cli.ts
+│           ├── commands/
+│           │   ├── init.ts             <span class="comment"># OAuth login → ~/.tempo/</span>
+│           │   └── connect.ts          <span class="comment"># spawn claude, tee stream-json</span>
+│           ├── credentials.ts
+│           ├── oauth-listener.ts
+│           ├── stream-pump.ts          <span class="comment"># 1/2 of today's size</span>
+│           ├── env.ts
+│           ├── errors.ts
+│           └── logger.ts
+│
+└── <span class="dir">packages/</span>
+    ├── <span class="dir">contracts/</span>          <span class="comment"># Zod schemas + WORKFLOW (lifted in 1c)</span>
+    │   └── src/
+    │       ├── primitives.ts
+    │       ├── mcp.ts                  <span class="comment"># AttachInput gains { thread_id } in 1c</span>
+    │       ├── http.ts                 <span class="comment"># + cli/exchange, refresh, agent-events</span>
+    │       ├── events.ts
+    │       └── workflow.ts             <span class="comment"># NEW in 1c</span>
+    │
+    └── <span class="dir">db/</span>                 <span class="comment"># Drizzle schema + migrations (slice 1a)</span>
+        ├── src/
+        │   ├── schema.ts               <span class="comment"># + user_tokens in 1c</span>
+        │   │                           <span class="comment"># + mailbox_events, vm_runs in slice 2</span>
+        │   │                           <span class="comment"># + connector_allowlist, audit_log in slice 3</span>
+        │   ├── client.ts
+        │   ├── migrate.ts
+        │   └── ids.ts
+        └── drizzle/                    <span class="comment"># SQL migrations</span></div>
+    </section>
+
+    <section id="db">
+      <h2>Database ownership</h2>
+      <p class="lead">
+        One Postgres on Railway; both apps connect via <code>@tempo/db</code>.
+        Ownership is the discipline — only one app writes a given table.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Table</th><th>Owner</th><th>Added in</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>workspaces</code></td><td>Console (write) + Worker (read)</td><td>Phase 3</td><td>Clerk Org mapping + agent_api_key. Worker reads for auth.</td></tr>
+          <tr><td><code>spaces</code></td><td>Console</td><td>Phase 3</td><td>Browser folder org. Not agent-touched.</td></tr>
+          <tr><td><code>threads</code></td><td>Worker (after 1c)</td><td>Phase 1</td><td>Console keeps the createThread / deleteThread methods.</td></tr>
+          <tr><td><code>sessions</code></td><td>Worker (after 1c)</td><td>Phase 1</td><td>Mcp-Session-Id → thread_id sticky mapping.</td></tr>
+          <tr><td><code>plans</code></td><td>Worker (after 1c)</td><td>Phase 1</td><td>ProseMirror JSON body, updated_by audit.</td></tr>
+          <tr><td><code>comments</code></td><td>Worker (after 1c)</td><td>Phase 1</td><td>Anchored Comments + resolved_by.</td></tr>
+          <tr><td><code>replies</code></td><td>Worker (after 1c)</td><td>Phase 1</td><td>Flat replies on Comments.</td></tr>
+          <tr><td><code>discussion_messages</code></td><td>Worker (after 1c)</td><td>Phase 2</td><td>Text + inline questions (D32).</td></tr>
+          <tr><td><code>attachments</code></td><td>Worker (after 1c)</td><td>Phase 2</td><td>R2 metadata.</td></tr>
+          <tr><td><code>events</code></td><td>Worker (after 1c)</td><td>Phase 1</td><td>Append-only event log.</td></tr>
+          <tr><td><code>user_tokens</code></td><td>Worker</td><td>Slice 1c</td><td>sk_user_* + refresh_token hashes. No workspace_id — Workspace context derives from the Thread per-call via membership check.</td></tr>
+          <tr><td><code>mailbox_events</code></td><td>Worker</td><td>Slice 2</td><td>Coalesced per-Thread queue.</td></tr>
+          <tr><td><code>vm_runs</code></td><td>Worker</td><td>Slice 2</td><td>Audit + cost estimate per VM run.</td></tr>
+          <tr><td><code>connector_workspace_defaults</code></td><td>Worker</td><td>Slice 3</td><td>Per-Workspace Connector enablement.</td></tr>
+          <tr><td><code>connector_allowlist</code></td><td>Worker</td><td>Slice 3</td><td>Per-Thread override.</td></tr>
+          <tr><td><code>audit_log</code></td><td>Worker</td><td>Slice 3</td><td>Immutable governed-call audit.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="flows">
+      <h2>Request flows</h2>
+
+      <h3>Local Agent — per-session attach (slice 1c happy path)</h3>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Member
+  participant CLI as tempo-agent
+  participant C as claude binary
+  participant W as Worker (MCP)
+  participant DB as Postgres
+  participant B as Browser (Console)
+
+  rect rgba(129,140,248,0.06)
+  Note over U,B: one-time per Member per machine
+  U->>CLI: tempo-agent init
+  CLI->>B: open /cli/authorize?state=&port=
+  B-->>CLI: GET /callback?code=
+  CLI->>W: POST /api/cli/exchange
+  W->>DB: INSERT user_tokens (hashed)
+  W-->>CLI: { sk_user_, refresh, expires_at }
+  CLI->>CLI: write ~/.tempo/credentials.json
+  end
+
+  rect rgba(52,211,153,0.06)
+  Note over U,DB: per planning session
+  U->>CLI: tempo-agent connect thd_abc
+  CLI->>CLI: refresh if expired
+  CLI->>CLI: write /tmp/tempo-<pid>.json
+  CLI->>C: spawn claude --output-format stream-json --mcp-config <tmp>
+  C->>W: MCP initialize (Bearer sk_user_)
+  W-->>C: Mcp-Session-Id
+  C->>W: tempo_attach({ thread_id: thd_abc })
+  W->>DB: 6 reads (thread, plan, comments, ...)
+  W->>W: stamp (Mcp-Session-Id → Session → thread_id)
+  W-->>C: AttachOutput { plan, comments, discussion, workflow }
+  end
+
+  rect rgba(52,211,153,0.06)
+  loop per agent turn
+    C->>W: tempo_* tool call (no thread_id)
+    W->>DB: read/write
+    W-->>C: result
+    C-->>CLI: stream-json event (stdout JSONL)
+    CLI->>W: POST /api/agent-events
+    W->>B: SSE event (activity feed)
+  end
+  end
+
+  rect rgba(251,191,36,0.06)
+  Note over B,DB: human comment, async pickup
+  U->>B: add Comment in editor
+  B->>W: POST /api/threads/thd_abc/comments
+  W->>DB: INSERT + append event
+  W-->>C: (resolves blocked tempo_poll long-poll)
+  C->>C: LLM reads comment, acts
+  end
+        </pre>
+      </div>
+
+      <h3>Hosted Agent — async event drain (slice 2)</h3>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant W as Worker
+  participant Q as Mailbox queue
+  participant V as Ephemeral VM
+  participant A as Agent SDK loop
+  participant DB as Postgres
+  participant GH as GitHub
+
+  B->>W: POST Comment (no Local Session active)
+  W->>DB: INSERT comment + event
+  W->>Q: enqueue {thread_id, event_id}
+  W-->>B: 200 OK
+
+  Note over Q: 60s debounce, coalesce per Thread
+  Q->>W: drain batch (1+ pending)
+  W->>V: fly machines launch (Sprite)
+  W->>V: inject short-lived API key + git App token
+  V->>A: start SDK loop with batched event payload
+  A->>W: tempo_attach({ thread_id })
+  W->>DB: reads
+  W-->>A: AttachOutput
+  A->>V: git clone --depth 1 (direct to GitHub)
+  V->>GH: clone repo (App token)
+  A->>A: explore + reason
+  A->>W: tempo_update_plan / tempo_post_reply
+  W->>DB: writes + events
+  A->>W: turn_ended
+  W->>V: fly machines destroy (key + token die)
+        </pre>
+      </div>
+
+      <h3>Governed Connector call (slice 3)</h3>
+      <div class="diagram">
+        <pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant A as Agent (Local or Hosted)
+  participant W as Worker (Gateway)
+  participant N as Nango (self-hosted)
+  participant X as External (Linear)
+  participant DB as audit_log
+  participant B as Browser (activity)
+
+  A->>W: tempo_search_linear({ query })
+  W->>W: 1. allowlist (Linear enabled for this Thread?)
+  W->>W: 2. approve-gate (read tool — allowed)
+  W->>W: 3. resolve Grant (Linear is Member-scoped)
+  W->>N: fetch Grant by connectionId=ws_:user_
+  N-->>W: access_token (in-VPC)
+  W->>X: GET /issues?query=...
+  X-->>W: results
+  W->>W: 5. provenance (stamp source anchors)
+  W->>W: 6. redact (strip secrets)
+  W->>DB: 7. audit row (member, tool, summary)
+  W-->>A: shaped result
+  W->>B: SSE activity (redacted)
+        </pre>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2>Build roadmap</h2>
+      <p class="lead">
+        Five slices. 1a + 1b shipped. 1c is the topology flip. 2 + 3 add
+        the Hosted runtime and the Gateway with first Connector.
+      </p>
+
+      <div class="slice-row">
+        <div class="slice-id">1a</div>
+        <div>
+          <div class="slice-title"><span class="pill done">shipped</span> Extract <code>packages/db</code></div>
+          <div class="slice-body">
+            <ul>
+              <li>Lifted Drizzle schema + client + migrations + <code>newEventId</code> into a workspace package.</li>
+              <li>13 Console consumers re-pointed to <code>@tempo/db/*</code>.</li>
+              <li>Pure refactor; no behavior change. Five reviewer-found fixes applied.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="slice-row">
+        <div class="slice-id">1b</div>
+        <div>
+          <div class="slice-title"><span class="pill done">shipped</span> <code>apps/worker</code> skeleton with stub <code>tempo_attach</code></div>
+          <div class="slice-body">
+            <ul>
+              <li>Express + MCP SDK v1.29 <code>StreamableHTTPServerTransport</code> at <code>/mcp</code>.</li>
+              <li>Per-session McpServer; <code>Mcp-Session-Id</code> binds to workspaceId for cross-workspace isolation.</li>
+              <li>One stub <code>tempo_attach</code> reading via <code>@tempo/db</code>; field-shape parity with Console's existing <code>GET /api/sessions/:id/state</code>.</li>
+              <li>Dockerfile + fly.toml v2 schema; <code>fly deploy</code> stays manual.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="slice-row">
+        <div class="slice-id">1c</div>
+        <div>
+          <div class="slice-title"><span class="pill next">next</span> Migrate routes + reshape CLI</div>
+          <div class="slice-body">
+            <ul>
+              <li>17 routes + 14 server modules move from Console to Worker.</li>
+              <li>All 10 <code>tempo_*</code> tools registered on Worker.</li>
+              <li>CLI rewritten: <code>tempo-agent init</code> (OAuth → <code>~/.tempo/</code>) + <code>tempo-agent connect &lt;thread-id&gt;</code> (spawn <code>claude</code> stream-json wrapper).</li>
+              <li>Browser writes re-pointed to Worker (Bearer Clerk JWT, CORS).</li>
+              <li>New: <code>user_tokens</code> table, <code>/cli/authorize</code> page, <code>/api/cli/*</code> + <code>/api/agent-events</code> on Worker.</li>
+              <li>Hard cutover: <code>@gmeher/tempo-agent@1.0.0</code> on npm; design partners migrated.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="slice-row">
+        <div class="slice-id">2</div>
+        <div>
+          <div class="slice-title"><span class="pill future">future</span> Hosted runtime (Mailbox + SDK loop + VM)</div>
+          <div class="slice-body">
+            <ul>
+              <li>Postgres-outbox Mailbox with 60s debounce + per-Thread coalescing.</li>
+              <li>Hosted Agent SDK loop driver — system prompt for planning behavior, <code>canUseTool</code> hook.</li>
+              <li>Ephemeral VM (Fly Sprites) with egress allowlist (Anthropic + GitHub + Worker only).</li>
+              <li>Per-turn lifecycle; rebuild from artifact via <code>tempo_attach</code> (no checkpoint).</li>
+              <li>Workspace-level Hosted toggle; runtime routing per event.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="slice-row">
+        <div class="slice-id">3</div>
+        <div>
+          <div class="slice-title"><span class="pill future">future</span> Gateway + first Connector + allowlist + approve-gate</div>
+          <div class="slice-body">
+            <ul>
+              <li>Gateway middleware: allowlist → approve-gate → grant resolution → execute → provenance → redact → audit.</li>
+              <li>Self-hosted Nango in VPC; <code>connectionId</code> structure for Workspace / Member / Hybrid grants.</li>
+              <li>First Connector: GitHub or Linear (decided at slice-3 start). First-party MCP via DCR.</li>
+              <li>Console UI: Workspace admin Integrations section + per-Thread Allowlist control.</li>
+              <li>Per-Member rate limiting folds in here.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="vocabulary">
+      <h2>Vocabulary cheat sheet</h2>
+      <p class="lead">
+        From <code>CONTEXT.md</code>. Use these words exactly; avoid the
+        listed substitutes.
+      </p>
+      <table>
+        <thead>
+          <tr><th>Term</th><th>What it is</th><th>Avoid</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Workspace</strong></td><td>Top-level team container (Clerk Org); owns Threads, the agent API key, Connector enablement.</td><td>team, org, tenant</td></tr>
+          <tr><td><strong>Member</strong></td><td>A human in a Workspace (Clerk user id + role).</td><td>user, teammate, collaborator</td></tr>
+          <tr><td><strong>Dev</strong></td><td>A Member acting on a Thread — role-per-action, not per-Thread (D7 superseded).</td><td>user, human</td></tr>
+          <tr><td><strong>Agent</strong></td><td>The LLM. Two runtimes: Local (Member's own claude binary) and Hosted (SDK loop in VM).</td><td>AI, bot, assistant, server-side LLM</td></tr>
+          <tr><td><strong>Console</strong></td><td>The web UI + browser REST + SSE. No MCP, no LLM.</td><td>tool, service, backend</td></tr>
+          <tr><td><strong>Worker</strong></td><td>The privileged backend — unified MCP, Gateway, Mailbox, SDK driver, VM provisioning.</td><td>server, backend, API</td></tr>
+          <tr><td><strong>Gateway</strong></td><td>Worker's middleware fronting every <code>tempo_*</code> call.</td><td>router, proxy</td></tr>
+          <tr><td><strong>Connector</strong></td><td>A third-party service the Agent reads/writes through Gateway (GitHub, Linear, Notion, ...).</td><td>integration, provider</td></tr>
+          <tr><td><strong>Grant</strong></td><td>One stored OAuth token in Nango; Workspace / Member / Hybrid scoped.</td><td>token, credential</td></tr>
+          <tr><td><strong>Nango</strong></td><td>Self-hosted OAuth vault inside our VPC.</td><td>broker, vault</td></tr>
+          <tr><td><strong>Mailbox</strong></td><td>Per-Thread queue with 60s debounce + coalescing; drives Hosted turns.</td><td>queue, inbox</td></tr>
+          <tr><td><strong>Session</strong></td><td>One Local Agent attached to one Thread; heartbeat via <code>tempo_poll</code>.</td><td>connection</td></tr>
+          <tr><td><strong>Thread</strong></td><td>One planning conversation; owns Plan + Comments + Discussion.</td><td>—</td></tr>
+          <tr><td><strong>Plan</strong></td><td>The single mutable Markdown deliverable; last-write-wins.</td><td>—</td></tr>
+          <tr><td><strong>Comment</strong></td><td>Dev-authored note anchored to a Plan text range.</td><td>—</td></tr>
+          <tr><td><strong>Discussion</strong></td><td>Singleton free-form channel; unanchored Dev↔Agent talk.</td><td>—</td></tr>
+          <tr><td><strong>Handoff card</strong></td><td>Post-Approve Copy-Plan card for pasting into a fresh <code>claude</code> session.</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>
