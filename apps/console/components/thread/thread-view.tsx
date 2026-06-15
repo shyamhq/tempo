@@ -286,7 +286,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             {approved ? null : <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />}
           </div>
           <div className="flex-1" />
-          <SessionPill status={view.session_status} agentPresent={agentPresent} />
+          <SessionPill
+            status={view.session_status}
+            agentPresent={agentPresent}
+            failedReason={view.session_failed_reason ?? null}
+          />
           <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
           {approved ? null : (

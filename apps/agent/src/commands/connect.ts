@@ -4,8 +4,10 @@ import { unlinkSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ThreadId } from '@tempo/contracts';
 import { read, refresh } from '../credentials';
 import { env } from '../env';
+import { postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';
 import { startStreamPump } from '../stream-pump';
 
@@ -21,11 +23,20 @@ const ATTACH_SYSTEM_PROMPT =
   'as the argument: tempo_attach({ thread_id: "<value from --print>" }). ' +
   'Do not read any files or perform any other action before calling tempo_attach.';
 
-export async function connectCommand(threadId: string | undefined): Promise<void> {
-  if (!threadId) {
+export async function connectCommand(rawThreadId: string | undefined): Promise<void> {
+  if (!rawThreadId) {
     process.stderr.write('usage: tempo-agent connect <thread-id>\n');
     process.exit(2);
   }
+  // Fail fast on a malformed id instead of round-tripping to Worker for a 404.
+  // ThreadId is a Zod regex (^thr_[A-Z0-9]{26}$), so .parse() is the
+  // single boundary check; the rest of this command can trust the value.
+  const parsedThreadId = ThreadId.safeParse(rawThreadId);
+  if (!parsedThreadId.success) {
+    process.stderr.write(`tempo connect: "${rawThreadId}" is not a valid thread id\n`);
+    process.exit(2);
+  }
+  const threadId = parsedThreadId.data;
 
   // 1. Read credentials
   let creds = await read().catch((err) => {
@@ -87,6 +98,16 @@ export async function connectCommand(threadId: string | undefined): Promise<void
   process.stdout.write(
     `Connecting to ${access.workspace_name}'s Thread "${access.thread_title}"...\n`,
   );
+
+  // Surface boot progress in Console before tempo_attach lands. The Console
+  // reducer flips session_status to 'initiating' until session_connected
+  // (from tempo_attach) overrides, or session_failed lands on early exit.
+  await postLifecycleEvent({
+    workerUrl,
+    token,
+    threadId,
+    event: { kind: 'session_initiating' },
+  });
 
   // 4. Write ephemeral MCP config (HTTP transport pointing at Worker)
   const suffix = randomBytes(4).toString('hex');
@@ -156,11 +177,17 @@ export async function connectCommand(threadId: string | undefined): Promise<void
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
 
+  // Carries the failure reason out of the spawn-error handler so the
+  // post-exit block can either await the in-flight POST or skip the
+  // duplicate. process.exit() would otherwise abort an in-flight retry.
+  let failedReason: string | null = null;
+
   const exitCode = await new Promise<number>((resolve) => {
     child.on('exit', (code) => {
       resolve(code ?? 1);
     });
     child.on('error', (err) => {
+      failedReason = `claude failed to spawn: ${err.message}`.slice(0, 200);
       process.stderr.write(
         `tempo connect: failed to spawn claude — ${err.message}\n` +
           `Make sure claude is installed: https://docs.anthropic.com/en/docs/claude-code\n`,
@@ -168,6 +195,21 @@ export async function connectCommand(threadId: string | undefined): Promise<void
       resolve(1);
     });
   });
+
+  // Coarse heuristic per the plan: any non-zero exit is `session_failed`.
+  // Covers both boot-time death (ENOENT, not logged in) and mid-session
+  // crashes; the Console reducer is last-writer-wins so post-connect
+  // failures still flip the pill to failed correctly. Awaiting here (not
+  // void) ensures process.exit() does not cut off the in-flight retry.
+  if (exitCode !== 0) {
+    const reason = failedReason ?? `claude exited with code ${exitCode}`;
+    await postLifecycleEvent({
+      workerUrl,
+      token,
+      threadId,
+      event: { kind: 'session_failed', reason },
+    });
+  }
 
   process.off('SIGINT', onSignal);
   process.off('SIGTERM', onSignal);

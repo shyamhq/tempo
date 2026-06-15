@@ -92,6 +92,19 @@ export const SessionDisconnectedEvent = eventBase.extend({
   kind: z.literal('session_disconnected'),
 });
 
+// CLI emits before spawning claude; closes the dead zone between
+// `tempo-agent connect` and the first `tempo_attach`.
+export const SessionInitiatingEvent = eventBase.extend({
+  kind: z.literal('session_initiating'),
+});
+
+// CLI emits on claude spawn error or non-zero exit; `reason` carries the
+// raw error text (max 200 chars, no categorisation in MVP).
+export const SessionFailedEvent = eventBase.extend({
+  kind: z.literal('session_failed'),
+  reason: z.string().max(200),
+});
+
 export const DiscussionMessagePostedEvent = eventBase.extend({
   kind: z.literal('discussion_message_posted'),
   message: DiscussionMessage,
@@ -124,6 +137,8 @@ export const Event = z.discriminatedUnion('kind', [
   AgentTurnEndedEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
+  SessionInitiatingEvent,
+  SessionFailedEvent,
   DiscussionMessagePostedEvent,
   ThreadRenamedEvent,
   AgentCancelRequestedEvent,
@@ -145,6 +160,8 @@ export const EventKind = z.enum([
   'agent_turn_ended',
   'session_connected',
   'session_disconnected',
+  'session_initiating',
+  'session_failed',
   'discussion_message_posted',
   'thread_renamed',
   'agent_cancel_requested',

@@ -1,3 +1,4 @@
+import type { SessionStatus } from '@tempo/contracts';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { DeleteThreadButton } from '@/components/dashboard/delete-thread-button';
@@ -10,9 +11,9 @@ import { listSpaces } from '@/server/spaces';
 
 export const dynamic = 'force-dynamic';
 
-const sessionTone = (s: 'pending' | 'connected' | 'disconnected') => {
+const sessionTone = (s: SessionStatus) => {
   if (s === 'connected') return 'success';
-  if (s === 'pending') return 'accent';
+  if (s === 'pending' || s === 'initiating') return 'accent';
   return 'muted';
 };
 

@@ -28,7 +28,13 @@ export type ConnectToken = z.infer<typeof ConnectToken>;
 export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 
 export const ThreadStatus = z.enum(['unapproved', 'approved']);
-export const SessionStatus = z.enum(['pending', 'connected', 'disconnected']);
+export const SessionStatus = z.enum([
+  'pending',
+  'initiating',
+  'connected',
+  'disconnected',
+  'failed',
+]);
 export const Actor = z.enum(['dev', 'agent']);
 
 export type ThreadStatus = z.infer<typeof ThreadStatus>;

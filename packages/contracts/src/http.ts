@@ -96,6 +96,9 @@ export const GetThreadResponse = z.object({
     messages: z.array(DiscussionMessage),
   }),
   session_status: SessionStatus,
+  // Populated by the SSE reducer on `session_failed`; never written by the
+  // server. Optional so older event-log replays without the field still parse.
+  session_failed_reason: z.string().nullable().optional(),
   // Repo chrome for the Thread header (D5). Drawn from the latest connected
   // session's `attached_repo_*`. Both null when no session has connected yet.
   attached_repo_remote: z.string().nullable(),
@@ -357,6 +360,15 @@ export const AgentTurnEndedEvent = z.object({
   kind: z.literal('agent_turn_ended'),
 });
 
+export const AgentSessionInitiatingEvent = z.object({
+  kind: z.literal('session_initiating'),
+});
+
+export const AgentSessionFailedEvent = z.object({
+  kind: z.literal('session_failed'),
+  reason: z.string().max(200),
+});
+
 export const AgentEventRequest = z.object({
   thread_id: ThreadId,
   event: z.discriminatedUnion('kind', [
@@ -364,6 +376,8 @@ export const AgentEventRequest = z.object({
     AgentNarrationEvent,
     AgentTodosUpdatedEvent,
     AgentTurnEndedEvent,
+    AgentSessionInitiatingEvent,
+    AgentSessionFailedEvent,
   ]),
 });
 export type AgentEventRequest = z.infer<typeof AgentEventRequest>;

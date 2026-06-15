@@ -222,9 +222,13 @@ function apply(
           comments: next.comments.filter((c) => c.id !== ev.comment_id),
         };
       case 'session_connected':
-        return { ...next, session_status: 'connected' };
+        return { ...next, session_status: 'connected', session_failed_reason: null };
       case 'session_disconnected':
         return { ...next, session_status: 'disconnected' };
+      case 'session_initiating':
+        return { ...next, session_status: 'initiating', session_failed_reason: null };
+      case 'session_failed':
+        return { ...next, session_status: 'failed', session_failed_reason: ev.reason };
       case 'discussion_message_posted': {
         if (next.discussion.messages.some((m) => m.id === ev.message.id)) return next;
         return {

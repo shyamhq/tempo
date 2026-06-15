@@ -10,21 +10,32 @@ import { Badge } from '@/components/ui/badge';
 export function SessionPill({
   status,
   agentPresent,
+  failedReason,
 }: {
   status: SessionStatus;
   agentPresent: boolean | null;
+  failedReason?: string | null;
 }) {
   const effective: SessionStatus =
     status === 'connected' && agentPresent === false ? 'disconnected' : status;
-  const tone = effective === 'connected' ? 'success' : effective === 'pending' ? 'accent' : 'muted';
-  const dot =
-    effective === 'connected'
-      ? 'bg-success'
-      : effective === 'pending'
-        ? 'bg-accent animate-pulse'
-        : 'bg-ink-tertiary';
+  let tone: 'success' | 'accent' | 'muted';
+  let dot: string;
+  if (effective === 'connected') {
+    tone = 'success';
+    dot = 'bg-success';
+  } else if (effective === 'pending' || effective === 'initiating') {
+    tone = 'accent';
+    dot = 'bg-accent animate-pulse';
+  } else if (effective === 'failed') {
+    tone = 'muted';
+    dot = 'bg-danger';
+  } else {
+    tone = 'muted';
+    dot = 'bg-ink-tertiary';
+  }
+  const title = effective === 'failed' ? (failedReason ?? 'Unknown error') : undefined;
   return (
-    <Badge tone={tone}>
+    <Badge tone={tone} title={title}>
       <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
       Session {effective}
     </Badge>
