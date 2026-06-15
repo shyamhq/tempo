@@ -8,3 +8,5 @@ export const newCommentId = () => `cmt_${ulid()}`;
 export const newReplyId = () => `rep_${ulid()}`;
 export const newMessageId = () => `msg_${ulid()}`;
 export const newAttachmentId = () => `att_${ulid()}`;
+export const newMailboxEventId = () => `mbx_${ulid()}`;
+export const newVmRunId = () => `vmr_${ulid()}`;
