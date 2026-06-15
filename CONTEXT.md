@@ -13,22 +13,64 @@
 These are the words we use about the product — in code identifiers, in API names, in UI copy, in commit messages, in conversation.
 
 ### Agent
-The local Claude Code instance running on the Dev's machine, driven over MCP. **The only LLM in the system** (D1). Spawned in-process inside the CLI via the Claude Agent SDK (T5).
+The LLM that produces Plans. **The only LLM in the system** (D1). Runs in one of two runtimes, chosen per Thread (never both):
+
+- **Local Agent** — the [[Member]]'s own Claude Code binary on their machine. Tempo is a remote MCP endpoint they connect to (set up by `tempo-agent init`, which writes `.mcp.json` + a `/tempo-plan` slash command + Claude Code hook configs into the repo). We do not embed or drive a harness here; the inference budget is theirs.
+- **Hosted Agent** — the Claude Agent SDK loop running inside a per-session ephemeral VM, driven by [[Worker]]. Owns async work (comments while no Local Agent is connected, scheduled rechecks, post-approve writes).
+
+Both runtimes speak the same `tempo_*` MCP contract against [[Worker]]. A tool written once works in either.
 **Avoid:** "AI", "bot", "assistant", "server-side LLM".
 
+### Workspace
+The top-level team container. Backed by a Clerk Organization. Owns Threads, the Agent API key, and (going forward) per-Workspace Connector enablement + per-Member Connector grants. Members have a role: `org:admin` or `org:member`. One Workspace owns many Threads; one human can belong to many Workspaces.
+**Avoid:** "team", "org", "tenant" (Workspace is the noun).
+
+### Member
+A human who belongs to a Workspace. Identified by their Clerk user id. Has a Workspace-scoped role (`admin` or `member`). Admins can manage members, rotate the Agent API key, rename or delete the Workspace; members can do everything Thread-level. Connector grants are Member-scoped: when the Agent calls a connector tool, Worker resolves the grant tied to the Member who initiated the turn (see [[Connector]] + the connector-identity rule).
+**Avoid:** "user", "teammate", "collaborator".
+
 ### Dev
-The single human party in a Thread. Creates the Thread, runs the Agent, comments on the Plan, approves it. Solo (D7) in MVP — there is no second Dev on a Thread.
-**Avoid:** "user", "human".
+A Member acting on a Thread. Any Member of the owning Workspace can participate on any of its Threads — create, comment, reply, approve. The Dev role is per-action, not per-Thread: a single Thread can have one or many Devs over its lifetime. Each Comment, Reply, Discussion Message, and Approve action records the acting Member's id. (This supersedes the original D7 "single human party / solo" framing; multi-Member Threads shipped in Phase 3.)
+**Avoid:** "user", "human" (Member is the persistent noun; Dev is the role-on-Thread).
 
 ### Console
-The web UI. **Thin client + coordination server**: renders Plan, accepts Comments, surfaces the Discussion (including Agent question batches inline), holds the post-Approve handoff card. **No LLM lives here.** The Console's "server" half is a Next.js REST API + SSE endpoint + Drizzle/SQLite store — coordination and persistence only, no intelligence.
+The web UI plus its browser-facing REST + SSE server. Next.js (App Router) on Postgres via Drizzle. Renders the Plan, accepts [[Dev]] edits, surfaces [[Comment]]s and the [[Discussion]] (including [[Agent]] question batches inline), holds the post-Approve [[Handoff card]], and exposes the admin surface for [[Workspace]] members + [[Connector]] enablement. **Does not host the `tempo_*` MCP endpoint** — that's the [[Worker]]. **No LLM lives here.**
 **Avoid:** "tool" (collides with MCP "tool calls"), "service", "backend" (the Console is one thing — the line between its UI and its API is internal).
 
+### Worker
+The privileged backend app. Separate process from [[Console]]; the two share the same Postgres but play different roles. Hosts: the unified `tempo_*` MCP endpoint that both [[Agent]] runtimes call, the [[Gateway]] responsibility (allowlist + approve-gate + token resolution + execution + provenance + redaction + audit), the [[Mailbox]] queue with debounce/coalescing, the Hosted-Agent SDK loop driver, and VM provisioning + teardown for the Hosted runtime. **The Worker never runs Agent-generated code** — that runs in the [[VM]].
+**Avoid:** "server", "backend", "API" (these belong to [[Console]] when used at all).
+
+### Gateway
+The responsibility inside [[Worker]] that fronts every `tempo_*` MCP call. For each call: (1) checks the per-Thread [[Allowlist]]; (2) for connector-write tools, enforces the [[Approve-gate]]; (3) resolves the right [[Grant]] from [[Nango]] given the Connector's declared auth mode and the turn-initiator [[Member]]; (4) executes the third-party call itself (does not delegate execution to the VM or Nango's proxy); (5) stamps results with provenance so the [[Agent]] can cite sources in the Plan; (6) redacts secrets before results stream to Console; (7) writes an immutable audit row. Plan-write and conversation tools also flow through Gateway but are subject only to (1) — they're always allowed during drafting and frozen on Approve. The Gateway is *not* a generic tool router and does *not* execute repo I/O (that's the VM's job, direct to GitHub).
+**Avoid:** "router", "proxy", "tool service".
+
+### Connector
+A third-party service that the [[Agent]] reads from or writes to through the [[Gateway]]. Examples: GitHub, Linear, Notion, Sentry, Slack. Each Connector module declares its **auth granularity**:
+- **Workspace-scoped** — one [[Grant]] per [[Workspace]]; admin connects once and all [[Member]]s benefit (e.g. GitHub App installation, Notion internal integration).
+- **Member-scoped** — one Grant per Member per Workspace; each Member onboards individually and the Gateway resolves by turn-initiator (e.g. Linear, GitHub user OAuth).
+- **Hybrid** — both grants coexist; the specific tool implementation picks which based on intent (e.g. GitHub: installation token for repo clone, user token for "Alice opened this PR"; Slack: bot token for workspace posts, user token for personal DMs).
+
+Connectors must be **enabled** at the [[Thread]] level (the [[Allowlist]]); connector-**write** tools are denied during drafting (the [[Approve-gate]]). Each Connector is implemented behind one of three backends (first-party MCP via DCR, an aggregator, or hand-rolled REST) — the backend is an implementation detail invisible to the Agent.
+**Avoid:** "integration" (overloaded), "service", "provider".
+
+### Grant
+A single stored OAuth installation, refresh token, or API key authorising calls to one [[Connector]]. Lives in [[Nango]], keyed by a `connectionId` whose structure encodes the auth mode: `workspace_id` for Workspace-scoped grants, `workspace_id:user_id` for Member-scoped grants. Hybrid Connectors hold two grants per Workspace × Member. Grants never enter the [[Console]], the [[VM]], or any log line; they are resolved and used inside [[Gateway]] only.
+**Avoid:** "token" (overloaded with workspace API key), "credential".
+
+### Nango
+The self-hosted OAuth + token vault we run inside our VPC. Handles the OAuth dance, stores [[Grant]]s, refreshes them. **Auth only** — Nango never executes a third-party API call on our behalf. The [[Gateway]] pulls a Grant from Nango, then makes the call itself (audit + redaction + data path stay in code we own; post-Composio-breach posture).
+**Avoid:** "broker", "vault" alone (Nango is the noun).
+
+### Mailbox
+The per-Thread queue [[Worker]] uses to schedule [[Hosted Agent]] turns. One row per pending event (Comment, Reply, Discussion Message, Recheck) with an idempotency key. New events for a Thread *coalesce* into the next turn — a ~60s debounce window lets bursts merge, and the Hosted Agent sees "2 comments + 1 message since last turn" rather than running three back-to-back. One reply per drained batch. Implemented as a Postgres outbox table (events written in the same transaction as the user action — no lost wake-ups) consumed by a queue library (T-pending: Graphile Worker vs pg-boss). Used only when the Local routing path is unavailable (no active [[Session]]) and the [[Workspace]] has Hosted enabled. Scheduled rechecks (e.g. "agent revisits this in 2 hours") are just Mailbox rows with a future `scheduled_at`.
+**Avoid:** "queue" alone (the Mailbox has Tempo-specific coalescing semantics; "queue" understates that), "inbox" (collides with notifications).
+
 ### Thread
-A single planning conversation about one bug or feature. Owns a Plan, a Comment stream, and a Discussion. Persistent across many Sessions. Has two statuses: `unapproved` (live) or `approved` (frozen, handoff card visible). Reopenable after approval.
+A single planning conversation about one bug or feature. Owned by a [[Workspace]]; visible and editable by any [[Member]] of that Workspace. Records a creator (the Member who opened it) but does not gate participation on it. Owns a Plan, a Comment stream, and a Discussion. Persistent across many Sessions. Has two statuses: `unapproved` (live) or `approved` (frozen, handoff card visible). Reopenable after approval.
 
 ### Session
-The live attachment of one Agent to one Thread. Ephemeral; a Thread outlives many Sessions. At most one Session in `connected` state per Thread (D8). Older Sessions get marked `disconnected` when a new one connects. Tokens are reusable across Sessions (T10).
+The live attachment of one **Local [[Agent]]** to one [[Thread]]. Ephemeral; a Thread outlives many Sessions. The [[Hosted Agent]] does not create Sessions — it processes [[Mailbox]] events on-demand and goes away when the turn ends. Status: `active` (a `tempo_poll` long-poll is currently open from the Local Agent) or `inactive` (no poll heard for ≥30s). Worker uses Session presence to route incoming events: any active Session for the Thread → Local handles via event-log; otherwise → enqueue in Mailbox so the Hosted Agent picks up (if the [[Workspace]] has Hosted enabled). At most one active Session per Thread (D8 still holds for Local). API keys are reusable across Sessions (T10).
 
 ### Plan
 The single mutable markdown document the Agent produces and revises. The **deliverable**. One row per Thread; no versioning (D4). Free-edited by both Dev and Agent (D6); last-write-wins; the Agent must `tempo_pull_plan` before each edit.
