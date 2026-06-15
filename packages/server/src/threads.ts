@@ -57,39 +57,38 @@ export async function getConnectToken(threadId: string): Promise<{ connect_token
 }
 
 export async function listThreads(workspaceId: string, spaceId?: string) {
-  const where = spaceId
-    ? and(eq(threads.workspace_id, workspaceId), eq(threads.space_id, spaceId))
-    : eq(threads.workspace_id, workspaceId);
-  const rows = await db
-    .select({
-      id: threads.id,
-      title: threads.title,
-      description: threads.description,
-      status: threads.status,
-      updated_at: threads.updated_at,
-    })
-    .from(threads)
-    .where(where)
-    .orderBy(desc(threads.updated_at));
-
-  const out = [];
-  for (const t of rows) {
-    const [s] = await db
-      .select({ status: sessions.status })
-      .from(sessions)
-      .where(eq(sessions.thread_id, t.id))
-      .orderBy(desc(sessions.created_at))
-      .limit(1);
-    out.push({
-      id: t.id,
-      title: t.title,
-      description: t.description,
-      status: t.status,
-      session_status: s?.status ?? 'pending',
-      updated_at: t.updated_at?.toISOString() ?? null,
-    });
-  }
-  return out;
+  // Single LATERAL join — per-thread "latest session status" without an N+1.
+  const filter = spaceId
+    ? sql`t.workspace_id = ${workspaceId} AND t.space_id = ${spaceId}`
+    : sql`t.workspace_id = ${workspaceId}`;
+  const result = await db.execute<{
+    id: string;
+    title: string;
+    description: string;
+    status: 'unapproved' | 'approved';
+    updated_at: Date | null;
+    session_status: 'connected' | 'disconnected' | null;
+  }>(sql`
+    SELECT t.id, t.title, t.description, t.status, t.updated_at,
+           s.status AS session_status
+    FROM threads t
+    LEFT JOIN LATERAL (
+      SELECT status FROM sessions
+      WHERE thread_id = t.id
+      ORDER BY created_at DESC
+      LIMIT 1
+    ) s ON true
+    WHERE ${filter}
+    ORDER BY t.updated_at DESC
+  `);
+  return result.rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    description: r.description,
+    status: r.status,
+    session_status: r.session_status ?? 'pending',
+    updated_at: r.updated_at?.toISOString() ?? null,
+  }));
 }
 
 export async function getThread(threadId: string) {
