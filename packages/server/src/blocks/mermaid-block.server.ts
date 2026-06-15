@@ -39,7 +39,7 @@ export const mermaidBlockServer = createBlockSpec(
       return { dom: pre };
     },
 
-    parse: (el) => parseMermaidPre(el),
+    parse: parseMermaidPre,
 
     runsBefore: ['codeBlock'],
   },

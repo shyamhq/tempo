@@ -1,6 +1,6 @@
 import { UpdatePlanInput } from '@tempo/contracts/mcp';
+import { InvalidPlanBodyError, PlanNotEmptyError, updatePlan } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { InvalidPlanBodyError, PlanNotEmptyError, updatePlan } from '../../server/plan';
 
 export function registerUpdatePlan(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,

@@ -88,7 +88,7 @@ A singleton (one per Thread) free-form channel between Dev and Agent for unancho
 One entry in a Discussion. Authored by Dev or Agent. Carries free-form `text`, an inline batch of structured `questions` (Agent-only — the Console renders these as a stepper card; the Dev's reply lands as the next text Message), or both. Rounds are not a separate entity — an Agent question batch is one Message that happens to carry `questions`. Append-only (D20). Rendered with the same markdown pipeline as Reply text (`MarkdownText`). Three question types: `single_choice`, `multi_choice`, `open_text`; choice questions may allow a `Other (specify)` write-in.
 
 ### Attachment
-An image bound to a Discussion Message or a Reply, addressable by id, stored in an S3-compatible bucket under the key `<thread_id>/<id>`. Surfaces in the wire contract as an `AttachmentRef` (id + mime + byte length + signed read URL + expiry). Lives at: `apps/console/server/attachments.ts` (server-domain), `apps/console/lib/r2.ts` (storage adapter), `apps/console/components/thread/attachments/` (UI).
+An image bound to a Discussion Message or a Reply, addressable by id, stored in an S3-compatible bucket under the key `<thread_id>/<id>`. Surfaces in the wire contract as an `AttachmentRef` (id + mime + byte length + signed read URL + expiry). Lives at: `packages/server/src/attachments.ts` (server-domain), `packages/server/src/r2.ts` (storage adapter), `apps/console/components/thread/attachments/` (UI).
 **Avoid:** "file", "upload", "asset", "media", "blob".
 
 ### Agent Narration

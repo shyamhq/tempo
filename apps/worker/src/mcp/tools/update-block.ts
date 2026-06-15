@@ -1,6 +1,6 @@
 import { UpdateBlockInput } from '@tempo/contracts/mcp';
+import { BlockNotFoundError, InvalidPlanBodyError, updateBlock } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { BlockNotFoundError, InvalidPlanBodyError, updateBlock } from '../../server/plan';
 
 export function registerUpdateBlock(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,

@@ -1,19 +1,19 @@
 import { UpdateThreadRequest } from '@tempo/contracts/http';
-import type { NextRequest } from 'next/server';
-import { authFromRequest } from '../../../../server/actor';
-import { listCommentsForThread } from '../../../../server/comments';
-import { listMessagesForThread } from '../../../../server/discussion';
-import { latestEventId } from '../../../../server/event-log';
-import { err, ok, parseBody } from '../../../../server/http';
-import { getPlan } from '../../../../server/plan';
 import {
   deleteThread,
+  getPlan,
   getThread,
   latestAttachedRepo,
+  latestEventId,
   latestSessionStatus,
+  listCommentsForThread,
+  listMessagesForThread,
   threadBelongsToWorkspace,
   updateThread,
-} from '../../../../server/threads';
+} from '@tempo/server';
+import type { NextRequest } from 'next/server';
+import { authFromRequest } from '../../../../server/actor';
+import { err, ok, parseBody } from '../../../../server/http';
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);

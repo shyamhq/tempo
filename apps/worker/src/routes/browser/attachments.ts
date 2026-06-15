@@ -1,7 +1,8 @@
-import { InitAttachmentInput } from '@tempo/contracts/http';
+import { InitAttachmentInput, InitAttachmentResult } from '@tempo/contracts/http';
+import { initUpload } from '@tempo/server';
 import type { RequestHandler } from 'express';
+import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
-import { initUpload } from '../../server/attachments';
 
 // POST /api/threads/:id/attachments/init — ensureThreadAccess authorizes.
 export const initAttachmentHandler: RequestHandler<{ id: string }> = async (req, res) => {
@@ -12,7 +13,7 @@ export const initAttachmentHandler: RequestHandler<{ id: string }> = async (req,
   }
   try {
     const result = await initUpload(req.params.id, parsed.data);
-    res.json(result);
+    send(res, InitAttachmentResult)(result);
   } catch (err) {
     const msg = (err as Error).message;
     if (msg === 'thread_not_found') {

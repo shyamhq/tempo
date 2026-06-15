@@ -1,6 +1,6 @@
 import { DeleteBlockInput } from '@tempo/contracts/mcp';
+import { BlockNotFoundError, deleteBlock } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { BlockNotFoundError, deleteBlock } from '../../server/plan';
 
 export function registerDeleteBlock(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,

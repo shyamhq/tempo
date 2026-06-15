@@ -1,7 +1,6 @@
 import type { Block, PartialBlock } from '@blocknote/core';
 import { ServerBlockNoteEditor } from '@blocknote/server-util';
-import { CommentMark, planSchema } from '../../lib/plan-schema';
-import { logger } from '../../logger';
+import { CommentMark, planSchema } from './plan-schema';
 
 type PlanSchema = typeof planSchema;
 type PlanPartialBlock = PartialBlock<
@@ -26,16 +25,19 @@ export async function blockToHtml(block: PlanPartialBlock): Promise<string> {
   const t0 = Date.now();
   try {
     const html = await createEditor().blocksToHTMLLossy([block]);
-    logger.debug(
-      { ms: Date.now() - t0, blockType: block.type, htmlLen: html.length },
-      'block-html: blockToHtml ok',
-    );
+    console.debug('block-html: blockToHtml ok', {
+      ms: Date.now() - t0,
+      blockType: block.type,
+      htmlLen: html.length,
+    });
     return html;
   } catch (err) {
-    logger.error(
-      { err, ms: Date.now() - t0, blockType: block.type, blockId: (block as { id?: string }).id },
-      'block-html: blockToHtml failed',
-    );
+    console.error('block-html: blockToHtml failed', {
+      err,
+      ms: Date.now() - t0,
+      blockType: block.type,
+      blockId: (block as { id?: string }).id,
+    });
     throw err;
   }
 }
@@ -44,16 +46,19 @@ export async function parseHtmlDocToBlocks(html: string): Promise<PlanPartialBlo
   const t0 = Date.now();
   try {
     const blocks = (await createEditor().tryParseHTMLToBlocks(html)) as PlanPartialBlock[];
-    logger.debug(
-      { ms: Date.now() - t0, htmlLen: html.length, blocksOut: blocks.length },
-      'block-html: parseHtmlDocToBlocks ok',
-    );
+    console.debug('block-html: parseHtmlDocToBlocks ok', {
+      ms: Date.now() - t0,
+      htmlLen: html.length,
+      blocksOut: blocks.length,
+    });
     return blocks;
   } catch (err) {
-    logger.error(
-      { err, ms: Date.now() - t0, htmlLen: html.length, htmlPreview: html.slice(0, 120) },
-      'block-html: parseHtmlDocToBlocks failed',
-    );
+    console.error('block-html: parseHtmlDocToBlocks failed', {
+      err,
+      ms: Date.now() - t0,
+      htmlLen: html.length,
+      htmlPreview: html.slice(0, 120),
+    });
     throw err;
   }
 }
@@ -62,7 +67,10 @@ export function pmDocToBlocks(pmJson: unknown): PlanBlock[] {
   const t0 = Date.now();
   try {
     const blocks = createEditor()._prosemirrorJSONToBlocks(pmJson) as PlanBlock[];
-    logger.debug({ ms: Date.now() - t0, blocksOut: blocks.length }, 'block-html: pmDocToBlocks ok');
+    console.debug('block-html: pmDocToBlocks ok', {
+      ms: Date.now() - t0,
+      blocksOut: blocks.length,
+    });
     return blocks;
   } catch (err) {
     const preview = (() => {
@@ -72,10 +80,11 @@ export function pmDocToBlocks(pmJson: unknown): PlanBlock[] {
         return '<unstringifiable>';
       }
     })();
-    logger.error(
-      { err, ms: Date.now() - t0, pmJsonPreview: preview },
-      'block-html: pmDocToBlocks failed',
-    );
+    console.error('block-html: pmDocToBlocks failed', {
+      err,
+      ms: Date.now() - t0,
+      pmJsonPreview: preview,
+    });
     throw err;
   }
 }
@@ -84,13 +93,14 @@ export function blocksToPmDoc(blocks: PlanPartialBlock[]): unknown {
   const t0 = Date.now();
   try {
     const pm = createEditor()._blocksToProsemirrorNode(blocks).toJSON();
-    logger.debug({ ms: Date.now() - t0, blocksIn: blocks.length }, 'block-html: blocksToPmDoc ok');
+    console.debug('block-html: blocksToPmDoc ok', { ms: Date.now() - t0, blocksIn: blocks.length });
     return pm;
   } catch (err) {
-    logger.error(
-      { err, ms: Date.now() - t0, blocksIn: blocks.length },
-      'block-html: blocksToPmDoc failed',
-    );
+    console.error('block-html: blocksToPmDoc failed', {
+      err,
+      ms: Date.now() - t0,
+      blocksIn: blocks.length,
+    });
     throw err;
   }
 }

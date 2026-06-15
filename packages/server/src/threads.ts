@@ -13,10 +13,9 @@ import {
   threads,
 } from '@tempo/db/schema';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { deletePrefix } from '../lib/r2';
-import { logger } from '../logger';
 import { appendEvent } from './event-log';
 import { newPlanId, newThreadId } from './ids';
+import { deletePrefix } from './r2';
 
 export async function createThread(
   workspaceId: string,
@@ -139,7 +138,10 @@ export async function deleteThread(threadId: string): Promise<void> {
   try {
     await deletePrefix(threadId);
   } catch (e) {
-    logger.warn({ threadId, err: e }, 'attachment prefix-delete failed; lifecycle rule will sweep');
+    console.warn('attachment prefix-delete failed; lifecycle rule will sweep', {
+      threadId,
+      err: e,
+    });
   }
 }
 

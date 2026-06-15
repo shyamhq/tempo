@@ -1,8 +1,8 @@
 import { RecheckPlanResponse, WritePlanRequest, WritePlanResponse } from '@tempo/contracts/http';
+import { InvalidPlanBodyError, requestPlanRecheck, writePlan } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
-import { InvalidPlanBodyError, requestPlanRecheck, writePlan } from '../../server/plan';
 
 // POST /api/threads/:id/plan — browser Dev write (full pm_json from editor save).
 // Authorization handled by ensureThreadAccess middleware.

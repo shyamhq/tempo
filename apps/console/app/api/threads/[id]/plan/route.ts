@@ -1,8 +1,7 @@
+import { getPlan, threadBelongsToWorkspace } from '@tempo/server';
 import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../../../server/actor';
 import { err, ok } from '../../../../../server/http';
-import { getPlan } from '../../../../../server/plan';
-import { threadBelongsToWorkspace } from '../../../../../server/threads';
 
 // GET — Console UI reads Plan body for the editor. POST is handled by Worker
 // (migrated in slice 1c-2b; browser sends Bearer Clerk JWT to Worker).

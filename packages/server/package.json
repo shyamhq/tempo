@@ -1,0 +1,26 @@
+{
+  "name": "@tempo/server",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "biome check src",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1068.0",
+    "@aws-sdk/s3-request-presigner": "^3.1068.0",
+    "@blocknote/core": "^0.51.4",
+    "@blocknote/server-util": "^0.51.4",
+    "@tempo/contracts": "workspace:*",
+    "@tempo/db": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "ulid": "^3.0.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3"
+  }
+}

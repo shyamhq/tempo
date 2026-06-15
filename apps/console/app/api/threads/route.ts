@@ -1,8 +1,8 @@
 import { CreateThreadRequest, ListThreadsQuery } from '@tempo/contracts/http';
+import { createThread, listThreads } from '@tempo/server';
 import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../server/actor';
 import { err, ok, parseBody } from '../../../server/http';
-import { createThread, listThreads } from '../../../server/threads';
 
 export async function GET(req: NextRequest) {
   const auth = await authFromRequest(req);

@@ -1,6 +1,6 @@
+import { emptyCursor, sseStream } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { logger } from '../../logger';
-import { emptyCursor, sseStream } from '../../server/events-stream';
 
 // GET /api/threads/:id/events — SSE stream for browser activity feed.
 // Authorization handled by ensureThreadAccess middleware.

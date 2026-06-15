@@ -10,9 +10,9 @@ import {
   spaces,
   threads,
 } from '@tempo/db/schema';
+import { newSpaceId } from '@tempo/server';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { cache } from 'react';
-import { newSpaceId } from './ids';
 
 // React.cache so the root layout + the home page share one DB hit per request.
 export const listSpaces = cache(async (workspaceId: string): Promise<Space[]> => {

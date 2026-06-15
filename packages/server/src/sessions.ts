@@ -29,8 +29,6 @@ export async function createSessionFromToken(
   const sessionId = newSessionId();
   let displaced = 0;
   await db.transaction(async (tx) => {
-    // Mark any prior connected session disconnected so the D8 partial unique
-    // index ('one connected per thread') accepts our new row.
     const prior = await tx
       .select({ id: sessions.id })
       .from(sessions)
@@ -69,13 +67,12 @@ export async function getSession(sessionId: string) {
   return s ?? null;
 }
 
-export type CancelCurrentSessionResult =
-  | { ok: true; session_id: string }
-  | { ok: false; error: 'thread_not_found' | 'no_connected_session' };
-
 export async function cancelCurrentSessionForThread(
   threadId: string,
-): Promise<CancelCurrentSessionResult> {
+): Promise<
+  | { ok: true; session_id: string }
+  | { ok: false; error: 'thread_not_found' | 'no_connected_session' }
+> {
   const [t] = await db
     .select({ id: threads.id })
     .from(threads)
@@ -92,14 +89,11 @@ export async function cancelCurrentSessionForThread(
   return { ok: true, session_id: s.id };
 }
 
-// Idempotent and race-free. The UPDATE is filtered on status='connected' and
-// uses RETURNING so concurrent callers (reaper + explicit /disconnect) can't
-// both flip the same row and emit duplicate session_disconnected events.
-export async function markSessionDisconnected(sessionId: string): Promise<boolean> {
+export async function markSessionDisconnected(mcpSessionId: string): Promise<boolean> {
   const flipped = await db
     .update(sessions)
     .set({ status: 'disconnected', last_seen_at: new Date() })
-    .where(and(eq(sessions.id, sessionId), eq(sessions.status, 'connected')))
+    .where(and(eq(sessions.mcp_session_id, mcpSessionId), eq(sessions.status, 'connected')))
     .returning({ thread_id: sessions.thread_id });
   const row = flipped[0];
   if (!row) return false;
@@ -107,18 +101,13 @@ export async function markSessionDisconnected(sessionId: string): Promise<boolea
   return true;
 }
 
-// Heartbeat update. Filtered on status='connected' so a freshly-disconnected
-// row cannot be resurrected by an in-flight poll's heartbeat write.
-export async function touchSessionLastSeen(sessionId: string): Promise<void> {
+export async function touchSessionLastSeen(mcpSessionId: string): Promise<void> {
   await db
     .update(sessions)
     .set({ last_seen_at: new Date() })
-    .where(and(eq(sessions.id, sessionId), eq(sessions.status, 'connected')));
+    .where(and(eq(sessions.mcp_session_id, mcpSessionId), eq(sessions.status, 'connected')));
 }
 
-// Phase 4b: session-level auth checks no longer rely on the auth ctx carrying
-// session_id. Routes derive session_id from URL + X-Tempo-Session header and
-// then verify the session belongs to a thread in the agent's workspace.
 export async function sessionBelongsToWorkspace(
   sessionId: string,
   workspaceId: string,
@@ -132,16 +121,11 @@ export async function sessionBelongsToWorkspace(
   return row?.workspace_id === workspaceId;
 }
 
-// Returns the connected session's last_seen_at (ms epoch) for a thread, or
-// null if no row is connected. Used by the SSE stream to derive ephemeral
-// "agent present" UX state from heartbeat freshness — disconnected is never
-// written to the DB on the strength of staleness alone.
 export async function getConnectedSessionLastSeenMs(threadId: string): Promise<number | null> {
   const [s] = await db
     .select({ last_seen_at: sessions.last_seen_at })
     .from(sessions)
     .where(and(eq(sessions.thread_id, threadId), eq(sessions.status, 'connected')))
     .limit(1);
-  if (!s) return null;
-  return s.last_seen_at.getTime();
+  return s?.last_seen_at?.getTime() ?? null;
 }

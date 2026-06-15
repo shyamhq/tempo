@@ -1,6 +1,5 @@
-import { appendEvent } from '../../../../../server/event-log';
+import { appendEvent, getThread, reopenThread } from '@tempo/server';
 import { ok } from '../../../../../server/http';
-import { getThread, reopenThread } from '../../../../../server/threads';
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;

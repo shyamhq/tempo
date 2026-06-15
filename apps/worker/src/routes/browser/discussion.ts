@@ -2,10 +2,10 @@ import {
   CreateDiscussionMessageRequest,
   CreateDiscussionMessageResponse,
 } from '@tempo/contracts/http';
+import { postMessage } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
-import { postMessage } from '../../server/discussion';
 
 // POST /api/threads/:id/discussion/messages — browser only (Clerk JWT).
 // Authorization handled by ensureThreadAccess middleware.

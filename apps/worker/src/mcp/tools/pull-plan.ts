@@ -1,6 +1,6 @@
 import { PullPlanInput } from '@tempo/contracts/mcp';
+import { getPlanBlocks } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { getPlanBlocks } from '../../server/plan';
 
 export function registerPullPlan(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,

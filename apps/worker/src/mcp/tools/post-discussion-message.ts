@@ -1,6 +1,6 @@
 import { PostDiscussionMessageInput } from '@tempo/contracts/mcp';
+import { postMessage } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { postMessage } from '../../server/discussion';
 
 export function registerPostDiscussionMessage(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,

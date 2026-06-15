@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { markSessionDisconnected, touchSessionLastSeen } from '@tempo/server';
 import type { Caller } from '../auth';
 import { logger } from '../logger';
 import { createMcpServer } from './server';
@@ -49,10 +50,15 @@ export async function handleMcpRequest(
     const server = createMcpServer(caller, () => mcpSessionId);
     await server.connect(transport);
     transport.onclose = () => {
-      if (transport.sessionId) {
-        sessions.delete(transport.sessionId);
-        logger.debug({ sessionId: transport.sessionId }, 'mcp: session closed');
-      }
+      const id = transport.sessionId;
+      if (!id) return;
+      sessions.delete(id);
+      // Flip the DB row + emit session_disconnected so the Console pill
+      // updates without waiting for the 45 s presence timeout.
+      markSessionDisconnected(id).catch((err) =>
+        logger.error({ err, sessionId: id }, 'mcp: markSessionDisconnected failed'),
+      );
+      logger.debug({ sessionId: id }, 'mcp: session closed');
     };
     await transport.handleRequest(req, res, req.body);
     if (transport.sessionId) {
@@ -76,6 +82,12 @@ export async function handleMcpRequest(
       res.end(JSON.stringify({ error: 'session_not_found' }));
       return;
     }
+    // Heartbeat: keep last_seen_at fresh so Console's 45 s presence check
+    // reflects actual activity, not just the attach timestamp. Fire-and-
+    // forget; a missed heartbeat is recoverable on the next request.
+    void touchSessionLastSeen(id).catch((err) =>
+      logger.error({ err, sessionId: id }, 'mcp: touchSessionLastSeen failed'),
+    );
     await entry.transport.handleRequest(req, res, req.body);
     return;
   }

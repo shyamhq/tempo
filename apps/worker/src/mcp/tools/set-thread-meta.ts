@@ -1,6 +1,6 @@
 import { SetThreadMetaInput } from '@tempo/contracts/mcp';
+import { updateThread } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { updateThread } from '../../server/threads';
 
 export function registerSetThreadMeta(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,

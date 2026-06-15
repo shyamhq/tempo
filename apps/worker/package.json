@@ -21,6 +21,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tempo/contracts": "workspace:*",
     "@tempo/db": "workspace:*",
+    "@tempo/server": "workspace:*",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",

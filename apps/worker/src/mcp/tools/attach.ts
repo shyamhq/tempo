@@ -82,6 +82,7 @@ export async function runAttach(
           thread_id: thread.id,
           mcp_session_id: mcpSessionId,
           status: 'connected',
+          last_seen_at: new Date(),
         })
         .onConflictDoNothing();
     }

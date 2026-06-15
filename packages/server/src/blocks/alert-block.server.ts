@@ -40,7 +40,7 @@ export const alertBlockServer = createBlockSpec(
       return { dom: wrapper, contentDOM: wrapper };
     },
 
-    parse: (el) => parseAlertDiv(el),
+    parse: parseAlertDiv,
 
     runsBefore: ['paragraph'],
   },

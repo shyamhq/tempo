@@ -4,8 +4,8 @@ import { db } from '@tempo/db/client';
 import { attachments, threads } from '@tempo/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import type { z } from 'zod';
-import { headObject, objectKey, signGetUrl, signPutUrl } from '../lib/r2';
 import { newAttachmentId } from './ids';
+import { headObject, objectKey, signGetUrl, signPutUrl } from './r2';
 
 const MAX_BYTES_PER_FILE = 10 * 1024 * 1024;
 const MAX_FILES_PER_MESSAGE = 8;

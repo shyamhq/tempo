@@ -5,16 +5,16 @@ import {
   ResolveCommentResponse,
   UnresolveCommentResponse,
 } from '@tempo/contracts/http';
-import type { RequestHandler } from 'express';
-import { send } from '../../lib/typed-response';
-import { logger } from '../../logger';
 import {
   CommentNotFoundError,
   createComment,
   deleteComment,
   resolveComment,
   unresolveComment,
-} from '../../server/comments';
+} from '@tempo/server';
+import type { RequestHandler } from 'express';
+import { send } from '../../lib/typed-response';
+import { logger } from '../../logger';
 
 // POST /api/threads/:id/comments — ensureThreadAccess middleware authorizes.
 export const createCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {

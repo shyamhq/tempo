@@ -318,7 +318,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
               onSelectComment={() => setActiveRailTab('comment')}
               onCloseCommentTab={closeEnlarged}
               showCommentTab={enlargedCommentId !== null}
-              sessionStatus={view.session_status}
               onCloseRail={closeDiscussion}
             />
             <div className="flex-1 min-h-0">
@@ -449,7 +448,6 @@ function RailTabStrip({
   onSelectComment,
   onCloseCommentTab,
   showCommentTab,
-  sessionStatus,
   onCloseRail,
 }: {
   activeTab: 'discussion' | 'comment';
@@ -457,14 +455,12 @@ function RailTabStrip({
   onSelectComment: () => void;
   onCloseCommentTab: () => void;
   showCommentTab: boolean;
-  sessionStatus: SessionStatus;
   onCloseRail: () => void;
 }) {
   const baseTab =
     'inline-flex items-center gap-1.5 h-8 px-3 rounded-t-md text-caption font-medium border border-b-0 transition-colors';
   const inactive = 'border-transparent text-ink-subtle hover:text-ink';
   const active = 'border-hairline bg-canvas text-ink';
-  const connected = sessionStatus === 'connected';
   return (
     <div className="flex items-end gap-1 px-2 pt-1 bg-surface-2 border-b border-hairline h-12">
       <button
@@ -498,20 +494,6 @@ function RailTabStrip({
         </div>
       ) : null}
       <div className="ml-auto flex items-center gap-2 pb-1.5 pr-1">
-        <span
-          className="inline-flex items-center gap-1.5 text-micro font-normal text-ink-subtle shrink-0"
-          title={
-            connected ? 'Agent connected' : 'Agent disconnected — messages deliver on reconnect'
-          }
-        >
-          <span
-            aria-hidden
-            className={`inline-block h-[7px] w-[7px] rounded-full ${
-              connected ? 'bg-accent shadow-[0_0_0_3px_rgba(0,212,164,0.16)]' : 'bg-ink-tertiary'
-            }`}
-          />
-          {connected ? 'connected' : 'offline'}
-        </span>
         <button
           type="button"
           onClick={onCloseRail}

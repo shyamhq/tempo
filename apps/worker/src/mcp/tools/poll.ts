@@ -1,6 +1,6 @@
 import { PollInput } from '@tempo/contracts/mcp';
+import { longPoll } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { longPoll } from '../../server/events-stream';
 
 const MAX_WAIT_SECONDS = 25;
 

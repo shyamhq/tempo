@@ -1,8 +1,8 @@
 import { AgentEventRequest } from '@tempo/contracts/http';
+import { type AppendPayload, appendEvent } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
 import { logger } from '../../logger';
-import { type AppendPayload, appendEvent } from '../../server/event-log';
 
 // POST /api/agent-events — sk_user_* only.
 // The threadId arrives in the body so we can't use ensureThreadAccess (which

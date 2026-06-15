@@ -20,14 +20,14 @@
 | `threads.ts` | business | thread CRUD (union of both apps' current surfaces) |
 | `plan.ts` | business | plan read/write, block-html orchestration |
 | `plan/block-html.ts` | business | jsdom round-trip (PM ↔ HTML) |
-| `workspaces.ts` | business | Workspace CRUD, Clerk-Org mirroring, agent-key rotation |
-| `spaces.ts` | business | Space CRUD inside a Workspace |
 
 **Stays in `apps/console/server/`:**
 - `actor.ts` — uses `auth()` + `clerkClient` from `@clerk/nextjs/server`, Next.js-bound
 - `clerk-webhook.ts` — webhook handler shape; consumes Clerk's `WebhookEvent`
 - `email.ts` — Resend SDK + Next.js env; admin-only
 - `http.ts` — response shape helpers for Next route handlers
+- `workspaces.ts` — zero Worker callers today; "one adapter is hypothetical." Imports `@clerk/nextjs/server`. Moves only when the Hosted-Agent driver (or any Worker code path) actually needs Workspace reads — at that point it's a half-day lift.
+- `spaces.ts` — zero Worker callers today. Uses React's `cache()` for SSR dedupe; moving would force `react` into the shared package or a re-export shim. Stays.
 
 **Stays in `apps/worker/src/server/`:**
 - `auth-lookup.ts` — MCP session-id → thread-id; sk_user_* hash lookup; Worker-process internal
@@ -46,9 +46,9 @@
 **Deletion test on `@tempo/server` itself.** Delete it → every business-logic file reappears as duplicate trees under both apps (literally today's state). Concentrates, doesn't move. Passes.
 
 **Uncertainties.**
-- `workspaces.ts` and `spaces.ts` use `clerkClient.organizations.*` to mirror Clerk Org state. The package needs `@clerk/nextjs/server` (or `@clerk/backend`) as a dep. Confirm `@clerk/backend` works in both Next.js and Hono/Express contexts before committing.
 - `events-stream.ts` calls `setInterval` / `setTimeout` directly. Acceptable in a Node-only package, but if we ever want this package to run inside a Cloudflare Worker or Edge runtime, this changes. Not a near-term concern.
-- The `threads.ts` union: Console's `listThreads` does a per-thread session-status lookup (N+1). Worth a `threads + sessions` join before the move? Or after? Lean **after** — keep the move mechanical.
+- `events-stream.ts` twins have one real divergence: Console writes `evs[evs.length - 1]!.id`, Worker writes `evs[evs.length - 1]?.id ?? current`. **Use the Worker variant** when consolidating — non-null assertion is unsafe under `noUncheckedIndexedAccess`.
+- `CONTEXT.md` line 91 names `apps/console/server/attachments.ts` as the Attachment noun's canonical home. After step 4, update it to `packages/server/src/attachments.ts`. One-line edit; doesn't block the move.
 
 **Order of commits.**
 
@@ -57,8 +57,7 @@
 3. Move `event-log.ts` + `events-stream.ts`.
 4. Move `attachments.ts` + `replies.ts`.
 5. Move `comments.ts` + `discussion.ts`.
-6. Move `sessions.ts` + `threads.ts` (union surface) + `plan.ts` + `plan/block-html.ts`.
-7. Move `workspaces.ts` + `spaces.ts`.
-8. Final sweep: delete any stragglers, typecheck, lint, one full smoke flow (Dev posts comment → other Dev sees via SSE → Local Agent sees via `tempo_poll`).
+6. Move `sessions.ts` + `threads.ts` (union surface) + `plan.ts` + `plan/block-html.ts`. **`threads.ts` moves with Console's existing N+1 `listThreads` session-status loop intact** — no drive-by fixes mid-move. Log the join optimisation under `AGENTS.md` → "Spotted but not fixed."
+7. Final sweep: delete any stragglers, typecheck, lint, one full smoke flow (Dev posts comment → other Dev sees via SSE → Local Agent sees via `tempo_poll`). Update `CONTEXT.md` line 91 to point Attachment at its new home.
 
-Each step is one commit. After each commit, both apps compile, both apps run, the smoke flow works. Worker's `apps/worker/src/server/` shrinks to two files (`auth-lookup`, `cli-auth`); Console's `apps/console/server/` shrinks to four (`actor`, `clerk-webhook`, `email`, `http`).
+Each step is one commit. After each commit, both apps compile, both apps run, the smoke flow works. Worker's `apps/worker/src/server/` shrinks to two files (`auth-lookup`, `cli-auth`); Console's `apps/console/server/` shrinks to six (`actor`, `clerk-webhook`, `email`, `http`, `workspaces`, `spaces`).

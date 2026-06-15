@@ -1,8 +1,8 @@
 import { CreateReplyRequest, CreateReplyResponse } from '@tempo/contracts/http';
+import { postReply } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
-import { postReply } from '../../server/replies';
 
 // POST /api/comments/:id/replies — ensureCommentAccess middleware authorizes.
 export const createReplyHandler: RequestHandler<{ id: string }> = async (req, res) => {

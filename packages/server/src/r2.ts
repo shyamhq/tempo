@@ -11,7 +11,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 // One adapter: the S3-compatible object store that holds attachment bytes.
 // R2 in prod, MinIO via docker-compose locally. Endpoint + creds + bucket
 // are env-driven so this single module is the only place that knows the
-// S3 dialect — callers are server/attachments.ts and server/event-log.ts.
+// S3 dialect — callers are attachments.ts and event-log.ts inside this package.
 
 const endpoint = process.env.R2_ENDPOINT ?? 'http://127.0.0.1:9000';
 const accessKeyId = process.env.R2_ACCESS_KEY_ID ?? 'tempo-local';

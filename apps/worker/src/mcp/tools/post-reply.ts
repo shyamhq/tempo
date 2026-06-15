@@ -1,6 +1,6 @@
 import { PostReplyInput } from '@tempo/contracts/mcp';
+import { postReply } from '@tempo/server';
 import { getThreadIdForMcpSession } from '../../server/auth-lookup';
-import { postReply } from '../../server/replies';
 
 export function registerPostReply(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
