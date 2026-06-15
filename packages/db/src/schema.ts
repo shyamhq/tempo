@@ -243,6 +243,9 @@ export const vm_runs = pgTable(
     // stabilizes at ~5 values.
     exit_reason: text('exit_reason'),
     cost_estimate_usd: doublePrecision('cost_estimate_usd'),
+    // E2B's sandbox ID — populated right after Sandbox.create succeeds, so
+    // "find this row in E2B's dashboard" is one indexed lookup.
+    sandbox_id: text('sandbox_id'),
   },
   (t) => [index('idx_vm_runs_thread_started').on(t.thread_id, t.started_at)],
 );

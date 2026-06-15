@@ -24,6 +24,7 @@
     "@tempo/server": "workspace:*",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
+    "e2b": "^2.30.0",
     "express": "^5.2.1",
     "jose": "^6.2.3",
     "nanoid": "^5.1.11",

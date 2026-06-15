@@ -24,12 +24,29 @@ const schema = z.object({
   // package does NOT split on commas. In dev: http://localhost:3000.
   // In prod: https://console.tempo.dev.
   CONSOLE_ORIGIN: z.string().url().default('http://localhost:3000'),
+  // Sandbox provider (E2B) — provisioning API key, Worker-only; never
+  // reaches the Sandbox itself.
+  E2B_API_KEY: z.string().min(1),
+  // Public URL the Sandbox uses to reach Worker's MCP endpoint. Must be
+  // reachable from inside the E2B sandbox network.
+  WORKER_PUBLIC_URL: z.string().url().default('http://localhost:3001'),
 });
 
 const parsed = schema.safeParse(process.env);
 if (!parsed.success) {
   const missing = parsed.error.issues.map((i) => i.path.join('.')).join(', ');
   throw new Error(`Worker env validation failed — missing or invalid: ${missing}`);
+}
+
+// Guard the localhost default for WORKER_PUBLIC_URL — an unset value in prod
+// would have Sandboxes try to call their own loopback for MCP. Fail loudly.
+if (
+  parsed.data.NODE_ENV === 'production' &&
+  parsed.data.WORKER_PUBLIC_URL.startsWith('http://localhost')
+) {
+  throw new Error(
+    'WORKER_PUBLIC_URL must be a public URL in production (got the localhost default)',
+  );
 }
 
 export const env = parsed.data;

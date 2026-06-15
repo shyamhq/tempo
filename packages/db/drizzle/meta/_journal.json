@@ -43,6 +43,13 @@
       "when": 1781561308712,
       "tag": "0005_luxuriant_sabra",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781563745114,
+      "tag": "0006_easy_legion",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "vm_runs" ADD COLUMN "sandbox_id" text;
