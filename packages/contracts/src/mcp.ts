@@ -12,10 +12,11 @@ import {
   QuestionInput,
   ReplyId,
   ReplyPayload,
+  ThreadId,
   ThreadSummary,
 } from './primitives';
 
-export const AttachInput = z.object({});
+export const AttachInput = z.object({ thread_id: ThreadId });
 // `tempo_attach` returns the wire JSON in its first text content block. For
 // vision: every `AttachmentRef` on a Discussion Message or Reply that belongs
 // to one of the last N messages is also emitted as an MCP `image` content

@@ -13,11 +13,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/backend": "^3.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tempo/contracts": "workspace:*",
     "@tempo/db": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "jose": "^6.2.3",
+    "nanoid": "^5.1.11",
     "pino": "^10.3.1",
     "zod": "^4.4.3"
   },

@@ -282,3 +282,81 @@ export const HttpError = z.object({
   details: z.record(z.string(), z.unknown()).optional(),
 });
 export type HttpError = z.infer<typeof HttpError>;
+
+// POST /api/cli/exchange — exchanges an OAuth code for a CLI user token.
+// The code is a short-lived signed JWT minted by Console's /cli/authorize page.
+// code_verifier shape per RFC 7636 §4.1: 43–128 chars from the unreserved set.
+export const CliExchangeRequest = z.object({
+  code: z.string(),
+  code_verifier: z
+    .string()
+    .min(43)
+    .max(128)
+    .regex(/^[A-Za-z0-9\-_]+$/),
+});
+export type CliExchangeRequest = z.infer<typeof CliExchangeRequest>;
+
+export const CliExchangeResponse = z.object({
+  token: z.string(),
+  refresh_token: z.string(),
+  expires_at: z.string().datetime(),
+  user_id: z.string(),
+  email: z.string().email(),
+});
+export type CliExchangeResponse = z.infer<typeof CliExchangeResponse>;
+
+// POST /api/cli/refresh — rotate-on-use token refresh.
+export const CliRefreshRequest = z.object({ refresh_token: z.string() });
+export type CliRefreshRequest = z.infer<typeof CliRefreshRequest>;
+
+// Same shape as exchange — rotate issues a fresh pair.
+export const CliRefreshResponse = CliExchangeResponse;
+export type CliRefreshResponse = z.infer<typeof CliRefreshResponse>;
+
+// GET /api/threads/:id/access — thread membership check for CLI callers.
+export const ThreadAccessResponse = z.object({
+  thread_id: ThreadId,
+  thread_title: z.string(),
+  workspace_id: z.string(),
+  workspace_name: z.string(),
+});
+export type ThreadAccessResponse = z.infer<typeof ThreadAccessResponse>;
+
+// POST /api/agent-events — structured events emitted by the new CLI.
+// Each event kind carries kind-specific fields; discriminated union keeps
+// the parse unambiguous and the error messages precise.
+
+export const AgentToolUseEvent = z.object({
+  kind: z.literal('tool_use'),
+  tool_name: z.string(),
+  summary: z.string().optional(),
+  started_at_ms: z.number(),
+});
+
+export const AgentNarrationEvent = z.object({
+  kind: z.literal('narration'),
+  text: z.string(),
+  emitted_at_ms: z.number(),
+});
+
+export const AgentTodosUpdatedEvent = z.object({
+  kind: z.literal('todos_updated'),
+  todos: z.array(z.string()),
+});
+
+export const AgentTurnEndedEvent = z.object({
+  kind: z.literal('turn_ended'),
+  duration_ms: z.number(),
+  reason: z.enum(['done', 'error', 'cancelled']),
+});
+
+export const AgentEventRequest = z.object({
+  thread_id: ThreadId,
+  event: z.discriminatedUnion('kind', [
+    AgentToolUseEvent,
+    AgentNarrationEvent,
+    AgentTodosUpdatedEvent,
+    AgentTurnEndedEvent,
+  ]),
+});
+export type AgentEventRequest = z.infer<typeof AgentEventRequest>;

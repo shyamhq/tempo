@@ -19,32 +19,36 @@ import {
   threads,
 } from '@tempo/db/schema';
 import { asc, desc, eq, inArray } from 'drizzle-orm';
+import { customAlphabet } from 'nanoid';
 import type { z } from 'zod';
+import { assertMembership, getSessionByMcpId, NotAMemberError } from '../../server/auth-lookup';
+import type { AuthContext } from '../transport';
 // TODO(slice-1b-review): WORKFLOW is inlined here pending Dev decision per judge note 3.
 // Options presented in the slice-1b implementation report; Dev resolves before 1c.
 import { WORKFLOW } from './workflow-stub';
+
+// ULID alphabet (Crockford base32, uppercase) — matches Console's ses_${ulid()} format.
+const ulidAlphabet = customAlphabet('0123456789ABCDEFGHJKMNPQRSTVWXYZ', 26);
+const newSessionId = () => `ses_${ulidAlphabet()}`;
 
 type AttachResult = z.infer<typeof AttachOutput>;
 
 // Reads the six data sources that Console's GET /api/sessions/[id]/state reads,
 // using the same @tempo/db queries. Returns the identical AttachOutput shape.
 //
-// Judge note 1: field-by-field parity against Console is verified by the smoke
-// test command documented in the slice-1b report. Worker and Console read from
-// the same Postgres DB so the data is identical; the structural mapping is what
-// the test verifies.
+// thread_id is the attach input (per AttachInput from contracts).
+// auth carries the caller's identity. For 'cli' callers (sk_user_*) we resolve
+// workspace via assertMembership(userId, threadId) and 403 if not a Member.
+// For 'agent' (sk_agent_*) and 'browser' (Clerk JWT) callers we use the
+// workspaceId already resolved in middleware and verify thread isolation.
+// mcpSessionId is the UUID assigned by the MCP transport layer — used to
+// establish a sticky session row so reconnects resume the same session.
 export async function runAttach(
-  sessionId: string,
-  workspaceId: string,
+  threadId: string,
+  auth: AuthContext,
+  mcpSessionId: string | undefined,
 ): Promise<AttachResult | { error: string }> {
-  // Resolve thread from session, scoped to the caller's workspace.
-  const [session] = await db
-    .select({ thread_id: sessions.thread_id })
-    .from(sessions)
-    .where(eq(sessions.id, sessionId))
-    .limit(1);
-  if (!session) return { error: 'session_not_found' };
-
+  // Resolve thread.
   const [thread] = await db
     .select({
       id: threads.id,
@@ -54,12 +58,46 @@ export async function runAttach(
       workspace_id: threads.workspace_id,
     })
     .from(threads)
-    .where(eq(threads.id, session.thread_id))
+    .where(eq(threads.id, threadId))
     .limit(1);
   if (!thread) return { error: 'thread_not_found' };
 
-  // Workspace isolation: the caller's API key must own this thread's workspace.
-  if (thread.workspace_id !== workspaceId) return { error: 'unauthorized' };
+  // Auth check, by source.
+  if (auth.source === 'cli') {
+    try {
+      await assertMembership(auth.userId, thread.id);
+    } catch (err) {
+      if (err instanceof NotAMemberError) return { error: 'not_a_member' };
+      throw err;
+    }
+  } else {
+    // agent + browser both carry workspaceId in the AuthContext.
+    // For 'agent' it's required; for 'browser' it's only set when the Clerk
+    // JWT had an active org claim — missing means "no active org → reject".
+    if (!auth.workspaceId || thread.workspace_id !== auth.workspaceId) {
+      return { error: 'unauthorized' };
+    }
+  }
+
+  // Sticky session: find or create a sessions row keyed by MCP session UUID.
+  // This allows the Agent to reconnect (e.g. after a network blip) and resume
+  // the same logical session without re-creating a row each time.
+  if (mcpSessionId) {
+    const existing = await getSessionByMcpId(mcpSessionId, thread.id);
+    if (!existing) {
+      // The partial unique index on (mcp_session_id) WHERE NOT NULL turns the
+      // concurrent-reconnect race into a clean no-op for the loser.
+      await db
+        .insert(sessions)
+        .values({
+          id: newSessionId(),
+          thread_id: thread.id,
+          mcp_session_id: mcpSessionId,
+          status: 'connected',
+        })
+        .onConflictDoNothing();
+    }
+  }
 
   const [plan, threadComments, messages, last_event_id] = await Promise.all([
     getPlanState(thread.id, thread.status),

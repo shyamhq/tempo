@@ -13,6 +13,10 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
+// Reusable nullable timestamp (no default, no notNull) — used for optional
+// lifecycle fields like revoked_at, last_used_at.
+const nullableTimestamp = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' });
+
 // Timestamps are stored as `timestamp with time zone` and exposed to TS as
 // Date objects (mode: 'date'). JSON.stringify calls .toISOString() on Date,
 // producing proper ISO 8601 strings on the wire.
@@ -71,12 +75,21 @@ export const sessions = pgTable(
     last_seen_at: timestampDate('last_seen_at'),
     attached_repo_remote: text('attached_repo_remote'),
     attached_repo_path: text('attached_repo_path'),
+    // Nullable: only set when the session is established via Worker MCP
+    // (slice 1c-1 onwards). Old Console-routed sessions leave this NULL.
+    mcp_session_id: text('mcp_session_id'),
     created_at: timestampDate('created_at'),
   },
   (t) => [
     uniqueIndex('idx_sessions_one_connected_per_thread')
       .on(t.thread_id)
       .where(sql`${t.status} = 'connected'`),
+    // The MCP transport assigns one UUID per session. Two concurrent
+    // tempo_attach calls with the same id (rapid reconnect) must not both
+    // insert; the partial unique index lets `.onConflictDoNothing()` win.
+    uniqueIndex('idx_sessions_mcp_session_id')
+      .on(t.mcp_session_id)
+      .where(sql`${t.mcp_session_id} IS NOT NULL`),
   ],
 );
 
@@ -169,4 +182,29 @@ export const events = pgTable(
     created_at: timestampDate('created_at'),
   },
   (t) => [primaryKey({ columns: [t.thread_id, t.id] })],
+);
+
+// CLI user tokens — issued via the /api/cli/exchange OAuth-code flow.
+// token_hash and refresh_token_hash store SHA-256(plaintext + pepper) so the
+// plaintext values are never persisted. Unique on hash ensures a stolen DB
+// dump cannot be replayed without the pepper.
+export const userTokens = pgTable(
+  'user_tokens',
+  {
+    id: text('id').primaryKey(), // utk_<random>
+    user_id: text('user_id').notNull(), // Clerk user id
+    token_hash: text('token_hash').notNull().unique(),
+    refresh_token_hash: text('refresh_token_hash').notNull().unique(),
+    expires_at: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    created_at: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .defaultNow()
+      .notNull(),
+    last_used_at: nullableTimestamp('last_used_at'),
+    revoked_at: nullableTimestamp('revoked_at'),
+  },
+  (t) => [
+    index('user_tokens_user').on(t.user_id),
+    // Partial index: active (non-revoked) tokens only — keeps the lookup set small.
+    index('user_tokens_lookup').on(t.token_hash).where(sql`revoked_at IS NULL`),
+  ],
 );

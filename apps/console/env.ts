@@ -15,6 +15,9 @@ const Env = z.object({
   // on Clerk's default email (which is disabled in the dashboard).
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
+  // Shared secret with Worker for the CLI OAuth code exchange flow.
+  // Must be at least 32 bytes of entropy. Same value in both processes.
+  CLI_AUTH_SECRET: z.string().min(32),
 });
 
 const parsed = Env.safeParse(process.env);
@@ -34,4 +37,5 @@ export const env = parsed.success
       CLERK_WEBHOOK_SECRET: undefined,
       RESEND_API_KEY: undefined,
       RESEND_FROM_EMAIL: undefined,
+      CLI_AUTH_SECRET: 'build_placeholder_cli_auth_secret_32b',
     };
