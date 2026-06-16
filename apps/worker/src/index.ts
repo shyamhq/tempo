@@ -1,9 +1,9 @@
-import { enqueueMailboxIfHosted, setAfterAppendHook } from '@tempo/server';
 import cors from 'cors';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
 import { env } from './env';
-import { startSupervisor, stopSupervisor } from './hosted/supervisor';
+import { pool } from '@tempo/db/client';
+import { stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
 import { agentEventsHandler } from './routes/agent-events/index';
@@ -21,17 +21,9 @@ import { cliExchangeHandler } from './routes/cli/exchange';
 import { cliRefreshHandler } from './routes/cli/refresh';
 import { sseHandler } from './routes/events/sse';
 import { healthHandler } from './routes/health';
+import { drainHostedHandler } from './routes/hosted/drain';
+import { wakeHostedHandler } from './routes/hosted/wake';
 import { threadAccessHandler } from './routes/threads/access';
-import { isFresh } from './server/presence';
-
-// Hosted Mailbox wake-up: when no Local CLI is connected to a Thread,
-// dev-originated events enqueue into mailbox_events so the supervisor
-// (Task 2.7) can wake a Hosted VM. Console registers the shared writer
-// directly in instrumentation.ts.
-setAfterAppendHook(async (threadId, event) => {
-  if (isFresh(threadId)) return;
-  await enqueueMailboxIfHosted(threadId, event);
-});
 
 const app = express();
 
@@ -63,6 +55,19 @@ app.get('/api/threads/:id/access', bearerAuth, threadAccessHandler);
 // Agent event ingestion — sk_user_* only. Membership check happens inside the
 // handler (the threadId arrives in the body, not the URL).
 app.post('/api/agent-events', bearerAuth, express.json({ limit: '1mb' }), agentEventsHandler);
+
+// Hosted runner's outer-loop poll. sk_hosted_* only; threadId is JWT-bound.
+app.post('/api/hosted/drain', bearerAuth, drainHostedHandler);
+
+// User-triggered Hosted Agent spawn. Browser bearer only; thread scope
+// resolved inside the handler from the URL param.
+app.post(
+  '/api/threads/:id/hosted/wake',
+  bearerAuth,
+  rejectAgent,
+  ensureThreadAccess,
+  wakeHostedHandler,
+);
 
 // SSE is a browser activity feed — agent keys (workspace-scoped, no user)
 // have no business subscribing.
@@ -102,9 +107,6 @@ const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'worker started');
 });
 
-// Hosted supervisor — LISTEN mailbox + boot sweep + VM lifecycle.
-void startSupervisor().catch((err) => logger.error({ err }, 'supervisor: boot failed'));
-
 // Graceful shutdown — let in-flight MCP streams drain before the process exits.
 const shutdown = async (signal: string) => {
   logger.info({ signal }, 'worker shutting down');
@@ -112,6 +114,9 @@ const shutdown = async (signal: string) => {
   setTimeout(() => process.exit(1), 10_000).unref();
   await stopSupervisor().catch((err) =>
     logger.warn({ err }, 'supervisor: shutdown error (continuing)'),
+  );
+  await pool.end().catch((err) =>
+    logger.warn({ err }, 'pg pool: shutdown error (continuing)'),
   );
   server.close(() => {
     logger.info('worker stopped');

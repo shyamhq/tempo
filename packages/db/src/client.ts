@@ -11,13 +11,3 @@ export const pool = url ? new Pool({ connectionString: url }) : (null as unknown
 export const db = url
   ? drizzle(pool, { schema })
   : (null as unknown as ReturnType<typeof drizzle<typeof schema>>);
-
-if (url) {
-  // Graceful shutdown so Railway rolling restarts don't leave the previous
-  // container's PG connections hanging.
-  const shutdown = () => {
-    pool.end().catch(() => {});
-  };
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
-}

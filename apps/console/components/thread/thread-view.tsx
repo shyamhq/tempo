@@ -2,7 +2,6 @@
 
 import { CommentsExtension } from '@blocknote/core/comments';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { SessionStatus } from '@tempo/contracts';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -16,6 +15,7 @@ import { DiscussionButton } from '@/components/thread/discussion/discussion-butt
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
 import { PlanCommentGutter } from '@/components/thread/editor/plan-comment-gutter';
 import type { PlanEditorHandle } from '@/components/thread/editor/plan-editor';
+import { HostedAgentControl } from '@/components/thread/hosted-agent-control';
 
 const PlanEditor = dynamic(
   () => import('@/components/thread/editor/plan-editor').then((m) => m.PlanEditor),
@@ -296,6 +296,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           {approved ? null : (
             <RecheckPlanButton threadId={threadId} sessionStatus={view.session_status} />
           )}
+          <HostedAgentControl
+            threadId={threadId}
+            sessionStatus={view.session_status}
+            cliConnected={agentPresent === true}
+          />
           <ConnectButton threadId={threadId} />
           {approved ? (
             <Button variant="ghost" onClick={reopen}>

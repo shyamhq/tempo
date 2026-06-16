@@ -9,12 +9,14 @@
     "dev": "bun --watch --loader=.md:text run src/index.ts",
     "build": "bun build --target=node --bundle src/index.ts --outfile dist/index.js --loader=.md:text",
     "build:hosted-runner": "bun run scripts/build-hosted-runner.ts",
+    "build:hosted-template": "bun --env-file=.env.local run e2b/build.prod.ts",
     "start": "node dist/index.js",
     "lint": "biome check src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.178",
+    "@ai-sdk/anthropic": "^3.0.84",
+    "@ai-sdk/mcp": "^1.0.51",
     "@aws-sdk/client-s3": "^3.1068.0",
     "@aws-sdk/s3-request-presigner": "^3.1068.0",
     "@blocknote/core": "^0.51.4",
@@ -24,6 +26,7 @@
     "@tempo/contracts": "workspace:*",
     "@tempo/db": "workspace:*",
     "@tempo/server": "workspace:*",
+    "ai": "^6.0.206",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
     "e2b": "^2.30.0",

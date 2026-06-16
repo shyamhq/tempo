@@ -14,6 +14,7 @@ import {
   DeleteThreadResponse,
   GetConnectTokenResponse,
   GetThreadResponse,
+  HostedStateResponse,
   type InitAttachmentInput,
   InitAttachmentResult,
   ListSpacesResponse,
@@ -27,6 +28,7 @@ import {
   UpdateSpaceResponse,
   type UpdateThreadRequest,
   UpdateThreadResponse,
+  WakeHostedResponse,
   type WritePlanRequest,
   WritePlanResponse,
 } from '@tempo/contracts/http';
@@ -196,6 +198,9 @@ export const api = {
   getConnectToken: (threadId: string) =>
     request('GET', `/api/threads/${threadId}/connect-token`, undefined, GetConnectTokenResponse),
 
+  getHostedState: (threadId: string) =>
+    request('GET', `/api/threads/${threadId}/hosted/state`, undefined, HostedStateResponse),
+
   approveThread: (threadId: string) =>
     request('POST', `/api/threads/${threadId}/approve`, {}, ApproveThreadResponse),
 
@@ -279,6 +284,9 @@ export function workerApi(getToken: () => Promise<string | null>) {
 
     initAttachment: (threadId: string, input: z.input<typeof InitAttachmentInput>) =>
       w('POST', `/api/threads/${threadId}/attachments/init`, input, InitAttachmentResult),
+
+    wakeHosted: (threadId: string) =>
+      w('POST', `/api/threads/${threadId}/hosted/wake`, {}, WakeHostedResponse),
   };
 }
 

@@ -1,70 +1,97 @@
-import { db } from '@tempo/db/client';
-import { mailbox_events, threads, workspaces } from '@tempo/db/schema';
-import { subscribeWakeups } from '@tempo/server';
-import { eq, isNull } from 'drizzle-orm';
+import { appendEvent } from '@tempo/server';
 import { logger } from '../logger';
-import { isFresh } from '../server/presence';
 import { provision, type VmRun } from '../vm/provision';
 import { teardown } from '../vm/teardown';
 
-// Single-process Hosted supervisor: turns Mailbox NOTIFYs into VM
-// provisions. Slice 1d's presence registry assumption (one Worker) holds
-// here too — when Worker scales horizontally, this map moves alongside.
+// Single-process Hosted lifecycle manager. No NOTIFY, no LISTEN, no
+// auto-spawn — VMs are created by an explicit user click on the Console
+// (POST /api/hosted/wake). This module only tracks live Sandboxes, arms
+// the wallclock timer, and reaps on shutdown.
+
+const log = logger.child({ module: 'supervisor' });
+
 const live = new Map<string, { run: VmRun; expiresTimer: NodeJS.Timeout }>();
-// In-flight set: prevents a NOTIFY-during-bootSweep from double-provisioning
-// the same Thread while the first provision is still resolving.
-const provisioning = new Set<string>();
+// Synchronous claim so two concurrent wake POSTs cannot both pass the
+// "is anything alive?" check before either has populated `live`.
+const spawning = new Set<string>();
 let stopped = false;
 
-const SANDBOX_BUDGET_MS = 10 * 60 * 1000;
+// Inactivity, not wallclock. The Manus shape: a Dev can comment, walk away
+// for a few minutes, come back. Quiet for 10 min in both directions
+// (no agent-events POST, no drain returning Dev events) → reap.
+const SANDBOX_INACTIVITY_MS = 10 * 60 * 1000;
 
-function armExpiresTimer(threadId: string): NodeJS.Timeout {
-  const t = setTimeout(() => void reap(threadId, 'wallclock_timeout'), SANDBOX_BUDGET_MS);
+function armReapTimer(threadId: string): NodeJS.Timeout {
+  const t = setTimeout(
+    () => void reap(threadId, 'inactivity_timeout'),
+    SANDBOX_INACTIVITY_MS,
+  );
   t.unref();
   return t;
 }
 
-// `void` floats the promise — failures land in the swallow-log paths below.
-async function dispatch(threadId: string): Promise<void> {
-  if (stopped) return;
+// Refreshed on every "real activity" signal: runner posting agent-events, or
+// drain returning Dev events. Bumps e2b's wallclock kill AND our reap timer
+// so neither beats the actual quiet period.
+export function touch(threadId: string): void {
+  const entry = live.get(threadId);
+  if (!entry) return;
+  entry.run.sandbox.setTimeout(SANDBOX_INACTIVITY_MS).catch((err: unknown) =>
+    log.warn({ err, threadId }, 'touch: sandbox.setTimeout failed'),
+  );
+  clearTimeout(entry.expiresTimer);
+  entry.expiresTimer = armReapTimer(threadId);
+}
+
+export type WakeResult =
+  | { status: 'spawned'; vm_run_id: string; sandbox_id: string }
+  | { status: 'already_running'; sandbox_id: string };
+
+// Explicit entry point — called from the wake route after auth + thread
+// scope checks. Idempotent within one process: a second call while a
+// sandbox is alive (or while one is mid-spawn) returns `already_running`.
+export async function spawnHosted(opts: {
+  threadId: string;
+  workspaceId: string;
+}): Promise<WakeResult> {
+  const { threadId, workspaceId } = opts;
+  if (stopped) throw new Error('supervisor: stopped');
+
   const existing = live.get(threadId);
   if (existing) {
-    // NOTIFY arrived while a VM is alive — extend its wallclock budget.
-    // sandbox.setTimeout(N) resets the budget to N from now per the e2b
-    // SDK 2.30.0 docs ("extend or reduce ... from the last call").
-    try {
-      await existing.run.sandbox.setTimeout(SANDBOX_BUDGET_MS);
-      clearTimeout(existing.expiresTimer);
-      existing.expiresTimer = armExpiresTimer(threadId);
-      return;
-    } catch (err) {
-      // Sandbox is gone (e.g. self-reap on runner MAX_IDLE_MS). Drop the
-      // stale entry and re-dispatch so a fresh VM picks up this NOTIFY.
-      logger.warn({ err, threadId }, 'supervisor: sandbox unreachable — reaping + redispatch');
-      await reap(threadId, 'sandbox_unreachable');
-      // Fall through to the provision path below.
-    }
+    log.info({ threadId, event: 'wake:already_running' }, 'sandbox already alive');
+    return { status: 'already_running', sandbox_id: existing.run.sandbox.sandboxId };
   }
-  if (isFresh(threadId)) return;
-  if (provisioning.has(threadId)) return;
+  if (spawning.has(threadId)) {
+    log.info({ threadId, event: 'wake:already_spawning' }, 'spawn already in flight');
+    return { status: 'already_running', sandbox_id: 'pending' };
+  }
+  spawning.add(threadId);
 
-  const [row] = await db
-    .select({ workspaceId: workspaces.id, enabled: workspaces.hosted_enabled })
-    .from(workspaces)
-    .innerJoin(threads, eq(threads.workspace_id, workspaces.id))
-    .where(eq(threads.id, threadId))
-    .limit(1);
-  if (!row?.enabled) return;
-
-  provisioning.add(threadId);
   try {
-    const run = await provision({ threadId, workspaceId: row.workspaceId });
-    live.set(threadId, { run, expiresTimer: armExpiresTimer(threadId) });
-    logger.info({ threadId, vmRunId: run.vm_run_id }, 'supervisor: provisioned');
+    await appendEvent(threadId, { kind: 'session_initiating' });
+    const run = await provision({ threadId, workspaceId });
+    live.set(threadId, { run, expiresTimer: armReapTimer(threadId) });
+    log.info(
+      {
+        threadId,
+        event: 'wake:spawned',
+        vmRunId: run.vm_run_id,
+        sandboxId: run.sandbox.sandboxId,
+      },
+      'provisioned new sandbox',
+    );
+    return { status: 'spawned', vm_run_id: run.vm_run_id, sandbox_id: run.sandbox.sandboxId };
   } catch (err) {
-    logger.error({ err, threadId }, 'supervisor: provision failed');
+    log.error({ err, threadId, event: 'wake:failed' }, 'provision failed');
+    const reason = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+    await appendEvent(threadId, {
+      kind: 'session_failed',
+      reason: `provision_failed: ${reason}`,
+    }).catch((e) => log.warn({ err: e, threadId }, 'failed to post session_failed'));
+    throw err;
   } finally {
-    provisioning.delete(threadId);
+    spawning.delete(threadId);
   }
 }
 
@@ -78,29 +105,12 @@ async function reap(threadId: string, reason: string): Promise<void> {
     vm_run_id: entry.run.vm_run_id,
     exit_reason: reason,
   });
-}
-
-// Recover any NOTIFYs lost across a Worker restart. Coalesce by threadId
-// so one row per Thread dispatches even if many events queued.
-async function bootSweep(): Promise<void> {
-  const rows = await db
-    .selectDistinct({ thread_id: mailbox_events.thread_id })
-    .from(mailbox_events)
-    .where(isNull(mailbox_events.consumed_at));
-  for (const r of rows) await dispatch(r.thread_id);
-}
-
-let listener: { close: () => Promise<void> } | null = null;
-
-export async function startSupervisor(): Promise<void> {
-  listener = await subscribeWakeups({ onWake: (tid) => void dispatch(tid) });
-  await bootSweep();
-  logger.info('supervisor: started');
+  await appendEvent(threadId, { kind: 'session_disconnected' }).catch((e) =>
+    log.warn({ err: e, threadId }, 'failed to post session_disconnected'),
+  );
 }
 
 export async function stopSupervisor(): Promise<void> {
   stopped = true;
-  await listener?.close(); // stop receiving NOTIFY first
-  listener = null;
   await Promise.all(Array.from(live.keys()).map((tid) => reap(tid, 'worker_shutdown')));
 }

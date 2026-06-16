@@ -37,6 +37,36 @@ export const GetConnectTokenResponse = z.object({
   connect_token: ConnectToken,
 });
 
+// GET /api/threads/:id/hosted/state — live Hosted-runtime snapshot.
+// `hosted_enabled` mirrors the workspace flag; `vm` is non-null when a
+// Sandbox is currently provisioned (vm_runs row with ended_at IS NULL).
+export const HostedStateResponse = z.object({
+  hosted_enabled: z.boolean(),
+  vm: z
+    .object({
+      sandbox_id: z.string(),
+      started_at: z.iso.datetime(),
+    })
+    .nullable(),
+});
+
+// POST /api/threads/:id/hosted/wake — explicit user-triggered Sandbox spawn.
+// `spawned`: a new Sandbox is provisioning.
+// `already_running`: a Sandbox is alive (or mid-spawn) for this thread.
+// `hosted_off`: workspace has Hosted disabled — flip it in Settings.
+export const WakeHostedResponse = z.union([
+  z.object({
+    status: z.literal('spawned'),
+    vm_run_id: z.string(),
+    sandbox_id: z.string(),
+  }),
+  z.object({
+    status: z.literal('already_running'),
+    sandbox_id: z.string(),
+  }),
+  z.object({ status: z.literal('hosted_off') }),
+]);
+
 // GET /api/threads?space_id=spc_…
 export const ListThreadsQuery = z.object({
   space_id: SpaceId.optional(),

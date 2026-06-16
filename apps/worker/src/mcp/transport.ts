@@ -19,6 +19,9 @@ const sessions = new Map<string, SessionEntry>();
 function callerMatches(a: Caller, b: Caller): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === 'agent' && b.kind === 'agent') return a.workspaceId === b.workspaceId;
+  if (a.kind === 'hosted' && b.kind === 'hosted') {
+    return a.threadId === b.threadId && a.workspaceId === b.workspaceId;
+  }
   return 'userId' in a && 'userId' in b && a.userId === b.userId;
 }
 

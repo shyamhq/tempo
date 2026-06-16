@@ -189,42 +189,6 @@ export const events = pgTable(
   (t) => [primaryKey({ columns: [t.thread_id, t.id] })],
 );
 
-// Hosted wake-up queue (Slice 2). Worker writes one row per Dev-originated
-// event when the Thread has no fresh Local Session and its Workspace has
-// hosted_enabled. The VM polls its own rows between Turns; an unconsumed
-// row plus a NOTIFY 'mailbox' payload trigger Hosted provisioning.
-// `kind`/`payload_json` deliberately omitted — joined from `events` at drain
-// time (one source of truth).
-export const mailbox_events = pgTable(
-  'mailbox_events',
-  {
-    id: text('id').primaryKey(),
-    // No explicit FK to threads — the composite FK below ties (thread_id,
-    // event_id) to events, and events.thread_id already FKs to threads, so
-    // thread existence is enforced transitively without a duplicate index.
-    thread_id: text('thread_id').notNull(),
-    event_id: text('event_id').notNull(),
-    created_at: timestampDate('created_at'),
-    consumed_at: nullableTimestamp('consumed_at'),
-  },
-  (t) => [
-    foreignKey({
-      columns: [t.thread_id, t.event_id],
-      foreignColumns: [events.thread_id, events.id],
-      name: 'mailbox_events_event_fk',
-    }),
-    // Idempotent enqueue: duplicate writes for the same (thread, event) are
-    // no-ops via ON CONFLICT DO NOTHING. Also satisfies the composite FK
-    // target requirement on `events`.
-    uniqueIndex('idx_mailbox_events_thread_event').on(t.thread_id, t.event_id),
-    // Hot path: drain pending rows in created_at order. Partial index keeps
-    // the scan tight as consumed rows accumulate.
-    index('idx_mailbox_events_pending')
-      .on(t.thread_id, t.created_at)
-      .where(sql`${t.consumed_at} IS NULL`),
-  ],
-);
-
 // VM run audit log (Slice 2). One row per Hosted Session. Writer is the
 // provisioner (started_at) + teardown (ended_at, exit_reason, cost). Sole
 // reader today is cost-rollup queries; required by Slice 2 acceptance #7.

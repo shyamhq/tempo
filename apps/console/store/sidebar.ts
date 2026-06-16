@@ -16,7 +16,7 @@ type PendingDelete = (PendingDeleteInput & { expiresAt: number }) | null;
 
 type CommitFn = (p: PendingDeleteInput) => void;
 
-export const UNDO_MS = 5000;
+export const UNDO_MS = 2000;
 
 interface SidebarState {
   expanded: Set<string>;

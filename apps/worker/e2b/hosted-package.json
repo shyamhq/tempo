@@ -1,0 +1,13 @@
+{
+  "name": "tempo-hosted-runner",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ai": "6.0.206",
+    "@ai-sdk/anthropic": "3.0.84",
+    "@ai-sdk/mcp": "1.0.51",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/server-filesystem": "2026.1.14",
+    "zod": "4.4.3"
+  }
+}

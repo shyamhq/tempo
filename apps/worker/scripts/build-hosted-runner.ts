@@ -4,5 +4,9 @@
 // apps/worker/e2b/.
 import { $ } from 'bun';
 
-await $`bun build --target=node --bundle src/hosted/runner.ts --outfile e2b/hosted-runner.js`;
+// Externalize everything the e2b template installs via npm
+// (hosted-package.json). Only our own source code gets bundled into
+// hosted-runner.js — keeps the file small and avoids embedding native
+// optionalDependencies that bun build can't carry across platforms.
+await $`bun build --target=node --bundle --external='ai' --external='@ai-sdk/*' --external='@modelcontextprotocol/*' --external='zod' src/hosted/runner.ts --outfile e2b/hosted-runner.js`;
 console.log('hosted runner bundled at apps/worker/e2b/hosted-runner.js');

@@ -1,3 +1,0 @@
-template_name = "tempo-hosted-runner"
-dockerfile = "Dockerfile.hosted"
-start_cmd = "/bin/sh"

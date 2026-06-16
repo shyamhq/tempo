@@ -33,6 +33,10 @@ const schema = z.object({
   // Public URL the Sandbox uses to reach Worker's MCP endpoint. Must be
   // reachable from inside the E2B sandbox network.
   WORKER_PUBLIC_URL: z.string().url().default('http://localhost:3001'),
+  // Optional Helicone proxy key — when set, the Hosted runner routes all
+  // Anthropic calls through anthropic.helicone.ai so every request shows
+  // up in the Helicone dashboard with usage / cost / tool-call traces.
+  HELICONE_API_KEY: z.string().min(1).optional(),
 });
 
 const parsed = schema.safeParse(process.env);

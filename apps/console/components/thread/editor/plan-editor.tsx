@@ -276,8 +276,6 @@ export function PlanEditor({
     [editor],
   );
 
-  const orphanThread = orphanOpen ? bridge.getThreads().get(orphanOpen.threadId) : null;
-
   return (
     <div ref={rootRef} className="plan-editor-dense">
       <BlockNoteView
@@ -327,18 +325,27 @@ export function PlanEditor({
             )
           }
         />
-        {orphanOpen && orphanThread ? (
+        {orphanOpen ? (
           <OrphanCardPopover
             anchorTop={orphanOpen.top}
             anchorRight={orphanOpen.right}
             onDismiss={() => setOrphanOpen(null)}
           >
-            <PlanCommentCard thread={orphanThread} selected={true} orphaned={true} />
+            <OrphanCardBody threadId={orphanOpen.threadId} />
           </OrphanCardPopover>
         ) : null}
       </BlockNoteView>
     </div>
   );
+}
+
+// Subscribes via useThreads so a fresh reply (agent or dev) pushes through
+// BlockNote's store the same way it does for anchored cards.
+function OrphanCardBody({ threadId }: { threadId: string }) {
+  const threads = useThreads();
+  const thread = threads.get(threadId);
+  if (!thread) return null;
+  return <PlanCommentCard thread={thread} selected orphaned />;
 }
 
 // Portal target lives outside BlockNoteView, but the card's hooks

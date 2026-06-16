@@ -13,9 +13,10 @@ export type VmRun = {
   session_id: string;
 };
 
-// e2b's timeoutMs is a wallclock hard-kill from create — NOT idle. Task 2.7
-// calls sandbox.setTimeout(...) between Turns to extend the budget on
-// activity. 10 min covers one complex Turn with buffer.
+// Initial budget on Sandbox.create. Supervisor's touch() refreshes this on
+// every real-activity signal (agent-events POST, drain returning Dev events),
+// so the effective lifetime is "10 min from the last touch", not "10 min
+// from spawn".
 const SANDBOX_INITIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const TEMPLATE_NAME = 'tempo-hosted-runner';
 
@@ -24,6 +25,7 @@ const TEMPLATE_NAME = 'tempo-hosted-runner';
 // denied by the absence of a wildcard.
 const EGRESS_ALLOWLIST = [
   'api.anthropic.com',
+  'anthropic.helicone.ai',
   'api.github.com',
   'github.com',
   'codeload.github.com',
@@ -45,7 +47,7 @@ export async function provision(opts: {
   try {
     sandbox = await Sandbox.create({
       template: TEMPLATE_NAME,
-      apiKey: env.E2B_API_KEY,
+      // SDK reads E2B_API_KEY from env automatically (@default per index.d.ts).
       timeoutMs: SANDBOX_INITIAL_TIMEOUT_MS,
       envs: {
         TEMPO_THREAD_ID: threadId,
@@ -57,11 +59,18 @@ export async function provision(opts: {
         // var is `WORKER_PUBLIC_URL`.
         WORKER_MCP_URL: env.WORKER_PUBLIC_URL,
         ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
+        ...(env.HELICONE_API_KEY ? { HELICONE_API_KEY: env.HELICONE_API_KEY } : {}),
+        ...(process.env.HOSTED_AGENT_MODEL
+          ? { HOSTED_AGENT_MODEL: process.env.HOSTED_AGENT_MODEL }
+          : {}),
         ...(repoUrl ? { REPO_URL: repoUrl } : {}),
         ...(ghToken ? { GITHUB_APP_TOKEN: ghToken } : {}),
       },
       network: {
         allowOut: [...EGRESS_ALLOWLIST, new URL(env.WORKER_PUBLIC_URL).hostname],
+        // e2b v2.30 requires an explicit deny when allowOut is set. Callback
+        // form is the documented canonical pattern (see e2b/internet-access).
+        denyOut: ({ allTraffic }) => [allTraffic],
       },
       metadata: { tempo_thread_id: threadId, tempo_vm_run_id: vmRunId },
     });
@@ -79,8 +88,22 @@ export async function provision(opts: {
   // background: true returns a handle, not a result — runner.js startup
   // errors are invisible here. Task 2.6 owns runner.js; surface boot
   // failures via the activity-events POST or a `/healthz` ping.
-  await sandbox.commands.run('node /app/runner.js', { background: true });
-  logger.info({ threadId, sandboxId: sandbox.sandboxId, vmRunId }, 'vm: provisioned');
+  //
+  // timeoutMs override: the SDK's default RPC channel timeout is 60s, and
+  // when that abort fires it SIGTERMs the detached child. Set to 24h so
+  // the actual lifetime cap is the sandbox wallclock budget (managed by
+  // the supervisor via sandbox.setTimeout on every NOTIFY-while-alive).
+  const sandboxId = sandbox.sandboxId;
+  await sandbox.commands.run('node /app/runner.js', {
+    background: true,
+    timeoutMs: 24 * 60 * 60 * 1000,
+    onStdout: (d) => logger.info({ sandboxId, stream: 'runner.out' }, d.trimEnd()),
+    // warn (not error) because many tools log info to stderr by convention
+    // (npm, mcp servers, etc). Real crashes still surface as multi-line
+    // stack traces — distinguishable from one-line startup banners.
+    onStderr: (d) => logger.warn({ sandboxId, stream: 'runner.err' }, d.trimEnd()),
+  });
+  logger.info({ threadId, sandboxId, vmRunId }, 'vm: provisioned');
 
   return { sandbox, vm_run_id: vmRunId, session_id: hosted.session_id };
 }

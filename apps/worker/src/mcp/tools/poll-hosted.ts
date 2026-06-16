@@ -1,5 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { drainPending } from '@tempo/server';
+import { getEventsSinceLastTurn } from '@tempo/server';
 import type { Caller } from '../../auth';
 
 // Hosted-only MCP tool. Returns immediately with whatever Mailbox events
@@ -18,7 +18,7 @@ export function registerPollHosted(server: McpServer, caller: Caller): void {
           content: [{ type: 'text', text: JSON.stringify({ error: 'hosted_only' }) }],
         };
       }
-      const events = await drainPending(caller.threadId);
+      const events = await getEventsSinceLastTurn(caller.threadId);
       return { content: [{ type: 'text', text: JSON.stringify({ events }) }] };
     },
   );

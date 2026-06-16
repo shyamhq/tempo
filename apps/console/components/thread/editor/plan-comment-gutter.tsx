@@ -28,7 +28,7 @@ type LiveComment = {
 // size-7 (28px) + 2px breathing room between stacked icons
 const ICON_STEP_PX = 30;
 const ORPHAN_SECTION_GAP_PX = 12;
-const ORPHAN_LABEL_ABOVE_PX = 16;
+const ORPHAN_LABEL_ABOVE_PX = 20;
 
 export function PlanCommentGutter({
   comments,
@@ -320,7 +320,13 @@ function layoutGutterIcons(
     entries.push({ id: comment.id, preferred });
   }
 
-  const orphanBase = orphaned.length > 0 ? Math.max(0, anchoredBottom + ORPHAN_SECTION_GAP_PX) : 0;
+  // Floor at ORPHAN_LABEL_ABOVE_PX so the "Orphaned" label always has room
+  // above the first orphan icon, even when no anchored comments exist
+  // (anchoredBottom = -Infinity → would otherwise collapse the gap to 0).
+  const orphanBase =
+    orphaned.length > 0
+      ? Math.max(ORPHAN_LABEL_ABOVE_PX, anchoredBottom + ORPHAN_SECTION_GAP_PX)
+      : 0;
   for (let i = 0; i < orphaned.length; i++) {
     const orphan = orphaned[i];
     if (!orphan) continue;

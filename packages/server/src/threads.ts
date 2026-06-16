@@ -11,6 +11,7 @@ import {
   sessions,
   spaces,
   threads,
+  vm_runs,
 } from '@tempo/db/schema';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { appendEvent } from './event-log';
@@ -128,6 +129,7 @@ export async function deleteThread(threadId: string): Promise<void> {
     await tx.delete(discussion_messages).where(eq(discussion_messages.thread_id, threadId));
     await tx.delete(events).where(eq(events.thread_id, threadId));
     await tx.delete(sessions).where(eq(sessions.thread_id, threadId));
+    await tx.delete(vm_runs).where(eq(vm_runs.thread_id, threadId));
     await tx.delete(plans).where(eq(plans.thread_id, threadId));
     await tx.delete(threads).where(eq(threads.id, threadId));
   });

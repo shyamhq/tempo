@@ -2,6 +2,7 @@ import { AgentEventRequest } from '@tempo/contracts/http';
 import { type AppendPayload, appendEvent } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
+import { touch } from '../../hosted/supervisor';
 import { logger } from '../../logger';
 
 // POST /api/agent-events — sk_user_* (Local CLI) or sk_hosted_* (Hosted VM).
@@ -35,6 +36,7 @@ export const agentEventsHandler: RequestHandler = async (req, res) => {
 
   try {
     await appendEvent(thread_id, event as AppendPayload);
+    if (req.caller.kind === 'hosted') touch(thread_id);
     res.status(204).end();
   } catch (err) {
     logger.error({ err }, 'agent-events: append failed');
