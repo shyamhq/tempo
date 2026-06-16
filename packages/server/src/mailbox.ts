@@ -1,7 +1,12 @@
-import { type Event, shouldWake } from '@tempo/contracts';
+import type { Comment, DiscussionMessage, Event } from '@tempo/contracts';
+import { shouldWake } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { events, threads, vm_runs, workspaces } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { listCommentsForThread } from './comments';
+import { listMessagesForThread } from './discussion';
+import { latestEventId } from './event-log';
+import { getPlanBlocks } from './plan';
 
 // Hosted Agent runtime helpers — used by the Worker's wake/drain routes and
 // the Console state endpoint. Wake-on-NOTIFY is deliberately not a thing:
@@ -52,6 +57,45 @@ export async function isHostedReadyToWake(threadId: string): Promise<{
 }> {
   const state = await getHostedState(threadId);
   return { hosted_enabled: state.hosted_enabled, live: state.vm !== null };
+}
+
+// Everything the runner needs to start a Turn without making any MCP
+// roundtrips for state. Replaces the agent's old triangle of tempo_attach
+// + tempo_poll_hosted + tempo_pull_plan. Returns `null` if the thread no
+// longer exists (deleted mid-spawn).
+export type TurnHydration = {
+  thread: { id: string; title: string; description: string | null; status: string };
+  plan: { blocks: { id: string; html: string }[] };
+  comments: Comment[];
+  discussion: { messages: DiscussionMessage[] };
+  last_event_id: string;
+};
+
+export async function getTurnHydration(threadId: string): Promise<TurnHydration | null> {
+  const [thread] = await db
+    .select({
+      id: threads.id,
+      title: threads.title,
+      description: threads.description,
+      status: threads.status,
+    })
+    .from(threads)
+    .where(eq(threads.id, threadId))
+    .limit(1);
+  if (!thread) return null;
+  const [plan, comments, messages, last_event_id] = await Promise.all([
+    getPlanBlocks(threadId),
+    listCommentsForThread(threadId),
+    listMessagesForThread(threadId),
+    latestEventId(threadId),
+  ]);
+  return {
+    thread,
+    plan,
+    comments,
+    discussion: { messages },
+    last_event_id,
+  };
 }
 
 // Runner's outer-loop drain. Returns wake-able events posted since the last

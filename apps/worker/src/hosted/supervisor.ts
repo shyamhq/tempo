@@ -22,10 +22,7 @@ let stopped = false;
 const SANDBOX_INACTIVITY_MS = 10 * 60 * 1000;
 
 function armReapTimer(threadId: string): NodeJS.Timeout {
-  const t = setTimeout(
-    () => void reap(threadId, 'inactivity_timeout'),
-    SANDBOX_INACTIVITY_MS,
-  );
+  const t = setTimeout(() => void reap(threadId, 'inactivity_timeout'), SANDBOX_INACTIVITY_MS);
   t.unref();
   return t;
 }
@@ -36,9 +33,9 @@ function armReapTimer(threadId: string): NodeJS.Timeout {
 export function touch(threadId: string): void {
   const entry = live.get(threadId);
   if (!entry) return;
-  entry.run.sandbox.setTimeout(SANDBOX_INACTIVITY_MS).catch((err: unknown) =>
-    log.warn({ err, threadId }, 'touch: sandbox.setTimeout failed'),
-  );
+  entry.run.sandbox
+    .setTimeout(SANDBOX_INACTIVITY_MS)
+    .catch((err: unknown) => log.warn({ err, threadId }, 'touch: sandbox.setTimeout failed'));
   clearTimeout(entry.expiresTimer);
   entry.expiresTimer = armReapTimer(threadId);
 }

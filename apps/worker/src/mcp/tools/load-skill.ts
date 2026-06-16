@@ -1,14 +1,15 @@
 import { z } from 'zod';
-import { getThreadIdForMcpSession } from '../../server/auth-lookup';
 import { listSkills, loadSkill } from '../../skills/loader';
 
 const LoadSkillInput = z.object({
   name: z.string().min(1),
 });
 
+import { sessionNotFound } from './_shared';
+
 export function registerLoadSkill(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-  getMcpSessionId: () => string | undefined,
+  resolveThreadId: () => Promise<string | null>,
 ): void {
   server.tool(
     'tempo_load_skill',
@@ -17,34 +18,8 @@ export function registerLoadSkill(
       .join('; ')}`,
     LoadSkillInput.shape,
     async (args) => {
-      const mcpSessionId = getMcpSessionId();
-      if (!mcpSessionId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'session_not_found',
-                message: 'call tempo_attach before this tool',
-              }),
-            },
-          ],
-        };
-      }
-      const threadId = await getThreadIdForMcpSession(mcpSessionId);
-      if (!threadId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'session_not_found',
-                message: 'you must call tempo_attach before this tool',
-              }),
-            },
-          ],
-        };
-      }
+      const threadId = await resolveThreadId();
+      if (!threadId) return sessionNotFound();
       const body = loadSkill(args.name);
       if (!body) {
         const available = listSkills()

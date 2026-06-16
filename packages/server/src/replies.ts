@@ -16,6 +16,11 @@ export async function postReply(
   payload: ReplyPayload,
   author: Actor,
   attachment_ids: string[] = [],
+  // Optional caller-asserted thread scope. When set, refuses if the comment
+  // lives in a different thread — closes a cross-thread write the MCP tool
+  // path would otherwise allow (the hosted JWT scopes the caller to one
+  // thread, but the comment_id arg is otherwise untrusted).
+  expectedThreadId?: string,
 ): Promise<Reply> {
   const [c] = await db
     .select({ thread_id: comments.thread_id })
@@ -23,6 +28,9 @@ export async function postReply(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!c) throw new Error('comment_not_found');
+  if (expectedThreadId && c.thread_id !== expectedThreadId) {
+    throw new Error('forbidden');
+  }
 
   const heads = await verifyAttachmentsInR2(c.thread_id, attachment_ids);
   const id = newReplyId();

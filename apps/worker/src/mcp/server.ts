@@ -1,12 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AttachInput } from '@tempo/contracts/mcp';
 import type { Caller } from '../auth';
+import { resolveThreadIdForCaller } from '../server/auth-lookup';
 import { registerAddBlocks } from './tools/add-blocks';
 import { runAttach } from './tools/attach';
 import { registerDeleteBlock } from './tools/delete-block';
 import { registerLoadSkill } from './tools/load-skill';
 import { registerPoll } from './tools/poll';
-import { registerPollHosted } from './tools/poll-hosted';
 import { registerPostDiscussionMessage } from './tools/post-discussion-message';
 import { registerPostReply } from './tools/post-reply';
 import { registerPullPlan } from './tools/pull-plan';
@@ -40,18 +40,18 @@ export function createMcpServer(
     },
   );
 
-  // Remaining 9 tools — each resolves thread_id from the sticky MCP session.
-  registerPullPlan(server, getMcpSessionId);
-  registerUpdatePlan(server, getMcpSessionId);
-  registerUpdateBlock(server, getMcpSessionId);
-  registerAddBlocks(server, getMcpSessionId);
-  registerDeleteBlock(server, getMcpSessionId);
-  registerPoll(server, getMcpSessionId);
-  registerPostReply(server, getMcpSessionId);
-  registerPostDiscussionMessage(server, getMcpSessionId);
-  registerSetThreadMeta(server, getMcpSessionId);
-  registerLoadSkill(server, getMcpSessionId);
-  registerPollHosted(server, caller);
+  const resolveThreadId = () => resolveThreadIdForCaller(caller, getMcpSessionId);
+
+  registerPullPlan(server, resolveThreadId);
+  registerUpdatePlan(server, resolveThreadId);
+  registerUpdateBlock(server, resolveThreadId);
+  registerAddBlocks(server, resolveThreadId);
+  registerDeleteBlock(server, resolveThreadId);
+  registerPoll(server, resolveThreadId);
+  registerPostReply(server, resolveThreadId);
+  registerPostDiscussionMessage(server, resolveThreadId);
+  registerSetThreadMeta(server, resolveThreadId);
+  registerLoadSkill(server, resolveThreadId);
 
   return server;
 }

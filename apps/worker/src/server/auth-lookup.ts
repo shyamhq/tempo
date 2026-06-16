@@ -125,3 +125,19 @@ export async function getThreadIdForMcpSession(mcpSessionId: string): Promise<st
     .limit(1);
   return row?.thread_id ?? null;
 }
+
+// Caller-aware threadId resolution. Hosted callers carry threadId in their
+// JWT (cli-auth.ts mints sk_hosted_* with it baked in), so they skip the
+// sticky-session DB lookup entirely. CLI / browser callers still need the
+// session row tempo_attach establishes, because their tokens identify a
+// user, not a thread. Returns null when no thread can be resolved — the
+// tool then surfaces session_not_found to the agent.
+export async function resolveThreadIdForCaller(
+  caller: import('../auth').Caller,
+  getMcpSessionId: () => string | undefined,
+): Promise<string | null> {
+  if (caller.kind === 'hosted') return caller.threadId;
+  const mcpSessionId = getMcpSessionId();
+  if (!mcpSessionId) return null;
+  return getThreadIdForMcpSession(mcpSessionId);
+}

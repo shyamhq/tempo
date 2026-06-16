@@ -1,44 +1,19 @@
 import { AddBlocksInput } from '@tempo/contracts/mcp';
 import { addBlocks, BlockNotFoundError, InvalidPlanBodyError } from '@tempo/server';
-import { getThreadIdForMcpSession } from '../../server/auth-lookup';
+
+import { sessionNotFound } from './_shared';
 
 export function registerAddBlocks(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-  getMcpSessionId: () => string | undefined,
+  resolveThreadId: () => Promise<string | null>,
 ): void {
   server.tool(
     'tempo_add_blocks',
     'Insert new blocks relative to an existing block (before/after) or at the document boundary (end). Returns $-suffixed IDs for the newly inserted blocks.',
     AddBlocksInput.shape,
     async (args) => {
-      const mcpSessionId = getMcpSessionId();
-      if (!mcpSessionId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'session_not_found',
-                message: 'call tempo_attach before this tool',
-              }),
-            },
-          ],
-        };
-      }
-      const threadId = await getThreadIdForMcpSession(mcpSessionId);
-      if (!threadId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'session_not_found',
-                message: 'you must call tempo_attach before this tool',
-              }),
-            },
-          ],
-        };
-      }
+      const threadId = await resolveThreadId();
+      if (!threadId) return sessionNotFound();
       try {
         const result = await addBlocks(
           threadId,

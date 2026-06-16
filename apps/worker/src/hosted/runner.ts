@@ -9,13 +9,14 @@
 import { execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { createAnthropic } from '@ai-sdk/anthropic';
-import { buildAnthropicProvider, turnPath } from './helicone';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { stepCountIs, streamText, tool } from 'ai';
+import type { TurnHydration } from '@tempo/server';
 import type { ModelMessage } from 'ai';
+import { stepCountIs, streamText, tool } from 'ai';
 import { z } from 'zod';
+import { buildAnthropicProvider, turnPath } from './helicone';
 import { HOSTED_SYSTEM_PROMPT } from './prompt-hosted';
 
 const exec = promisify(execFile);
@@ -63,7 +64,15 @@ async function postAgentEvent(event: unknown): Promise<void> {
   }
 }
 
-async function pollMailbox(): Promise<unknown[]> {
+type DrainResponse = {
+  events: unknown[];
+  // Present iff events.length > 0 AND the thread still exists. Hydrates the
+  // full Turn-start context the agent used to fetch via tempo_attach +
+  // tempo_pull_plan. Null/undefined → no work, runner sleeps.
+  context?: TurnHydration | null;
+};
+
+async function pollMailbox(): Promise<DrainResponse> {
   try {
     const res = await fetch(`${env.workerMcpUrl}/api/hosted/drain`, {
       method: 'POST',
@@ -74,13 +83,13 @@ async function pollMailbox(): Promise<unknown[]> {
     });
     if (!res.ok) {
       console.error('runner: pollMailbox', res.status, await res.text());
-      return [];
+      return { events: [] };
     }
-    const json = (await res.json()) as { events?: unknown[] };
-    return json.events ?? [];
+    const json = (await res.json()) as DrainResponse;
+    return { events: json.events ?? [], context: json.context };
   } catch (err) {
     console.error('runner: pollMailbox failed', err);
-    return [];
+    return { events: [] };
   }
 }
 
@@ -140,10 +149,7 @@ async function maybeCloneRepo(): Promise<void> {
   // no-repo path is a no-op — the MCP filesystem server and Bash both
   // happily target an empty dir.
   if (!env.repoUrl || !env.ghToken) return;
-  const authedUrl = env.repoUrl.replace(
-    'https://',
-    `https://x-access-token:${env.ghToken}@`,
-  );
+  const authedUrl = env.repoUrl.replace('https://', `https://x-access-token:${env.ghToken}@`);
   execSync(`git clone --depth 1 --filter=blob:none ${authedUrl} /workspace`, {
     stdio: 'pipe',
   });
@@ -154,9 +160,7 @@ async function maybeCloneRepo(): Promise<void> {
 
 type SafeMCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 
-async function buildToolset(
-  anthropic: ReturnType<typeof createAnthropic>,
-): Promise<{
+async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Promise<{
   tools: Record<string, unknown>;
   close: () => Promise<void>;
 }> {
@@ -210,12 +214,19 @@ async function buildToolset(
 const history: ModelMessage[] = [];
 
 async function runTurn(
-  batch: unknown[],
+  drain: DrainResponse,
   tools: Record<string, unknown>,
   anthropic: ReturnType<typeof createAnthropic>,
 ): Promise<void> {
   const startedAt = Date.now();
-  const userMessage = JSON.stringify({ thread_id: env.threadId, batch });
+  // Rich Turn-start payload — Plan, Comments, Discussion, thread meta,
+  // cursor — all pre-fetched by the worker so the agent's first model
+  // step is real work, not an attach/poll/pull triangle.
+  const userMessage = JSON.stringify({
+    thread_id: env.threadId,
+    events: drain.events,
+    context: drain.context,
+  });
   history.push({ role: 'user', content: userMessage });
 
   const result = streamText({
@@ -271,8 +282,7 @@ async function runTurn(
   // factory once we add a second provider.
   const u = await result.totalUsage;
   const ms = Date.now() - startedAt;
-  const cost =
-    ((u.inputTokens ?? 0) * 1 + (u.outputTokens ?? 0) * 5) / 1_000_000;
+  const cost = ((u.inputTokens ?? 0) * 1 + (u.outputTokens ?? 0) * 5) / 1_000_000;
   console.log(
     `[usage] model=${env.modelId} in=${u.inputTokens ?? 0} out=${u.outputTokens ?? 0}` +
       ` cacheR=${u.inputTokenDetails.cacheReadTokens ?? 0} cacheW=${u.inputTokenDetails.cacheWriteTokens ?? 0}` +
@@ -289,6 +299,10 @@ async function main(): Promise<void> {
     await postAgentEvent({ kind: 'session_failed', reason: 'repo_clone_failed' });
     throw err;
   }
+
+  // Runner is fully booted — surface the connected state to Console.
+  // (Supervisor.reap emits session_disconnected when the sandbox dies.)
+  await postAgentEvent({ kind: 'session_connected' });
 
   // Initial provider (path: /init) — only used for buildToolset, which reads
   // tool definitions and doesn't actually make a request. Every Turn rebuilds
@@ -308,8 +322,8 @@ async function main(): Promise<void> {
   let turnCounter = 0;
   try {
     while (Date.now() - lastActivity < MAX_IDLE_MS) {
-      const batch = await pollMailbox();
-      if (batch.length > 0) {
+      const drain = await pollMailbox();
+      if (drain.events.length > 0) {
         turnCounter += 1;
         const turnAnthropic = buildAnthropicProvider({
           anthropicKey: env.anthropicKey,
@@ -318,7 +332,7 @@ async function main(): Promise<void> {
           workspaceId: env.workspaceId,
           sessionPath: turnPath(turnCounter),
         });
-        await runTurn(batch, toolset.tools, turnAnthropic);
+        await runTurn(drain, toolset.tools, turnAnthropic);
         lastActivity = Date.now();
         continue;
       }

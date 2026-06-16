@@ -1,44 +1,19 @@
 import { SetThreadMetaInput } from '@tempo/contracts/mcp';
 import { updateThread } from '@tempo/server';
-import { getThreadIdForMcpSession } from '../../server/auth-lookup';
+
+import { sessionNotFound } from './_shared';
 
 export function registerSetThreadMeta(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
-  getMcpSessionId: () => string | undefined,
+  resolveThreadId: () => Promise<string | null>,
 ): void {
   server.tool(
     'tempo_set_thread_meta',
     "Update the Thread title and/or description. Call immediately after tempo_attach if thread.title === 'Untitled thread' — derive a 3–6-word title from the first Dev Discussion Message. Never overwrite a non-placeholder title.",
     SetThreadMetaInput.shape,
     async (args) => {
-      const mcpSessionId = getMcpSessionId();
-      if (!mcpSessionId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'session_not_found',
-                message: 'call tempo_attach before this tool',
-              }),
-            },
-          ],
-        };
-      }
-      const threadId = await getThreadIdForMcpSession(mcpSessionId);
-      if (!threadId) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: 'session_not_found',
-                message: 'you must call tempo_attach before this tool',
-              }),
-            },
-          ],
-        };
-      }
+      const threadId = await resolveThreadId();
+      if (!threadId) return sessionNotFound();
       try {
         const thread = await updateThread(threadId, {
           title: args.title,

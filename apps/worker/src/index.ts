@@ -1,8 +1,8 @@
+import { pool } from '@tempo/db/client';
 import cors from 'cors';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
 import { env } from './env';
-import { pool } from '@tempo/db/client';
 import { stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
@@ -115,9 +115,7 @@ const shutdown = async (signal: string) => {
   await stopSupervisor().catch((err) =>
     logger.warn({ err }, 'supervisor: shutdown error (continuing)'),
   );
-  await pool.end().catch((err) =>
-    logger.warn({ err }, 'pg pool: shutdown error (continuing)'),
-  );
+  await pool.end().catch((err) => logger.warn({ err }, 'pg pool: shutdown error (continuing)'));
   server.close(() => {
     logger.info('worker stopped');
     process.exit(0);
