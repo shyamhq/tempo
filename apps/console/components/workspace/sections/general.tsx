@@ -83,8 +83,8 @@ export function GeneralSection() {
         <p className="mb-3 text-caption text-ink-subtle">
           Run the planning Agent in Tempo's infrastructure when no local
           <code className="mx-1 rounded bg-surface-2 px-1 py-0.5 text-micro">tempo-agent</code>
-          CLI is connected. Costs are billed per-second; idle Sandboxes are
-          reaped after ~10 minutes.
+          CLI is connected. Costs are billed per-second; idle Sandboxes are reaped after ~10
+          minutes.
         </p>
         <label className="flex cursor-pointer items-center gap-2">
           <input
