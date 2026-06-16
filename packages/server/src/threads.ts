@@ -214,14 +214,36 @@ export async function reopenThread(threadId: string) {
     .where(eq(threads.id, threadId));
 }
 
+// Source of truth is the event log — both CLI and hosted runtimes append
+// `session_*` events on lifecycle transitions, but only the CLI/MCP path
+// keeps the `sessions` row's `status` column updated. Reading from `events`
+// keeps the UI in sync with the actual last known state regardless of mode.
+const SESSION_KINDS = [
+  'session_connected',
+  'session_disconnected',
+  'session_initiating',
+  'session_failed',
+] as const;
+type SessionKind = (typeof SESSION_KINDS)[number];
+const KIND_TO_STATUS: Record<SessionKind, 'connected' | 'disconnected' | 'initiating' | 'failed'> =
+  {
+    session_connected: 'connected',
+    session_disconnected: 'disconnected',
+    session_initiating: 'initiating',
+    session_failed: 'failed',
+  };
+
 export async function latestSessionStatus(threadId: string) {
-  const [s] = await db
-    .select({ status: sessions.status })
-    .from(sessions)
-    .where(eq(sessions.thread_id, threadId))
-    .orderBy(desc(sessions.created_at))
+  const [last] = await db
+    .select({ kind: events.kind })
+    .from(events)
+    .where(
+      and(eq(events.thread_id, threadId), inArray(events.kind, SESSION_KINDS as unknown as string[])),
+    )
+    .orderBy(desc(events.id))
     .limit(1);
-  return s?.status ?? 'pending';
+  if (!last) return 'pending';
+  return KIND_TO_STATUS[last.kind as SessionKind] ?? 'pending';
 }
 
 // Repo chrome for the Thread header: the most-recent session's repo metadata,

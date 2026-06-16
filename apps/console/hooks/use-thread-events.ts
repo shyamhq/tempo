@@ -249,6 +249,17 @@ function apply(
     qc.invalidateQueries({ queryKey: ['thread', threadId] });
   }
 
+  // Trails are derived from the event log. Refetch when an Agent output
+  // closes a trail; live in-flight steps render from `liveActivityKey`.
+  if (
+    ev.kind === 'reply_added' ||
+    ev.kind === 'plan_edited_by_agent' ||
+    ev.kind === 'discussion_message_posted' ||
+    ev.kind === 'agent_turn_ended'
+  ) {
+    qc.invalidateQueries({ queryKey: ['trails', threadId] });
+  }
+
   // Sidebar reads `['space-threads', spaceId]` independently of the Thread
   // view's cache — a rename has to ping it explicitly. Broad prefix match
   // avoids threading space_id through every event.

@@ -14,6 +14,7 @@ import {
   DeleteThreadResponse,
   GetConnectTokenResponse,
   GetThreadResponse,
+  GetTrailsResponse,
   HostedStateResponse,
   type InitAttachmentInput,
   InitAttachmentResult,
@@ -194,6 +195,8 @@ export const api = {
     ),
 
   getThread: (id: string) => request('GET', `/api/threads/${id}`, undefined, GetThreadResponse),
+  getTrails: (id: string) =>
+    request('GET', `/api/threads/${id}/trails`, undefined, GetTrailsResponse),
 
   getConnectToken: (threadId: string) =>
     request('GET', `/api/threads/${threadId}/connect-token`, undefined, GetConnectTokenResponse),

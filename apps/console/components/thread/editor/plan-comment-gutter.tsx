@@ -9,6 +9,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import type { Comment } from '@tempo/contracts';
 import { CheckCircle2, MessageSquare, MessageSquareOff } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useThreadUi } from '@/store/thread-ui';
 import type { PlanEditorHandle } from './plan-editor';
 
 type AnchorPos = {
@@ -47,15 +48,24 @@ export function PlanCommentGutter({
     { anchor: AnchorPos | null; markGone: boolean }
   > | null>(null);
 
+  const commentSeenAt = useThreadUi((s) => s.commentSeenAt);
+  const markCommentSeen = useThreadUi((s) => s.markCommentSeen);
+
   useEffect(() => {
     if (!editorHandle) return;
     const store = editorHandle.editor.getExtension(CommentsExtension)?.store;
     if (!store) return;
-    setSelectedThreadId(store.state.selectedThreadId);
+    let last = store.state.selectedThreadId;
+    setSelectedThreadId(last);
+    if (typeof last === 'string') markCommentSeen(last);
     return store.subscribe(() => {
-      setSelectedThreadId(store.state.selectedThreadId);
+      const id = store.state.selectedThreadId;
+      if (id === last) return;
+      last = id;
+      setSelectedThreadId(id);
+      if (typeof id === 'string') markCommentSeen(id);
     });
-  }, [editorHandle]);
+  }, [editorHandle, markCommentSeen]);
 
   useEffect(() => {
     if (!editorHandle) return;
@@ -141,9 +151,21 @@ export function PlanCommentGutter({
     };
   }, [editorHandle, anchorRef, comments]);
 
+  const unreadByComment = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const c of comments) {
+      const seen = commentSeenAt[c.id] ?? null;
+      const n = c.replies.filter((r) => r.author === 'agent' && (!seen || r.created_at > seen))
+        .length;
+      if (n > 0) out.set(c.id, n);
+    }
+    return out;
+  }, [comments, commentSeenAt]);
+
   const focusAnchor = useCallback(
     (commentId: string) => {
       if (!editorHandle) return;
+      // The selectedThreadId subscription above marks the comment seen.
       editorHandle.editor.getExtension(CommentsExtension)?.selectThread(commentId);
     },
     [editorHandle],
@@ -154,8 +176,9 @@ export function PlanCommentGutter({
       if (!editorHandle) return;
       const rect = e.currentTarget.getBoundingClientRect();
       editorHandle.openOrphan(commentId, { top: rect.top, right: rect.left });
+      markCommentSeen(commentId);
     },
-    [editorHandle],
+    [editorHandle, markCommentSeen],
   );
 
   const { anchored, orphaned } = useMemo(() => {
@@ -215,6 +238,7 @@ export function PlanCommentGutter({
               selected={selectedThreadId === comment.id}
               orphaned={markGone}
               fullyDetached={false}
+              unread={unreadByComment.get(comment.id) ?? 0}
               style={{
                 position: 'absolute',
                 top: `${displayTops.get(comment.id) ?? 0}px`,
@@ -230,6 +254,7 @@ export function PlanCommentGutter({
               selected={selectedThreadId === comment.id}
               orphaned
               fullyDetached
+              unread={unreadByComment.get(comment.id) ?? 0}
               style={{
                 position: 'absolute',
                 top: `${displayTops.get(comment.id) ?? 0}px`,
@@ -250,6 +275,7 @@ function GutterIcon({
   style,
   orphaned,
   fullyDetached,
+  unread = 0,
   onClick,
 }: {
   resolved: boolean;
@@ -259,13 +285,20 @@ function GutterIcon({
   orphaned?: boolean;
   /** True only for footer-bucket orphans whose block is also gone. */
   fullyDetached?: boolean;
+  /** Agent replies the Dev hasn't seen since opening this comment. */
+  unread?: number;
   onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const Icon = fullyDetached ? MessageSquareOff : resolved ? CheckCircle2 : MessageSquare;
   const titleParts = [
     resolved ? 'Resolved' : 'Open',
     fullyDetached ? '(detached)' : orphaned ? '(orphaned)' : null,
+    unread > 0 ? `${unread} new agent ${unread === 1 ? 'reply' : 'replies'}` : null,
   ].filter(Boolean);
+  // Unread takes precedence over selected/orphan styling so a new agent reply
+  // is the loudest signal in the gutter. Resolved comments don't dim while
+  // they have unread replies — the unread badge overrides the opacity drop.
+  const hasUnread = unread > 0 && !selected;
   return (
     <button
       type="button"
@@ -277,17 +310,33 @@ function GutterIcon({
       className={`relative size-7 inline-flex items-center justify-center rounded-md transition-colors ${
         selected
           ? 'bg-accent/10 text-accent-deep ring-2 ring-accent'
-          : orphaned
-            ? 'text-brand-warn hover:bg-[color-mix(in_oklab,var(--color-brand-warn)_20%,transparent)]'
-            : 'text-ink-subtle hover:text-ink hover:bg-surface-2'
-      } ${resolved && !selected ? 'opacity-50' : ''} ${
-        orphaned
+          : hasUnread
+            ? 'bg-accent/10 text-accent-deep'
+            : orphaned
+              ? 'text-brand-warn hover:bg-[color-mix(in_oklab,var(--color-brand-warn)_20%,transparent)]'
+              : 'text-ink-subtle hover:text-ink hover:bg-surface-2'
+      } ${resolved && !selected && !hasUnread ? 'opacity-50' : ''} ${
+        orphaned && !hasUnread
           ? 'border-2 border-dashed border-brand-warn bg-[color-mix(in_oklab,var(--color-brand-warn)_12%,transparent)]'
           : ''
       } ${onClick === undefined ? 'cursor-default' : ''}`}
     >
       <Icon className="size-icon-sm" aria-hidden />
-      {orphaned ? (
+      {hasUnread ? (
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-md ring-2 ring-accent animate-pulse pointer-events-none"
+        />
+      ) : null}
+      {hasUnread ? (
+        <span
+          aria-hidden
+          className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-on-accent text-[10px] font-semibold leading-none flex items-center justify-center"
+          style={{ boxShadow: '0 0 0 2px var(--color-surface-1, white)' }}
+        >
+          {unread > 9 ? '9+' : unread}
+        </span>
+      ) : orphaned ? (
         <span
           aria-hidden
           className="absolute -bottom-1 -right-1 size-3 rounded-full bg-brand-warn text-white text-[8px] font-bold leading-none flex items-center justify-center"

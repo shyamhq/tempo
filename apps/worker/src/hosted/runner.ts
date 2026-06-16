@@ -47,32 +47,29 @@ const MAX_IDLE_MS = 10 * 60 * 1000;
 const MAX_STEPS_PER_TURN = 50;
 
 async function postAgentEvent(event: unknown): Promise<void> {
-  try {
-    const res = await fetch(`${env.workerMcpUrl}/api/agent-events`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.hostedToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ thread_id: env.threadId, event }),
-    });
-    if (!res.ok) {
-      console.error('runner: agent-event POST', res.status, await res.text());
-    }
-  } catch (err) {
-    console.error('runner: agent-event post failed', err);
+  const res = await fetch(`${env.workerMcpUrl}/api/agent-events`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.hostedToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ thread_id: env.threadId, event }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`agent-event POST ${res.status}: ${body}`);
   }
 }
 
 type DrainResponse = {
   events: unknown[];
-  // Present iff events.length > 0 AND the thread still exists. Hydrates the
-  // full Turn-start context the agent used to fetch via tempo_attach +
-  // tempo_pull_plan. Null/undefined → no work, runner sleeps.
+  // Present only when the runner asked for it (`first: true` in the request)
+  // AND the thread still exists. The server gates the hydration; the runner
+  // never receives it on Turn 2+ and so doesn't need its own gate.
   context?: TurnHydration | null;
 };
 
-async function pollMailbox(): Promise<DrainResponse> {
+async function pollMailbox(first: boolean): Promise<DrainResponse> {
   try {
     const res = await fetch(`${env.workerMcpUrl}/api/hosted/drain`, {
       method: 'POST',
@@ -80,6 +77,7 @@ async function pollMailbox(): Promise<DrainResponse> {
         Authorization: `Bearer ${env.hostedToken}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ first }),
     });
     if (!res.ok) {
       console.error('runner: pollMailbox', res.status, await res.text());
@@ -219,13 +217,12 @@ async function runTurn(
   anthropic: ReturnType<typeof createAnthropic>,
 ): Promise<void> {
   const startedAt = Date.now();
-  // Rich Turn-start payload — Plan, Comments, Discussion, thread meta,
-  // cursor — all pre-fetched by the worker so the agent's first model
-  // step is real work, not an attach/poll/pull triangle.
+  // context is set by the server on Turn 1 only; absent on Turn 2+ so the
+  // agent reads state from its own message history + events deltas instead.
   const userMessage = JSON.stringify({
     thread_id: env.threadId,
     events: drain.events,
-    context: drain.context,
+    context: drain.context ?? undefined,
   });
   history.push({ role: 'user', content: userMessage });
 
@@ -322,7 +319,7 @@ async function main(): Promise<void> {
   let turnCounter = 0;
   try {
     while (Date.now() - lastActivity < MAX_IDLE_MS) {
-      const drain = await pollMailbox();
+      const drain = await pollMailbox(turnCounter === 0);
       if (drain.events.length > 0) {
         turnCounter += 1;
         const turnAnthropic = buildAnthropicProvider({

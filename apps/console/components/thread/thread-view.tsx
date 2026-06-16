@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { useShallow } from 'zustand/react/shallow';
-import { ActivityWidget } from '@/components/thread/activity-widget';
+import { AgentTrails } from '@/components/thread/agent-trails';
 import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
@@ -25,7 +25,6 @@ const PlanEditor = dynamic(
 import { useAuth } from '@clerk/nextjs';
 import { type SaveStatus, usePlanAutoSave } from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
-import { SessionPill } from '@/components/thread/pills';
 import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
 import { Button } from '@/components/ui/button';
 import { useLiveActivityGroup, useThreadEvents } from '@/hooks/use-thread-events';
@@ -286,11 +285,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
             {approved ? null : <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />}
           </div>
           <div className="flex-1" />
-          <SessionPill
-            status={view.session_status}
-            agentPresent={agentPresent}
-            failedReason={view.session_failed_reason ?? null}
-          />
           <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
           <div className="w-px h-5 bg-hairline mx-1" />
           {approved ? null : (
@@ -380,7 +374,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           )}
         </section>
 
-        <ActivityWidget
+        <AgentTrails
           threadId={threadId}
           sessionStatus={view.session_status}
           failedReason={view.session_failed_reason ?? null}

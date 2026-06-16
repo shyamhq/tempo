@@ -48,7 +48,12 @@ const createRailSlice: StateCreator<ThreadUiState, Mutators, [], RailSlice> = (s
   // consistent — they cannot drift to "comment tab visible but rail closed".
   setEnlarged: (commentId) =>
     set(
-      { enlargedCommentId: commentId, activeRailTab: 'comment', discussionOpen: true },
+      (s) => ({
+        enlargedCommentId: commentId,
+        activeRailTab: 'comment',
+        discussionOpen: true,
+        commentSeenAt: { ...s.commentSeenAt, [commentId]: new Date().toISOString() },
+      }),
       undefined,
       'rail/setEnlarged',
     ),
@@ -86,11 +91,16 @@ const createLayoutSlice: StateCreator<ThreadUiState, Mutators, [], LayoutSlice> 
 
 interface SeenSlice {
   discussionSeenAt: Record<string, string>;
+  // Per-comment last-seen timestamp. Replies after this are unread; absent
+  // key means the comment has never been opened, so all agent replies count.
+  commentSeenAt: Record<string, string>;
   markDiscussionSeen: (threadId: string) => void;
+  markCommentSeen: (commentId: string) => void;
 }
 
 const createSeenSlice: StateCreator<ThreadUiState, Mutators, [], SeenSlice> = (set) => ({
   discussionSeenAt: {},
+  commentSeenAt: {},
   markDiscussionSeen: (threadId) =>
     set(
       (s) => ({
@@ -98,6 +108,14 @@ const createSeenSlice: StateCreator<ThreadUiState, Mutators, [], SeenSlice> = (s
       }),
       undefined,
       'seen/markDiscussionSeen',
+    ),
+  markCommentSeen: (commentId) =>
+    set(
+      (s) => ({
+        commentSeenAt: { ...s.commentSeenAt, [commentId]: new Date().toISOString() },
+      }),
+      undefined,
+      'seen/markCommentSeen',
     ),
 });
 
@@ -115,18 +133,20 @@ export const useThreadUi = create<ThreadUiState>()(
       }),
       {
         name: 'tempo:thread-ui',
-        version: 2,
+        version: 3,
         partialize: (s) => ({
           discussionWidth: s.discussionWidth,
           discussionSeenAt: s.discussionSeenAt,
+          commentSeenAt: s.commentSeenAt,
         }),
-        // v1 → v2: bumped MIN/DEFAULT to match industry chat-panel widths.
-        // Existing values below the new MIN get reset to the new default.
+        // v2 → v3: added per-comment seen-at map. Existing payloads default
+        // it to {} so older state still loads.
         migrate: (persisted, _version) => {
           const s = (persisted ?? {}) as Partial<LayoutSlice & SeenSlice>;
           return {
             discussionWidth: clampWidth(s.discussionWidth ?? DEFAULT_DISCUSSION_WIDTH),
             discussionSeenAt: s.discussionSeenAt ?? {},
+            commentSeenAt: s.commentSeenAt ?? {},
           };
         },
       },

@@ -19,6 +19,7 @@ import {
   ThreadStatus,
   ThreadSummary,
 } from './primitives';
+import { Trail } from './trails';
 
 // POST /api/threads
 export const CreateThreadRequest = z.object({
@@ -134,6 +135,13 @@ export const GetThreadResponse = z.object({
   attached_repo_remote: z.string().nullable(),
   attached_repo_path: z.string().nullable(),
   last_event_id: EventId,
+});
+
+// GET /api/threads/:id/trails — derived view of the agent's work, grouped
+// into one trail per produced output (Comment reply, Plan edit, Discussion
+// message). Newest first.
+export const GetTrailsResponse = z.object({
+  trails: z.array(Trail),
 });
 
 // POST /api/sessions
@@ -397,6 +405,14 @@ export const AgentSessionInitiatingEvent = z.object({
   kind: z.literal('session_initiating'),
 });
 
+export const AgentSessionConnectedEvent = z.object({
+  kind: z.literal('session_connected'),
+});
+
+export const AgentSessionDisconnectedEvent = z.object({
+  kind: z.literal('session_disconnected'),
+});
+
 export const AgentSessionFailedEvent = z.object({
   kind: z.literal('session_failed'),
   reason: z.string().max(200),
@@ -410,6 +426,8 @@ export const AgentEventRequest = z.object({
     AgentTodosUpdatedEvent,
     AgentTurnEndedEvent,
     AgentSessionInitiatingEvent,
+    AgentSessionConnectedEvent,
+    AgentSessionDisconnectedEvent,
     AgentSessionFailedEvent,
   ]),
 });
