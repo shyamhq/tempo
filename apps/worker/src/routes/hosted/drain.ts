@@ -3,15 +3,15 @@ import type { RequestHandler } from 'express';
 import { touch } from '../../hosted/supervisor';
 
 // Hosted runner's outer-loop "is there work?" probe. The Caller's threadId
-// is JWT-bound (apps/worker/src/server/cli-auth.ts), so no body payload.
+// is JWT-bound (apps/worker/src/server/cli-auth.ts).
 //
-// When the wake batch is non-empty we hydrate everything the agent needs
-// for the Turn — Plan blocks, Comments, Discussion, thread meta, cursor —
-// so the agent doesn't have to spend three MCP roundtrips (attach + poll +
-// pull_plan) re-fetching state the worker already has. Empty drains stay
-// minimal (no DB hit beyond the events query).
+// Body: { first?: boolean } — runner sends first=true on its very first
+// drain (turnCounter === 0). Only then do we hydrate Plan/Comments/Discussion
+// into the response. On every subsequent drain the runner already has that
+// state in its message history; we return events alone and skip three DB
+// reads. Empty drains stay minimal (no DB hit beyond the events query).
 //
-// Non-empty drains also touch the inactivity timer.
+// Non-empty drains touch the inactivity timer.
 export const drainHostedHandler: RequestHandler = async (req, res) => {
   if (req.caller.kind !== 'hosted') {
     res.status(403).json({ error: 'hosted_only' });
@@ -19,6 +19,12 @@ export const drainHostedHandler: RequestHandler = async (req, res) => {
   }
   const events = await getEventsSinceLastTurn(req.caller.threadId);
   if (events.length === 0) {
+    res.json({ events });
+    return;
+  }
+  const first = (req.body as { first?: boolean } | undefined)?.first === true;
+  if (!first) {
+    touch(req.caller.threadId);
     res.json({ events });
     return;
   }

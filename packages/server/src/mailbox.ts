@@ -1,11 +1,10 @@
-import type { Comment, DiscussionMessage, Event } from '@tempo/contracts';
+import type { Actor, AttachmentRef, Event, Question } from '@tempo/contracts';
 import { shouldWake } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { events, threads, vm_runs, workspaces } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { listCommentsForThread } from './comments';
 import { listMessagesForThread } from './discussion';
-import { latestEventId } from './event-log';
 import { getPlanBlocks } from './plan';
 
 // Hosted Agent runtime helpers — used by the Worker's wake/drain routes and
@@ -63,18 +62,36 @@ export async function isHostedReadyToWake(threadId: string): Promise<{
 // roundtrips for state. Replaces the agent's old triangle of tempo_attach
 // + tempo_poll_hosted + tempo_pull_plan. Returns `null` if the thread no
 // longer exists (deleted mid-spawn).
+//
+// Slim by design — fields the agent reasons on, nothing else. Envelope-
+// redundant (thread.id), verbose (plan_context), agent-can't-use (attachment
+// URLs), and ordering-already-encodes (created_at) fields are dropped at the
+// seam. The runner only forwards this on Turn 1; thereafter the agent reads
+// state from its own message history + `events` deltas.
 export type TurnHydration = {
-  thread: { id: string; title: string; description: string | null; status: string };
+  thread: { title: string; description: string | null; status: string };
   plan: { blocks: { id: string; html: string }[] };
-  comments: Comment[];
-  discussion: { messages: DiscussionMessage[] };
-  last_event_id: string;
+  comments: {
+    id: string;
+    plan_quote: string;
+    anchor_block_id: string | null;
+    resolved_by: 'dev' | null;
+    replies: { id: string; author: Actor; text: string }[];
+  }[];
+  discussion: {
+    messages: {
+      id: string;
+      author: Actor;
+      text: string | null;
+      questions: Question[] | null;
+      attachments: AttachmentRef[];
+    }[];
+  };
 };
 
 export async function getTurnHydration(threadId: string): Promise<TurnHydration | null> {
   const [thread] = await db
     .select({
-      id: threads.id,
       title: threads.title,
       description: threads.description,
       status: threads.status,
@@ -83,18 +100,30 @@ export async function getTurnHydration(threadId: string): Promise<TurnHydration 
     .where(eq(threads.id, threadId))
     .limit(1);
   if (!thread) return null;
-  const [plan, comments, messages, last_event_id] = await Promise.all([
+  const [plan, comments, messages] = await Promise.all([
     getPlanBlocks(threadId),
     listCommentsForThread(threadId),
     listMessagesForThread(threadId),
-    latestEventId(threadId),
   ]);
   return {
     thread,
     plan,
-    comments,
-    discussion: { messages },
-    last_event_id,
+    comments: comments.map((c) => ({
+      id: c.id,
+      plan_quote: c.plan_quote,
+      anchor_block_id: c.anchor_block_id,
+      resolved_by: c.resolved_by,
+      replies: c.replies.map((r) => ({ id: r.id, author: r.author, text: r.payload.text })),
+    })),
+    discussion: {
+      messages: messages.map((m) => ({
+        id: m.id,
+        author: m.author,
+        text: m.text,
+        questions: m.questions,
+        attachments: m.attachments,
+      })),
+    },
   };
 }
 
