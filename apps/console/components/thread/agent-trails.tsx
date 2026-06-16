@@ -41,6 +41,13 @@ const TOOL_LABELS: Record<string, string> = {
   Grep: 'Grep',
   Glob: 'Glob',
   webSearch: 'Web search',
+  webFetch: 'Web fetch',
+  // Claude Code's Task tool fan-outs surface as `Agent` (CLI) or `Task` (SDK).
+  // Subagents run silently — no intermediate stream — so the chip stays on
+  // this label for the entire subagent run. The dedicated word "Subagent"
+  // makes that visible instead of looking like the main agent is stuck.
+  Agent: 'Subagent',
+  Task: 'Subagent',
   tempo_attach: 'Attach',
   tempo_poll_hosted: 'Poll',
   tempo_post_discussion_message: 'Post message',
@@ -357,15 +364,30 @@ function summariseSteps(steps: TrailStep[]): React.ReactNode[] {
 
 function compactArgs(summary: string): string {
   if (!summary) return '';
-  // Pull common fields out of stringified JSON; fall back to a hard truncate.
+  // Tool summaries arrive in two shapes: stringified JSON args (most MCP
+  // tools) or already-extracted plain text (Read/Bash/Grep flatten to the
+  // primary arg). Try JSON first, fall back to the raw string. Absolute
+  // paths collapse to basename so the chip stays readable.
+  let s = summary;
   try {
     const obj = JSON.parse(summary) as Record<string, unknown>;
-    const pick = obj.text ?? obj.command ?? obj.query ?? obj.path ?? obj.file_path ?? obj.title;
-    if (typeof pick === 'string') return pick.slice(0, 60);
+    const pick =
+      obj.text ??
+      obj.command ??
+      obj.query ??
+      obj.path ??
+      obj.file_path ??
+      obj.title ??
+      obj.name;
+    if (typeof pick === 'string') s = pick;
   } catch {
-    // not JSON
+    // not JSON — keep raw
   }
-  return summary.slice(0, 60);
+  if (s.startsWith('/') && !s.includes(' ')) {
+    const slash = s.lastIndexOf('/');
+    if (slash >= 0) s = s.slice(slash + 1);
+  }
+  return s.slice(0, 60);
 }
 
 function synthesizeLiveTrail(live: ReturnType<typeof useLiveActivityGroup>): Trail | null {
@@ -411,7 +433,11 @@ function chipStatusText(
   failedReason?: string | null,
 ): string {
   if (isLive) {
-    if (step?.kind === 'tool') return TOOL_LABELS[step.tool] ?? step.tool;
+    if (step?.kind === 'tool') {
+      const label = TOOL_LABELS[step.tool] ?? step.tool;
+      const arg = compactArgs(step.summary);
+      return arg ? `${label} · ${arg}` : label;
+    }
     if (step?.kind === 'narration') return step.text.slice(0, 80);
     return 'Working…';
   }
