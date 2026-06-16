@@ -1,6 +1,6 @@
 import { db } from '@tempo/db/client';
 import { threads, workspaces } from '@tempo/db/schema';
-import { latestEventId } from '@tempo/server';
+import { getTurnHydration, latestEventId } from '@tempo/server';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
@@ -59,6 +59,13 @@ export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, r
     return;
   }
 
-  const latest_event_id = await latestEventId(threadId);
-  res.json({ ...row, latest_event_id });
+  const [latest_event_id, context] = await Promise.all([
+    latestEventId(threadId),
+    getTurnHydration(threadId),
+  ]);
+  if (!context) {
+    res.status(404).json({ error: 'thread_not_found' });
+    return;
+  }
+  res.json({ ...row, latest_event_id, context });
 };

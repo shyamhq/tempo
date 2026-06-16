@@ -12,7 +12,7 @@ import type { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { TurnHydration } from '@tempo/server';
+import type { TurnHydration } from '@tempo/contracts/http';
 import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import { z } from 'zod';

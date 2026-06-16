@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { markSessionDisconnected, touchSessionLastSeen } from '@tempo/server';
+import { createMcpSession, markSessionDisconnected, touchSessionLastSeen } from '@tempo/server';
 import type { Caller } from '../auth';
 import { logger } from '../logger';
 import { createMcpServer } from './server';
@@ -37,9 +37,6 @@ export async function handleMcpRequest(
 
   if (req.method === 'POST' && !id) {
     // New session — allocate transport + server bound to this auth context.
-    // The mcpSessionId is the UUID assigned by the SDK after the first
-    // initialize exchange; it's passed to the MCP server so tempo_attach
-    // can write it into the sessions table for sticky-session mapping.
     let mcpSessionId: string | undefined;
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => {
@@ -47,17 +44,12 @@ export async function handleMcpRequest(
         return mcpSessionId;
       },
     });
-    // Server is created before connect() so it can close over the same
-    // mcpSessionId reference. By the time tempo_attach is called the
-    // sessionIdGenerator will have run and mcpSessionId will be set.
     const server = createMcpServer(caller, () => mcpSessionId);
     await server.connect(transport);
     transport.onclose = () => {
       const id = transport.sessionId;
       if (!id) return;
       sessions.delete(id);
-      // Flip the DB row + emit session_disconnected so the Console pill
-      // updates without waiting for the 45 s presence timeout.
       markSessionDisconnected(id).catch((err) =>
         logger.error({ err, sessionId: id }, 'mcp: markSessionDisconnected failed'),
       );
@@ -67,6 +59,19 @@ export async function handleMcpRequest(
     if (transport.sessionId) {
       sessions.set(transport.sessionId, { transport, caller });
       logger.debug({ sessionId: transport.sessionId }, 'mcp: session opened');
+      // For CLI/browser callers: the JWT carries only userId, not threadId.
+      // The CLI passes X-Tempo-Thread-Id so we can register the sticky session
+      // row here — same lifecycle events as the hosted runner's postAgentEvent.
+      const rawThreadId = req.headers['x-tempo-thread-id'];
+      const threadId = Array.isArray(rawThreadId) ? rawThreadId[0] : rawThreadId;
+      if (threadId && (caller.kind === 'cli' || caller.kind === 'browser')) {
+        createMcpSession(threadId, transport.sessionId).catch((err) =>
+          logger.error(
+            { err, threadId, sessionId: transport.sessionId },
+            'mcp: createMcpSession failed',
+          ),
+        );
+      }
     }
     return;
   }

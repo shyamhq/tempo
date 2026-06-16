@@ -238,7 +238,10 @@ export async function latestSessionStatus(threadId: string) {
     .select({ kind: events.kind })
     .from(events)
     .where(
-      and(eq(events.thread_id, threadId), inArray(events.kind, SESSION_KINDS as unknown as string[])),
+      and(
+        eq(events.thread_id, threadId),
+        inArray(events.kind, SESSION_KINDS as unknown as string[]),
+      ),
     )
     .orderBy(desc(events.id))
     .limit(1);

@@ -2,11 +2,8 @@ import { z } from 'zod';
 import { Event } from './events';
 import {
   AgentPlanBlocks,
-  AgentPlanState,
   AttachmentId,
-  Comment,
   CommentId,
-  DiscussionMessage,
   EventId,
   MessageId,
   QuestionInput,
@@ -17,20 +14,11 @@ import {
 } from './primitives';
 
 export const AttachInput = z.object({ thread_id: ThreadId });
-// `tempo_attach` returns the wire JSON in its first text content block. For
-// vision: every `AttachmentRef` on a Discussion Message or Reply that belongs
-// to one of the last N messages is also emitted as an MCP `image` content
-// block (base64 payload, mime preserved) so Claude sees the picture, not just
-// the ref. N is `ATTACH_INLINE_RECENT_MESSAGES` on the Agent.
+// tempo_attach is now a session-registration handshake only. Full thread state
+// is pre-injected into the agent's --print message by the CLI runner before
+// Claude spawns — no data round-trip needed.
 export const AttachOutput = z.object({
-  thread: ThreadSummary,
-  plan: AgentPlanState,
-  comments: z.array(Comment),
-  discussion: z.object({
-    messages: z.array(DiscussionMessage),
-  }),
-  last_event_id: EventId,
-  workflow: z.string(),
+  thread_id: ThreadId,
 });
 
 export const PullPlanInput = z.object({});

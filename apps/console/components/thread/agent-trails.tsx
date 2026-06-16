@@ -372,13 +372,7 @@ function compactArgs(summary: string): string {
   try {
     const obj = JSON.parse(summary) as Record<string, unknown>;
     const pick =
-      obj.text ??
-      obj.command ??
-      obj.query ??
-      obj.path ??
-      obj.file_path ??
-      obj.title ??
-      obj.name;
+      obj.text ?? obj.command ?? obj.query ?? obj.path ?? obj.file_path ?? obj.title ?? obj.name;
     if (typeof pick === 'string') s = pick;
   } catch {
     // not JSON — keep raw

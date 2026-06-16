@@ -1,13 +1,17 @@
 import { z } from 'zod';
 import { AgentTodo, Event } from './events';
 import {
+  Actor,
+  AgentBlock,
   AttachmentId,
+  AttachmentRef,
   Comment,
   ConnectToken,
   DiscussionMessage,
   EventId,
   IsoTimestamp,
   Plan,
+  Question,
   Reply,
   ReplyPayload,
   SessionId,
@@ -161,10 +165,6 @@ export const CreateSessionResponse = z.object({
   thread_id: ThreadId,
   agent_api_key: AgentApiKey,
 });
-
-// GET /api/sessions/:id/state
-// Same shape as MCP attach output, but server-rendered.
-export { AttachOutput as GetSessionStateResponse } from './mcp';
 
 // POST /api/sessions/:id/tool-use
 // Recorded by the Agent driver when an assistant `tool_use` content block is
@@ -357,15 +357,47 @@ export type CliRefreshRequest = z.infer<typeof CliRefreshRequest>;
 export const CliRefreshResponse = CliExchangeResponse;
 export type CliRefreshResponse = z.infer<typeof CliRefreshResponse>;
 
+// Slim Turn 1 context snapshot — same shape the hosted drain returns on
+// first:true. Both CLI (/access) and hosted (drain) inject this as the
+// first user message so the agent starts with full state and zero MCP
+// round-trips for data.
+const TurnHydrationReply = z.object({
+  id: z.string(),
+  author: Actor,
+  text: z.string(),
+});
+const TurnHydrationComment = z.object({
+  id: z.string(),
+  plan_quote: z.string(),
+  anchor_block_id: z.string().nullable(),
+  resolved_by: z.literal('dev').nullable(),
+  replies: z.array(TurnHydrationReply),
+});
+const TurnHydrationMessage = z.object({
+  id: z.string(),
+  author: Actor,
+  text: z.string().nullable(),
+  questions: z.array(Question).nullable(),
+  attachments: z.array(AttachmentRef),
+});
+export const TurnHydration = z.object({
+  thread: z.object({ title: z.string(), description: z.string().nullable(), status: z.string() }),
+  plan: z.object({ blocks: z.array(AgentBlock) }),
+  comments: z.array(TurnHydrationComment),
+  discussion: z.object({ messages: z.array(TurnHydrationMessage) }),
+});
+export type TurnHydration = z.infer<typeof TurnHydration>;
+
 // GET /api/threads/:id/access — thread membership check for CLI callers.
-// `latest_event_id` seeds the CLI's SSE-cursor so the first nudge after
-// Turn 1 anchors at the same point Turn 1's tempo_attach observed.
+// `latest_event_id` seeds the CLI's SSE-cursor. `context` is the full Turn 1
+// snapshot injected into `--print` so the agent starts without MCP round-trips.
 export const ThreadAccessResponse = z.object({
   thread_id: ThreadId,
   thread_title: z.string(),
   workspace_id: z.string(),
   workspace_name: z.string(),
   latest_event_id: z.string(),
+  context: TurnHydration,
 });
 export type ThreadAccessResponse = z.infer<typeof ThreadAccessResponse>;
 

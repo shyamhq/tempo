@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
-import type { ThreadId } from '@tempo/contracts';
+import type { Event, ThreadId } from '@tempo/contracts';
+import type { TurnHydration } from '@tempo/contracts/http';
 import { env } from './env';
-import type { EventBatch } from './event-watcher';
 import { logger } from './logger';
 import { startStreamPump } from './stream-pump';
 
@@ -31,11 +31,22 @@ const ATTACH_SYSTEM_PROMPT = `# Tempo planning Agent — appended instructions
 
 ## Bootstrap
 
-The \`--print\` argument on Turn 1 contains a thread_id. Your FIRST action MUST be to call the \`tempo_attach\` MCP tool with that thread_id: \`tempo_attach({ thread_id: "<value from --print>" })\`. Do not read any files or perform any other action before calling tempo_attach.
+Your \`--print\` argument is always a JSON string: \`{ thread_id, events, context? }\`.
+
+**Turn 1** (\`context\` present) — \`context\` contains the full Thread state: thread metadata, plan blocks (full HTML), comments with replies, and discussion messages. Read it directly and start work immediately. Your session is already registered — no \`tempo_attach\` call needed.
+
+**Turn 2+** (\`context\` absent) — \`events\` holds everything new since your last turn. Act on each event:
+- \`comment_added\` / \`reply_added\` → \`tempo_post_reply\` on the comment
+- \`discussion_message_posted\` (author \`dev\`) → \`tempo_post_discussion_message\`
+- \`plan_edited_by_dev\` → call \`tempo_pull_plan\` to refresh your view, then reason about the edit
+- \`comment_resolved\` / \`comment_unresolved\` / \`comment_deleted\` → apply in-memory, no tool call
+- \`status_changed\` to \`approved\` → Plan is frozen, wait quietly
+
+**Do not** call \`tempo_attach\` — session is registered by the CLI runner before you spawn. **Do not** call \`tempo_poll\` — events are already in your message.
 
 ## Identity
 
-You are the planning Agent for one Dev's Thread on Tempo. You explore the Dev's repo, hold a conversation, and co-author a Plan the Dev will hand to a fresh Claude Code session for execution. The \`tempo_attach\` response carries the procedural workflow and current Thread state; this appendix carries the principles that apply across every session.
+You are the planning Agent for one Dev's Thread on Tempo. You explore the Dev's repo, hold a conversation, and co-author a Plan the Dev will hand to a fresh Claude Code session for execution.
 
 You read code; the Plan is your only writeable output, authored via the \`tempo_*_plan\` and \`tempo_*_block\` tools. \`Edit\` / \`Write\` are intentionally absent from your toolbelt for the Plan path — never use them to mutate the Plan or to write Tempo state.
 
@@ -90,7 +101,7 @@ When proposing a change before making it, write the proposal in prose and wait. 
 
 ## First draft vs iteration — when to ask
 
-Before writing anything to the Plan, call \`tempo_pull_plan\` to determine your mode. An empty or absent Plan means first-draft mode; any existing blocks mean iteration mode. The two modes have different rules on offering options.
+On Turn 1, determine your mode from \`context.plan.blocks\`: empty → first-draft mode; non-empty → iteration mode. This carries forward — do not re-determine it on Turn 2+, and do not call \`tempo_pull_plan\` on startup.
 
 **First draft (no Plan exists yet).** Be opinionated. Use the block-type rubric below to pick formats; don't ask permission before reaching for a mermaid diagram, a callout, or a code block if it earns its place. After writing the draft, post a Discussion message summarizing what's in it and flagging notable format choices:
 
@@ -189,6 +200,7 @@ export type TurnSpec =
       mcpConfigPath: string;
       workerUrl: string;
       token: string;
+      context: TurnHydration;
     }
   | {
       kind: 'resume';
@@ -197,18 +209,8 @@ export type TurnSpec =
       workerUrl: string;
       token: string;
       claudeSessionId: string;
-      batch: EventBatch;
+      events: Event[];
     };
-
-function formatNudge(batch: EventBatch): string {
-  const counts = new Map<string, number>();
-  for (const e of batch.events) counts.set(e.kind, (counts.get(e.kind) ?? 0) + 1);
-  const summary = [...counts.entries()].map(([k, n]) => (n > 1 ? `${k} × ${n}` : k)).join(', ');
-  return (
-    `[Tempo] ${batch.events.length} new Console event(s) since ${batch.priorCursor}: ${summary}. ` +
-    `Call tempo_poll with cursor "${batch.priorCursor}" to fetch payloads, then act.`
-  );
-}
 
 export async function runTurn(
   spec: TurnSpec,
@@ -223,10 +225,14 @@ export async function runTurn(
     '--mcp-config',
     spec.mcpConfigPath,
   ];
+  const printPayload =
+    spec.kind === 'attach'
+      ? JSON.stringify({ thread_id: spec.threadId, events: [], context: spec.context })
+      : JSON.stringify({ thread_id: spec.threadId, events: spec.events });
   const args =
     spec.kind === 'attach'
-      ? [...baseArgs, '--append-system-prompt', ATTACH_SYSTEM_PROMPT, '--print', spec.threadId]
-      : [...baseArgs, '--resume', spec.claudeSessionId, '--print', formatNudge(spec.batch)];
+      ? [...baseArgs, '--append-system-prompt', ATTACH_SYSTEM_PROMPT, '--print', printPayload]
+      : [...baseArgs, '--resume', spec.claudeSessionId, '--print', printPayload];
 
   logger.debug({ kind: spec.kind, args }, 'turn: spawning claude');
 

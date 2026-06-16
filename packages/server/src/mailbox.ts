@@ -1,4 +1,5 @@
-import type { Actor, AttachmentRef, Event, Question } from '@tempo/contracts';
+import type { Event } from '@tempo/contracts';
+import type { TurnHydration } from '@tempo/contracts/http';
 import { shouldWake } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { events, threads, vm_runs, workspaces } from '@tempo/db/schema';
@@ -58,36 +59,9 @@ export async function isHostedReadyToWake(threadId: string): Promise<{
   return { hosted_enabled: state.hosted_enabled, live: state.vm !== null };
 }
 
-// Everything the runner needs to start a Turn without making any MCP
-// roundtrips for state. Replaces the agent's old triangle of tempo_attach
-// + tempo_poll_hosted + tempo_pull_plan. Returns `null` if the thread no
-// longer exists (deleted mid-spawn).
-//
-// Slim by design — fields the agent reasons on, nothing else. Envelope-
-// redundant (thread.id), verbose (plan_context), agent-can't-use (attachment
-// URLs), and ordering-already-encodes (created_at) fields are dropped at the
-// seam. The runner only forwards this on Turn 1; thereafter the agent reads
-// state from its own message history + `events` deltas.
-export type TurnHydration = {
-  thread: { title: string; description: string | null; status: string };
-  plan: { blocks: { id: string; html: string }[] };
-  comments: {
-    id: string;
-    plan_quote: string;
-    anchor_block_id: string | null;
-    resolved_by: 'dev' | null;
-    replies: { id: string; author: Actor; text: string }[];
-  }[];
-  discussion: {
-    messages: {
-      id: string;
-      author: Actor;
-      text: string | null;
-      questions: Question[] | null;
-      attachments: AttachmentRef[];
-    }[];
-  };
-};
+// Everything the runner needs to start a Turn without any MCP round-trips.
+// Shape is canonical in packages/contracts/src/http.ts (TurnHydration).
+// Returns null if the thread no longer exists (deleted mid-spawn).
 
 export async function getTurnHydration(threadId: string): Promise<TurnHydration | null> {
   const [thread] = await db

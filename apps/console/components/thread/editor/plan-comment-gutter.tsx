@@ -155,8 +155,9 @@ export function PlanCommentGutter({
     const out = new Map<string, number>();
     for (const c of comments) {
       const seen = commentSeenAt[c.id] ?? null;
-      const n = c.replies.filter((r) => r.author === 'agent' && (!seen || r.created_at > seen))
-        .length;
+      const n = c.replies.filter(
+        (r) => r.author === 'agent' && (!seen || r.created_at > seen),
+      ).length;
       if (n > 0) out.set(c.id, n);
     }
     return out;

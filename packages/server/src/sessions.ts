@@ -89,6 +89,36 @@ export async function cancelCurrentSessionForThread(
   return { ok: true, session_id: s.id };
 }
 
+// Creates a sticky MCP session row for a CLI/browser caller. Displaces any
+// prior connected row for the thread and fires session lifecycle events.
+// Called by the transport on new connection — not by the agent via tempo_attach.
+export async function createMcpSession(threadId: string, mcpSessionId: string): Promise<void> {
+  let displacedPrior = false;
+  let insertedNew = false;
+  await db.transaction(async (tx) => {
+    const prior = await tx
+      .update(sessions)
+      .set({ status: 'disconnected', last_seen_at: new Date() })
+      .where(and(eq(sessions.thread_id, threadId), eq(sessions.status, 'connected')))
+      .returning({ id: sessions.id });
+    displacedPrior = prior.length > 0;
+    const inserted = await tx
+      .insert(sessions)
+      .values({
+        id: newSessionId(),
+        thread_id: threadId,
+        mcp_session_id: mcpSessionId,
+        status: 'connected',
+        last_seen_at: new Date(),
+      })
+      .onConflictDoNothing()
+      .returning({ id: sessions.id });
+    insertedNew = inserted.length > 0;
+  });
+  if (displacedPrior) await appendEvent(threadId, { kind: 'session_disconnected' });
+  if (insertedNew) await appendEvent(threadId, { kind: 'session_connected' });
+}
+
 export async function markSessionDisconnected(mcpSessionId: string): Promise<boolean> {
   const flipped = await db
     .update(sessions)

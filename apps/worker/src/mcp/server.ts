@@ -34,8 +34,7 @@ export function createMcpServer(
     'Attach to a planning Thread. Fetches thread metadata, plan status, open comments, discussion messages, the latest event cursor, and the workflow guide. Call once at the start of each session.',
     AttachInput.shape,
     async (args) => {
-      const mcpSessionId = getMcpSessionId();
-      const result = await runAttach(args.thread_id, caller, mcpSessionId);
+      const result = await runAttach(args.thread_id, caller);
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },
   );

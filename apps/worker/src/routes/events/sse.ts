@@ -1,18 +1,39 @@
 import { randomBytes } from 'node:crypto';
-import { emptyCursor, sseStream } from '@tempo/server';
+import { emptyCursor, longPoll, sseStream } from '@tempo/server';
+import { EventsQuery } from '@tempo/contracts/http';
 import type { RequestHandler } from 'express';
 import { logger } from '../../logger';
 import { addConnection, isFresh, removeConnection } from '../../server/presence';
 
-// GET /api/threads/:id/events — SSE stream for Console activity feed +
-// CLI event wake-up loop. Authorization handled by ensureThreadAccess.
+// GET /api/threads/:id/events
 //
-// Presence: when a `cli` caller opens this stream the connection counts
-// as one live CLI Session for the Thread; Console-side subscribers learn
-// of the transition via the `presence` SSE frames emitted by sseStream.
-// Browser connections are *consumers* of presence, never sources of it.
+// Two modes, same route + auth chain:
+// - SSE stream (no `wait` param): Console activity feed + legacy CLI wake loop.
+// - Long-poll (?cursor=X&wait=N): CLI event delivery. Returns EventsLongPollResponse
+//   JSON immediately with current events, or waits up to N seconds for new ones.
+//   CLI callers register presence via X-Tempo-Conn-Id header so the Console
+//   presence chip reflects the active session.
 export const sseHandler: RequestHandler<{ id: string }> = async (req, res) => {
   const threadId = req.params.id;
+
+  if (typeof req.query.wait === 'string') {
+    const query = EventsQuery.safeParse(req.query);
+    if (!query.success) {
+      res.status(400).json({ error: 'bad_request', message: 'cursor required for long-poll' });
+      return;
+    }
+    const rawConnId = req.headers['x-tempo-conn-id'];
+    const cliConnId = req.caller.kind === 'cli' && typeof rawConnId === 'string' ? rawConnId : null;
+    if (cliConnId) addConnection(threadId, cliConnId);
+    try {
+      const result = await longPoll(threadId, query.data.cursor, query.data.wait ?? 25);
+      res.json(result);
+    } finally {
+      if (cliConnId) removeConnection(threadId, cliConnId);
+    }
+    return;
+  }
+
   const cursorParam = typeof req.query.cursor === 'string' ? req.query.cursor : null;
   const cursor = cursorParam ?? (await emptyCursor(threadId));
 

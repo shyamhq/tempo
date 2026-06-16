@@ -3,21 +3,23 @@ import { unlinkSync } from 'node:fs';
 import { unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type ThreadId, ThreadId as ThreadIdSchema } from '@tempo/contracts';
+import {
+  type Event,
+  type ThreadId,
+  ThreadId as ThreadIdSchema,
+  shouldWake,
+} from '@tempo/contracts';
 import {
   type ThreadAccessResponse,
   ThreadAccessResponse as ThreadAccessResponseSchema,
 } from '@tempo/contracts/http';
 import { type Credentials, read, refresh } from '../credentials';
-import { startEventWatcher } from '../event-watcher';
 import { postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';
 import { runTurn } from '../turn';
 
-// Pre-emptive refresh window on startup. Reactive 401 handling inside
-// the event-watcher and Turn-internal HTTP keeps long-lived Sessions
-// alive past the 30-day token TTL.
 const REFRESH_BEFORE_EXPIRY_S = 60;
+const POLL_WAIT_SECONDS = 25;
 
 // Spawn-time failures (binary missing, login required) exit immediately;
 // `nonzero-exit` (Claude ran but failed) increments this counter. Reset
@@ -56,32 +58,21 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
     event: { kind: 'session_initiating' },
   });
 
-  const mcpConfigPath = await writeMcpConfig(creds);
+  const mcpConfigPath = await writeMcpConfig(creds, threadId);
   registerExitCleanup(mcpConfigPath);
 
-  // Token mutates across refresh; closure-capture keeps the watcher's
-  // bearer + the MCP config in sync without resetting middleware.
   let token = creds.token;
-  const watcher = startEventWatcher({
-    workerUrl: creds.worker_url,
-    threadId,
-    initialCursor: access.latest_event_id,
-    getToken: () => token,
-    onTokenExpired: async () => {
-      creds = await refresh(creds);
-      token = creds.token;
-      await rewriteMcpConfig(mcpConfigPath, creds);
-      return token;
-    },
-  });
-
+  // Stable presence id for this CLI session — sent as X-Tempo-Conn-Id on every poll.
+  const connId = randomBytes(8).toString('hex');
+  let cursor = access.latest_event_id;
+  let abortPoll: AbortController | null = null;
   let activeKill: (() => void) | null = null;
   let stopping = false;
   const onSignal = (): void => {
     if (stopping) return;
     stopping = true;
     logger.debug('connect: signal received, shutting down');
-    watcher.close();
+    abortPoll?.abort();
     activeKill?.();
   };
   process.on('SIGINT', onSignal);
@@ -95,7 +86,14 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
   try {
     // Turn 1 — attach (no --resume).
     const first = await runTurn(
-      { kind: 'attach', threadId, mcpConfigPath, workerUrl: creds.worker_url, token },
+      {
+        kind: 'attach',
+        threadId,
+        mcpConfigPath,
+        workerUrl: creds.worker_url,
+        token,
+        context: access.context,
+      },
       (kill) => {
         activeKill = kill;
       },
@@ -127,9 +125,29 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
           break;
         }
 
-        const batch = await watcher.next();
+        abortPoll = new AbortController();
+        const polled = await pollEvents(
+          threadId,
+          cursor,
+          creds.worker_url,
+          token,
+          connId,
+          abortPoll.signal,
+        );
+        abortPoll = null;
         if (stopping) break;
-        if (batch.events.length === 0) continue;
+
+        if (polled === 'token-expired') {
+          creds = await refresh(creds);
+          token = creds.token;
+          await rewriteMcpConfig(mcpConfigPath, creds, threadId);
+          continue;
+        }
+        if (polled === 'aborted') break;
+
+        cursor = polled.cursor;
+        const events = polled.events.filter(shouldWake);
+        if (events.length === 0) continue;
 
         const result = claudeSessionId
           ? await runTurn(
@@ -140,15 +158,15 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
                 workerUrl: creds.worker_url,
                 token,
                 claudeSessionId,
-                batch,
+                events,
               },
               (kill) => {
                 activeKill = kill;
               },
             )
           : // Lost the session_id (Turn 1 didn't emit one, or `--resume`
-            // failed below). Fall back to a fresh attach Turn — Claude
-            // re-reads state via tempo_attach and continues.
+            // failed). Fall back to a fresh attach with the original context
+            // snapshot — may be slightly stale but avoids a second /access call.
             await runTurn(
               {
                 kind: 'attach',
@@ -156,6 +174,7 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
                 mcpConfigPath,
                 workerUrl: creds.worker_url,
                 token,
+                context: access.context,
               },
               (kill) => {
                 activeKill = kill;
@@ -184,7 +203,6 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
-    watcher.close();
     if (terminalFailReason) {
       await postLifecycleEvent({
         workerUrl: creds.worker_url,
@@ -258,20 +276,20 @@ async function preflight(threadId: ThreadId, creds: Credentials): Promise<Thread
   return parsed.data;
 }
 
-async function writeMcpConfig(creds: Credentials): Promise<string> {
+async function writeMcpConfig(creds: Credentials, threadId: string): Promise<string> {
   const suffix = randomBytes(4).toString('hex');
   const path = join(tmpdir(), `tempo-${process.pid}-${suffix}.json`);
-  await rewriteMcpConfig(path, creds);
+  await rewriteMcpConfig(path, creds, threadId);
   return path;
 }
 
-async function rewriteMcpConfig(path: string, creds: Credentials): Promise<void> {
+async function rewriteMcpConfig(path: string, creds: Credentials, threadId: string): Promise<void> {
   const mcpConfig = {
     mcpServers: {
       tempo: {
         type: 'http',
         url: `${creds.worker_url}/mcp`,
-        headers: { Authorization: `Bearer ${creds.token}` },
+        headers: { Authorization: `Bearer ${creds.token}`, 'X-Tempo-Thread-Id': threadId },
       },
     },
   };
@@ -279,6 +297,39 @@ async function rewriteMcpConfig(path: string, creds: Credentials): Promise<void>
     encoding: 'utf8',
     mode: 0o600,
   });
+}
+
+type PollResult = { events: Event[]; cursor: string } | 'token-expired' | 'aborted';
+
+async function pollEvents(
+  threadId: string,
+  cursor: string,
+  workerUrl: string,
+  token: string,
+  connId: string,
+  signal: AbortSignal,
+): Promise<PollResult> {
+  const url =
+    `${workerUrl}/api/threads/${threadId}/events` +
+    `?cursor=${encodeURIComponent(cursor)}&wait=${POLL_WAIT_SECONDS}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tempo-Conn-Id': connId },
+      signal,
+    });
+  } catch (err) {
+    if (signal.aborted) return 'aborted';
+    logger.debug({ err }, 'poll: fetch error, will retry');
+    return { events: [], cursor };
+  }
+  if (res.status === 401) return 'token-expired';
+  if (!res.ok) {
+    logger.debug({ status: res.status }, 'poll: unexpected status, will retry');
+    return { events: [], cursor };
+  }
+  const json = (await res.json()) as { events: Event[]; cursor: string };
+  return json;
 }
 
 function registerExitCleanup(path: string): void {
