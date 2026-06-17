@@ -8,38 +8,33 @@ import {
   AttachmentThumbnails,
   useAttachmentSurface,
 } from '@/components/thread/attachments/attachment-tray';
+import type { MentionableInputRef } from '@/components/thread/mention/mentionable-input';
+import { MentionableInput } from '@/components/thread/mention/mentionable-input';
+import { useMentionCandidates } from '@/components/thread/mention/use-mention-candidates';
 import { useAttachmentUploader } from '@/hooks/use-attachment-uploader';
 import { useWorkerApi } from '@/hooks/use-worker-api';
 
-const MIN_ROWS = 3;
-const MAX_ROWS = 12;
 const SENT_DWELL_MS = 1200;
 
 type Phase = 'idle' | 'sending' | 'sent';
 
 export function MessageComposer({ threadId, autoFocus }: { threadId: string; autoFocus: boolean }) {
   const wApi = useWorkerApi();
-  const [draft, setDraft] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const [hasText, setHasText] = useState(false);
+
+  // inputRef gives imperative access (focus / clear / serialise) to the
+  // contenteditable inside MentionableInput.
+  const inputRef = useRef<MentionableInputRef>(null);
+  // wrapRef is the outer card div; useAttachmentSurface attaches paste + drag
+  // listeners to it so images pasted anywhere on the card are captured.
+  const wrapRef = useRef<HTMLDivElement>(null);
+
   const sentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uploader = useAttachmentUploader(threadId);
-  const { rootProps, isDragActive } = useAttachmentSurface(uploader, ref);
-
-  useEffect(() => {
-    if (autoFocus) ref.current?.focus();
-  }, [autoFocus]);
-
-  // Auto-grow to scrollHeight on every draft change. `max-height` (set via
-  // inline style below) caps growth at MAX_ROWS, after which the textarea
-  // scrolls internally.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [draft]);
+  const candidates = useMentionCandidates();
+  const { rootProps, isDragActive } = useAttachmentSurface(uploader, wrapRef);
 
   useEffect(() => {
     return () => {
@@ -47,23 +42,26 @@ export function MessageComposer({ threadId, autoFocus }: { threadId: string; aut
     };
   }, []);
 
-  const hasContent = draft.trim().length > 0 || uploader.readyIds.length > 0;
-  const canSend = phase !== 'sending' && hasContent && !uploader.hasUploading;
+  const canSend =
+    phase !== 'sending' && (hasText || uploader.readyIds.length > 0) && !uploader.hasUploading;
 
   const send = async () => {
-    if (!canSend) return;
-    const text = draft.trim();
+    if (!canSend || !inputRef.current) return;
+    const doc = inputRef.current.serialise();
+    if (doc.text.length === 0 && uploader.readyIds.length === 0) return;
     setPhase('sending');
     setSendError(null);
     try {
       await wApi.postDiscussionMessage(threadId, {
-        ...(text.length > 0 ? { text } : {}),
+        ...(doc.text.length > 0 ? { text: doc.text } : {}),
         attachments: uploader.readyIds,
+        ...(doc.mentions.length > 0 ? { mentions: doc.mentions } : {}),
       });
-      setDraft('');
+      inputRef.current.clear();
+      setHasText(false);
       uploader.reset();
       setPhase('sent');
-      ref.current?.focus();
+      inputRef.current.focus();
       if (sentTimerRef.current) clearTimeout(sentTimerRef.current);
       sentTimerRef.current = setTimeout(() => setPhase('idle'), SENT_DWELL_MS);
     } catch {
@@ -72,36 +70,30 @@ export function MessageComposer({ threadId, autoFocus }: { threadId: string; aut
     }
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      void send();
-    }
-  };
-
   return (
     <div className="bg-canvas px-4 pt-2 pb-3">
       <div
+        ref={wrapRef}
         {...rootProps}
         className="relative flex flex-col gap-2 rounded-xl border border-hairline-strong bg-surface-1 px-3 pt-2 pb-1.5 transition-[border-color,box-shadow] focus-within:border-accent focus-within:ring-[3px] focus-within:ring-accent/15"
       >
         <AttachmentDragOverlay active={isDragActive} />
         <AttachmentThumbnails uploader={uploader} />
-        <textarea
-          ref={ref}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={MIN_ROWS}
+        <MentionableInput
+          ref={inputRef}
           placeholder="Ask about the approach — anything not tied to a line of the Plan."
-          className="block w-full resize-none bg-transparent text-body-sm leading-[1.55] text-ink placeholder:text-ink-tertiary focus:outline-none"
-          style={{ maxHeight: `${MAX_ROWS * 1.55 + 1}em` }}
+          autoFocus={autoFocus}
+          candidates={candidates}
+          minHeight={66}
+          maxHeight={280}
+          onSubmit={() => void send()}
+          onChange={(doc) => setHasText(doc.text.length > 0)}
         />
         <div className="flex items-center justify-between">
           <AttachmentAddButton uploader={uploader} />
           <button
             type="button"
-            onClick={send}
+            onClick={() => void send()}
             disabled={!canSend}
             aria-label={phase === 'sent' ? 'Sent' : 'Send'}
             className={`inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full transition-colors ${

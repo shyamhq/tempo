@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Actor, AgentPlanBlocks, Plan } from '@tempo/contracts';
+import type { AgentPlanBlocks, Plan } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { readPlanRow } from '@tempo/db/queries/plans';
 import { plans, threads } from '@tempo/db/schema';
@@ -17,7 +17,7 @@ import { appendEvent } from './event-log';
 
 export async function getPlan(threadId: string): Promise<Plan> {
   const row = await readPlanRow(threadId);
-  if (row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
+  if (row.body_pm_json == null || row.updated_at == null) {
     return { body: null };
   }
   let pmJson: unknown = null;
@@ -30,15 +30,16 @@ export async function getPlan(threadId: string): Promise<Plan> {
     body: {
       pm_json: pmJson,
       updated_at: row.updated_at.toISOString(),
-      updated_by: row.updated_by,
+      updated_by_user_id: row.updated_by_user_id,
     },
   };
 }
 
+// updated_by_user_id: null = Agent edit; non-null = Clerk user id of the Dev.
 export async function writePlan(
   threadId: string,
   pmJson: unknown,
-  by: Actor,
+  updated_by_user_id: string | null,
 ): Promise<{ updated_at: string }> {
   if (pmJson === null || typeof pmJson !== 'object') {
     throw new ValidationError('plan body must be a document object');
@@ -47,11 +48,11 @@ export async function writePlan(
   const updated_at_iso = updated_at.toISOString();
   await db
     .update(plans)
-    .set({ body_pm_json: JSON.stringify(pmJson), updated_by: by, updated_at })
+    .set({ body_pm_json: JSON.stringify(pmJson), updated_by_user_id, updated_at })
     .where(eq(plans.thread_id, threadId));
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
   await appendEvent(threadId, {
-    kind: by === 'agent' ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
+    kind: updated_by_user_id === null ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
     updated_at: updated_at_iso,
   });
   return { updated_at: updated_at_iso };
@@ -82,7 +83,7 @@ export async function updateBlock(
   threadId: string,
   blockId: string,
   html: string,
-  actor: Actor,
+  updated_by_user_id: string | null,
 ): Promise<void> {
   const rawId = stripDollar(blockId);
   const row = await readPlanRow(threadId);
@@ -97,7 +98,7 @@ export async function updateBlock(
     bc.attrs = { ...bc.attrs, id: randomUUID() };
   }
   group.content.splice(idx, 1, first, ...rest);
-  await writePlan(threadId, pmJson, actor);
+  await writePlan(threadId, pmJson, updated_by_user_id);
 }
 
 export async function addBlocks(
@@ -105,7 +106,7 @@ export async function addBlocks(
   referenceId: string | null,
   position: 'before' | 'after' | 'end',
   htmlBlocks: string[],
-  actor: Actor,
+  updated_by_user_id: string | null,
 ): Promise<{ ids: string[] }> {
   if (position === 'end' && referenceId !== null) {
     throw new ValidationError(
@@ -141,14 +142,14 @@ export async function addBlocks(
   }
   group.content.splice(insertAt, 0, ...newContainers);
 
-  await writePlan(threadId, pmJson, actor);
+  await writePlan(threadId, pmJson, updated_by_user_id);
   return { ids: newIds };
 }
 
 export async function updatePlan(
   threadId: string,
   html: string,
-  actor: Actor,
+  updated_by_user_id: string | null,
 ): Promise<{ ids: string[] }> {
   const partials = await parseHtmlDocToBlocks(html);
   if (partials.length === 0) {
@@ -165,7 +166,7 @@ export async function updatePlan(
   const updated_at_iso = updated_at.toISOString();
   const written = await db
     .update(plans)
-    .set({ body_pm_json: JSON.stringify(pmJson), updated_by: actor, updated_at })
+    .set({ body_pm_json: JSON.stringify(pmJson), updated_by_user_id, updated_at })
     .where(and(eq(plans.thread_id, threadId), isNull(plans.body_pm_json)))
     .returning({ id: plans.id });
   if (written.length === 0) {
@@ -176,13 +177,17 @@ export async function updatePlan(
 
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
   await appendEvent(threadId, {
-    kind: actor === 'agent' ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
+    kind: updated_by_user_id === null ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
     updated_at: updated_at_iso,
   });
   return { ids };
 }
 
-export async function deleteBlock(threadId: string, blockId: string, actor: Actor): Promise<void> {
+export async function deleteBlock(
+  threadId: string,
+  blockId: string,
+  updated_by_user_id: string | null,
+): Promise<void> {
   const rawId = stripDollar(blockId);
   const row = await readPlanRow(threadId);
   const pmJson = parsePmJsonOrThrow(row.body_pm_json);
@@ -196,7 +201,7 @@ export async function deleteBlock(threadId: string, blockId: string, actor: Acto
     empty.attrs = { ...empty.attrs, id: randomUUID() };
     group.content.push(empty);
   }
-  await writePlan(threadId, pmJson, actor);
+  await writePlan(threadId, pmJson, updated_by_user_id);
 }
 
 function parsePmJsonOrThrow(body_pm_json: string | null): unknown {

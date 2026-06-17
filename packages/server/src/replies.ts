@@ -1,4 +1,4 @@
-import type { Actor, Reply, ReplyPayload } from '@tempo/contracts';
+import type { Mention, Reply, ReplyPayload } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { comments, replies } from '@tempo/db/schema';
 import { eq } from 'drizzle-orm';
@@ -14,7 +14,8 @@ import { newReplyId } from './ids';
 export async function postReply(
   commentId: string,
   payload: ReplyPayload,
-  author: Actor,
+  author_user_id: string | null,
+  mentions: Mention[] | null,
   attachment_ids: string[] = [],
   // Optional caller-asserted thread scope. When set, refuses if the comment
   // lives in a different thread — closes a cross-thread write the MCP tool
@@ -38,7 +39,8 @@ export async function postReply(
     await tx.insert(replies).values({
       id,
       comment_id: commentId,
-      author,
+      author_user_id,
+      mentions,
       text: payload.text,
     });
     await insertAttachmentRows(tx, c.thread_id, heads, { kind: 'reply', replyId: id });

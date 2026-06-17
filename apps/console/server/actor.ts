@@ -80,12 +80,6 @@ export async function currentWorkspaceId(): Promise<string> {
   return ws.id;
 }
 
-// Map an auth context to the `author`/`updated_by` enum stored on `replies`,
-// `discussion_messages`, and `plans`. Phase 5 widens `plans.updated_by` to
-// carry a Clerk user id, at which point this helper expands.
-export function authorOf(auth: NonNullable<AuthContext>): 'dev' | 'agent' {
-  return auth.actor === 'agent' ? 'agent' : 'dev';
-}
 
 function readBearer(req: NextRequest): string | null {
   const header = req.headers.get('authorization');

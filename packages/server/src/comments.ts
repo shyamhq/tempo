@@ -1,4 +1,4 @@
-import type { AttachmentRef, Comment, Reply } from '@tempo/contracts';
+import type { AttachmentRef, Comment, Mention, Reply } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { comments, replies } from '@tempo/db/schema';
 import { NotFoundError } from '@tempo/errors';
@@ -16,12 +16,22 @@ export type CreateCommentInput = {
   plan_quote: string;
   plan_context: string;
   anchor_block_id: string | null;
+  author_user_id: string | null;
   first_reply_text?: string;
+  first_reply_mentions?: Mention[] | null;
   attachment_ids?: string[];
 };
 
 export async function createComment(input: CreateCommentInput): Promise<Comment> {
-  const { threadId, plan_quote, plan_context, anchor_block_id, first_reply_text } = input;
+  const {
+    threadId,
+    plan_quote,
+    plan_context,
+    anchor_block_id,
+    author_user_id,
+    first_reply_text,
+    first_reply_mentions,
+  } = input;
   const attachment_ids = input.attachment_ids ?? [];
 
   const id = newCommentId();
@@ -31,12 +41,13 @@ export async function createComment(input: CreateCommentInput): Promise<Comment>
   await db.transaction(async (tx) => {
     await tx
       .insert(comments)
-      .values({ id, thread_id: threadId, plan_quote, plan_context, anchor_block_id });
+      .values({ id, thread_id: threadId, plan_quote, plan_context, anchor_block_id, author_user_id });
     if (replyId) {
       await tx.insert(replies).values({
         id: replyId,
         comment_id: id,
-        author: 'dev',
+        author_user_id,
+        mentions: first_reply_mentions ?? null,
         text: first_reply_text ?? '',
       });
       await insertAttachmentRows(tx, threadId, heads, { kind: 'reply', replyId });
@@ -82,8 +93,8 @@ export async function listCommentsForThread(threadId: string): Promise<Comment[]
   return rows.map((row) => shapeComment(row, grouped.get(row.id) ?? [], atts));
 }
 
-export const resolveComment = (commentId: string) =>
-  setResolvedBy(commentId, 'dev', 'comment_resolved');
+export const resolveComment = (commentId: string, userId: string | null) =>
+  setResolvedBy(commentId, userId, 'comment_resolved');
 
 export const unresolveComment = (commentId: string) =>
   setResolvedBy(commentId, null, 'comment_unresolved');
@@ -105,7 +116,7 @@ export async function deleteComment(commentId: string): Promise<void> {
 
 async function setResolvedBy(
   commentId: string,
-  resolved_by: 'dev' | null,
+  resolved_by_user_id: string | null,
   eventKind: 'comment_resolved' | 'comment_unresolved',
 ): Promise<void> {
   const [row] = await db
@@ -114,7 +125,7 @@ async function setResolvedBy(
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!row) throw new NotFoundError(`comment_not_found: ${commentId}`);
-  await db.update(comments).set({ resolved_by }).where(eq(comments.id, commentId));
+  await db.update(comments).set({ resolved_by_user_id }).where(eq(comments.id, commentId));
   await appendEvent(row.thread_id, { kind: eventKind, comment_id: commentId });
 }
 
@@ -129,7 +140,8 @@ function shapeComment(
     plan_quote: row.plan_quote,
     plan_context: row.plan_context,
     anchor_block_id: row.anchor_block_id,
-    resolved_by: row.resolved_by,
+    author_user_id: row.author_user_id,
+    resolved_by_user_id: row.resolved_by_user_id,
     created_at: row.created_at.toISOString(),
     replies: replyRows.map((r) => shapeReply(r, attsByReply.get(r.id) ?? [])),
   };
@@ -139,8 +151,9 @@ function shapeReply(row: typeof replies.$inferSelect, attachments: AttachmentRef
   return {
     id: row.id,
     comment_id: row.comment_id,
-    author: row.author,
+    author_user_id: row.author_user_id,
     payload: { text: row.text ?? '' },
+    mentions: row.mentions as Mention[] | null,
     attachments,
     created_at: row.created_at.toISOString(),
   };

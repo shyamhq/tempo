@@ -156,7 +156,7 @@ export function PlanCommentGutter({
     for (const c of comments) {
       const seen = commentSeenAt[c.id] ?? null;
       const n = c.replies.filter(
-        (r) => r.author === 'agent' && (!seen || r.created_at > seen),
+        (r) => r.author_user_id === null && (!seen || r.created_at > seen),
       ).length;
       if (n > 0) out.set(c.id, n);
     }
@@ -187,7 +187,7 @@ export function PlanCommentGutter({
     const o: LiveComment[] = [];
     if (positions === null) return { anchored: a, orphaned: o };
     for (const comment of comments) {
-      if (comment.resolved_by !== null && !showResolved) continue;
+      if (comment.resolved_by_user_id !== null && !showResolved) continue;
       const entry = positions.get(comment.id);
       const anchor = entry?.anchor ?? null;
       const markGone = entry?.markGone ?? false;
@@ -235,7 +235,7 @@ export function PlanCommentGutter({
           {anchored.map(({ comment, markGone }) => (
             <GutterIcon
               key={comment.id}
-              resolved={comment.resolved_by !== null}
+              resolved={comment.resolved_by_user_id !== null}
               selected={selectedThreadId === comment.id}
               orphaned={markGone}
               fullyDetached={false}
@@ -251,7 +251,7 @@ export function PlanCommentGutter({
           {orphaned.map(({ comment }) => (
             <GutterIcon
               key={comment.id}
-              resolved={comment.resolved_by !== null}
+              resolved={comment.resolved_by_user_id !== null}
               selected={selectedThreadId === comment.id}
               orphaned
               fullyDetached

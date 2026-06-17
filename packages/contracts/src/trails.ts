@@ -102,7 +102,7 @@ export function deriveTrails(events: Event[]): Trail[] {
         cur.steps.push({ kind: 'todos', id: ev.id, ts: ev.created_at, todos: ev.todos });
         break;
       case 'reply_added':
-        if (ev.reply.author !== 'agent') break;
+        if (ev.reply.author_user_id !== null) break;
         cur ??= startTrail(ev);
         cur.id = ev.id;
         cur.surface = 'comment';
@@ -124,7 +124,7 @@ export function deriveTrails(events: Event[]): Trail[] {
         cur = null;
         break;
       case 'discussion_message_posted':
-        if (ev.message.author !== 'agent') break;
+        if (ev.message.author_user_id !== null) break;
         cur ??= startTrail(ev);
         cur.id = ev.id;
         cur.surface = 'discussion';

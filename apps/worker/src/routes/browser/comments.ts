@@ -8,6 +8,7 @@ import {
 import { NotFoundError } from '@tempo/errors';
 import { createComment, deleteComment, resolveComment, unresolveComment } from '@tempo/server';
 import type { RequestHandler } from 'express';
+import { callerUserId } from '../../lib/caller';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 
@@ -23,6 +24,7 @@ export const createCommentHandler: RequestHandler<{ id: string }> = async (req, 
       threadId: req.params.id,
       ...parsed.data,
       anchor_block_id: parsed.data.anchor_block_id ?? null,
+      author_user_id: callerUserId(req),
     });
     send(res, CreateCommentResponse)(comment);
   } catch (err) {
@@ -49,7 +51,7 @@ export const deleteCommentHandler: RequestHandler<{ id: string }> = async (req, 
 // POST /api/comments/:id/resolve
 export const resolveCommentHandler: RequestHandler<{ id: string }> = async (req, res) => {
   try {
-    await resolveComment(req.params.id);
+    await resolveComment(req.params.id, callerUserId(req));
     send(res, ResolveCommentResponse)({ ok: true });
   } catch (err) {
     if (err instanceof NotFoundError) {

@@ -16,12 +16,13 @@ export function registerAddBlocks(
       const threadId = await resolveThreadId();
       if (!threadId) return threadIdRequired();
       try {
+        // Agent is always null updated_by_user_id.
         const result = await addBlocks(
           threadId,
           args.reference_id,
           args.position,
           args.blocks,
-          'agent',
+          null,
         );
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ids: result.ids }) }] };
       } catch (err) {

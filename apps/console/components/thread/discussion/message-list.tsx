@@ -1,10 +1,11 @@
 'use client';
 
+import { useOrganization, useUser } from '@clerk/nextjs';
 import type { DiscussionMessage } from '@tempo/contracts';
 import { Sparkles } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AttachmentStrip } from '../attachments/attachment-strip';
-import { MarkdownText } from '../markdown-text';
+import { MentionedText } from '../mention/mentioned-text';
 import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function MessageList({
@@ -18,6 +19,10 @@ export function MessageList({
   endSlot?: React.ReactNode;
   emptyState?: React.ReactNode;
 }) {
+  const { user } = useUser();
+  const { memberships } = useOrganization({ memberships: true });
+  const currentUserId = user?.id ?? null;
+
   const scrollerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const lastCountRef = useRef(messages.length);
@@ -57,7 +62,7 @@ export function MessageList({
   }
 
   let lastDayKey: string | null = null;
-  let lastAuthor: DiscussionMessage['author'] | null = null;
+  let lastAuthorUserId: string | null | undefined = undefined;
   const lastIdx = messages.length - 1;
 
   return (
@@ -67,9 +72,10 @@ export function MessageList({
           const dayKey = dayKeyOf(m.created_at);
           const showDay = dayKey !== lastDayKey;
           const isQuestion = m.questions !== null;
-          const sameAuthor = !showDay && !isQuestion && lastAuthor === m.author;
+          const sameAuthor =
+            !showDay && !isQuestion && lastAuthorUserId !== undefined && lastAuthorUserId === m.author_user_id;
           lastDayKey = dayKey;
-          lastAuthor = isQuestion ? null : m.author;
+          lastAuthorUserId = isQuestion ? undefined : m.author_user_id;
           const isLive = isQuestion && i === lastIdx;
           const marginClass = isQuestion
             ? 'mt-6'
@@ -84,7 +90,11 @@ export function MessageList({
               ) : m.questions !== null ? (
                 <MinimizedQuestionCard message={m} />
               ) : (
-                <MessageRow message={m} />
+                <MessageRow
+                  message={m}
+                  currentUserId={currentUserId}
+                  membershipItems={memberships?.data ?? null}
+                />
               )}
             </div>
           );
@@ -100,11 +110,51 @@ const ENTER_ANIM = {
   animation: 'discussion-message-enter 140ms cubic-bezier(0.22, 1, 0.36, 1) both',
 };
 
-function MessageRow({ message }: { message: DiscussionMessage }) {
-  const isAgent = message.author === 'agent';
+type MembershipItem = {
+  publicUserData?: {
+    userId?: string;
+    firstName: string | null;
+    lastName: string | null;
+    identifier: string;
+  };
+};
+
+function resolveAuthor(
+  authorUserId: string | null,
+  currentUserId: string | null,
+  membershipItems: MembershipItem[] | null,
+): { name: string; initials: string } {
+  if (authorUserId === null) return { name: 'Agent', initials: '' };
+  if (authorUserId === currentUserId) return { name: 'You', initials: 'Y' };
+  const pub = membershipItems?.find((m) => m.publicUserData?.userId === authorUserId)
+    ?.publicUserData;
+  if (!pub) return { name: 'Member', initials: 'M' };
+  const { firstName, lastName, identifier } = pub;
+  const f = firstName?.[0] ?? '';
+  const l = lastName?.[0] ?? '';
+  const initials = f || l ? `${f}${l}`.toUpperCase() : (identifier[0]?.toUpperCase() ?? 'M');
+  const full = [firstName, lastName].filter(Boolean).join(' ');
+  return { name: full.length > 0 ? full : identifier, initials };
+}
+
+function MessageRow({
+  message,
+  currentUserId,
+  membershipItems,
+}: {
+  message: DiscussionMessage;
+  currentUserId: string | null;
+  membershipItems: MembershipItem[] | null;
+}) {
+  const isAgent = message.author_user_id === null;
   // Question-carrying messages render via LiveQuestionCard / MinimizedQuestionCard;
   // this row only handles text-only messages, so `text` is non-null here.
   const text = message.text ?? '';
+  const { name: displayName, initials } = resolveAuthor(
+    message.author_user_id,
+    currentUserId,
+    membershipItems,
+  );
 
   return (
     <div style={ENTER_ANIM}>
@@ -118,11 +168,11 @@ function MessageRow({ message }: { message: DiscussionMessage }) {
           {isAgent ? (
             <Sparkles className="size-3" />
           ) : (
-            <span className="text-[10px] font-bold leading-none">Y</span>
+            <span className="text-[10px] font-bold leading-none">{initials}</span>
           )}
         </div>
         <span className={`text-caption font-semibold ${isAgent ? 'text-accent-deep' : 'text-ink'}`}>
-          {isAgent ? 'Agent' : 'You'}
+          {displayName}
         </span>
         <time
           dateTime={message.created_at}
@@ -137,7 +187,7 @@ function MessageRow({ message }: { message: DiscussionMessage }) {
         }`}
       >
         {text.length > 0 ? (
-          <MarkdownText text={text} className="[&_p]:text-body-sm [&_p]:leading-[1.65]" />
+          <MentionedText text={text} mentions={message.mentions} className="text-body-sm" />
         ) : null}
         <AttachmentStrip attachments={message.attachments} />
       </div>

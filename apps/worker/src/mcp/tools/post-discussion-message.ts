@@ -15,7 +15,8 @@ export function registerPostDiscussionMessage(
       const threadId = await resolveThreadId();
       if (!threadId) return threadIdRequired();
       try {
-        const message = await postMessage(threadId, 'agent', args);
+        // Agent is always null author_user_id.
+        const message = await postMessage(threadId, null, args);
         return { content: [{ type: 'text', text: JSON.stringify({ message_id: message.id }) }] };
       } catch (err) {
         const msg = (err as Error).message;

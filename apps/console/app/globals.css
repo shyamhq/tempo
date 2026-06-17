@@ -406,3 +406,19 @@ body {
   font-weight: inherit;
   color: inherit;
 }
+
+/* Mention tokens — non-editable inline spans inserted by MentionableInput. */
+.mention-token {
+  color: var(--color-accent-deep);
+  font-weight: 500;
+  border-radius: 3px;
+  user-select: all;
+}
+
+/* Placeholder for contenteditable mention inputs.
+   Hidden when the element has content or is focused. */
+[data-mention-input]:empty:not(:focus-within)::before {
+  content: attr(data-placeholder);
+  color: var(--color-ink-tertiary);
+  pointer-events: none;
+}

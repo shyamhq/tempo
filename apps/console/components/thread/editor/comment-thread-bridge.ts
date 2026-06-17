@@ -2,7 +2,7 @@
 
 import type { CommentBody, CommentData, ThreadData, User } from '@blocknote/core/comments';
 import { DefaultThreadStoreAuth, ThreadStore } from '@blocknote/core/comments';
-import type { Comment, Reply } from '@tempo/contracts';
+import type { Comment, Mention, Reply } from '@tempo/contracts';
 import type { workerApi } from '@/lib/api-client';
 
 // "Comment thread" in BlockNote's vocabulary is the annotation entity that
@@ -73,16 +73,15 @@ export class CommentThreadBridge extends ThreadStore {
   }): Promise<ThreadData> {
     const text = extractText(options.initialComment.body);
     const anchor = this.captureAnchor();
+    const meta = options.initialComment.metadata as { mentions?: Mention[] } | null | undefined;
+    const mentions = meta?.mentions;
     const created = await this.wApi.createComment(this.threadId, {
-      // Read the PM selection BEFORE the POST — BlockNote awaits this method
-      // before stamping the `comment` mark on the doc (see
-      // `@blocknote/core/src/comments/extension.ts` createThread), so the
-      // editor's selection is still the user's pending-comment range here.
       plan_quote: anchor.quote,
       plan_context: anchor.context,
       anchor_block_id: anchor.blockId,
       first_reply_text: text.length > 0 ? text : undefined,
       attachments: [],
+      ...(mentions && mentions.length > 0 ? { first_reply_mentions: mentions } : {}),
     });
     const prev = this.getCommentsSnapshot();
     const next = prev.some((c) => c.id === created.id) ? prev : [...prev, created];
@@ -95,9 +94,13 @@ export class CommentThreadBridge extends ThreadStore {
     comment: { body: CommentBody; metadata?: unknown };
   }): Promise<CommentData> {
     const text = extractText(options.comment.body);
+    // mentions are threaded from the card via comment.metadata.
+    const meta = options.comment.metadata as { mentions?: Mention[] } | null | undefined;
+    const mentions = meta?.mentions;
     const reply = await this.wApi.createReply(options.threadId, {
       payload: { text },
       attachments: [],
+      ...(mentions && mentions.length > 0 ? { mentions } : {}),
     });
     const next = this.getCommentsSnapshot().map((c) => {
       if (c.id !== options.threadId) return c;
@@ -111,7 +114,7 @@ export class CommentThreadBridge extends ThreadStore {
   async resolveThread(options: { threadId: string }): Promise<void> {
     await this.wApi.resolveComment(options.threadId);
     const next = this.getCommentsSnapshot().map((c) =>
-      c.id === options.threadId ? { ...c, resolved_by: 'dev' as const } : c,
+      c.id === options.threadId ? { ...c, resolved_by_user_id: this.devUser.id } : c,
     );
     this.commitComments(next);
   }
@@ -119,7 +122,7 @@ export class CommentThreadBridge extends ThreadStore {
   async unresolveThread(options: { threadId: string }): Promise<void> {
     await this.wApi.unresolveComment(options.threadId);
     const next = this.getCommentsSnapshot().map((c) =>
-      c.id === options.threadId ? { ...c, resolved_by: null } : c,
+      c.id === options.threadId ? { ...c, resolved_by_user_id: null } : c,
     );
     this.commitComments(next);
   }
@@ -202,8 +205,8 @@ function commentToThread(comment: Comment, devUserId: string): ThreadData {
       comment.replies[comment.replies.length - 1]?.created_at ?? comment.created_at,
     ),
     comments: all as ThreadData['comments'],
-    resolved: comment.resolved_by !== null,
-    resolvedBy: comment.resolved_by ?? undefined,
+    resolved: comment.resolved_by_user_id !== null,
+    resolvedBy: comment.resolved_by_user_id ?? undefined,
     metadata: undefined,
   };
 }
@@ -225,11 +228,12 @@ function replyToComment(reply: Reply, devUserId: string): CommentData {
   return {
     type: 'comment',
     id: reply.id,
-    userId: reply.author === 'dev' ? devUserId : reply.author,
+    userId: reply.author_user_id ?? devUserId,
     createdAt: new Date(reply.created_at),
     updatedAt: new Date(reply.created_at),
     reactions: [],
-    metadata: undefined,
+    // PlanCommentRow reads `mentions` off metadata to colour @tokens.
+    metadata: reply.mentions ? { mentions: reply.mentions } : undefined,
     body: textToCommentBody(reply.payload.text),
   };
 }
@@ -246,18 +250,24 @@ function textToCommentBody(text: string): CommentBody {
 type InlineLike = { type?: string; text?: string };
 type BlockLike = { content?: InlineLike[]; children?: BlockLike[] };
 
-function extractText(body: CommentBody): string {
+// Shared by PlanCommentRow — recursively walks a BlockNote body tree and
+// collects text-node contents. Exported so the card doesn't ship a duplicate.
+export function extractBlockNoteText(body: BlockLike[]): string {
   const out: string[] = [];
-  for (const block of body as BlockLike[]) {
+  for (const block of body) {
     if (Array.isArray(block.content)) {
       for (const inline of block.content) {
         if (typeof inline.text === 'string') out.push(inline.text);
       }
     }
     if (Array.isArray(block.children) && block.children.length > 0) {
-      out.push(extractText(block.children as CommentBody));
+      out.push(extractBlockNoteText(block.children));
     }
     out.push('\n');
   }
   return out.join('').trim();
+}
+
+function extractText(body: CommentBody): string {
+  return extractBlockNoteText(body as BlockLike[]);
 }

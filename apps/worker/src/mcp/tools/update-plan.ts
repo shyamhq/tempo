@@ -16,7 +16,8 @@ export function registerUpdatePlan(
       const threadId = await resolveThreadId();
       if (!threadId) return threadIdRequired();
       try {
-        const result = await updatePlan(threadId, args.html, 'agent');
+        // Agent is always null updated_by_user_id.
+        const result = await updatePlan(threadId, args.html, null);
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ids: result.ids }) }] };
       } catch (err) {
         if (err instanceof ConflictError) {

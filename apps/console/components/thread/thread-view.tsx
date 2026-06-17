@@ -237,10 +237,10 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   const unreadCount = useMemo(() => {
     if (discussionOpen) return 0;
     if (!discussionSeenAt) {
-      return view.discussion.messages.filter((m) => m.author === 'agent').length;
+      return view.discussion.messages.filter((m) => m.author_user_id === null).length;
     }
     return view.discussion.messages.filter(
-      (m) => m.author === 'agent' && m.created_at > discussionSeenAt,
+      (m) => m.author_user_id === null && m.created_at > discussionSeenAt,
     ).length;
   }, [view.discussion.messages, discussionSeenAt, discussionOpen]);
 

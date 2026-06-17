@@ -1,6 +1,7 @@
 import { CreateReplyRequest, CreateReplyResponse } from '@tempo/contracts/http';
 import { postReply } from '@tempo/server';
 import type { RequestHandler } from 'express';
+import { callerUserId } from '../../lib/caller';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 
@@ -15,7 +16,8 @@ export const createReplyHandler: RequestHandler<{ id: string }> = async (req, re
     const reply = await postReply(
       req.params.id,
       parsed.data.payload,
-      'dev',
+      callerUserId(req),
+      parsed.data.mentions ?? null,
       parsed.data.attachments,
     );
     send(res, CreateReplyResponse)(reply);

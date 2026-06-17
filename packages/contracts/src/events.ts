@@ -153,22 +153,26 @@ export const EventKind = z.enum([
 ]);
 export type EventKind = z.infer<typeof EventKind>;
 
-// Events that should wake the Agent for a new Turn. Dev-originated state
-// changes only; `agent_*`/`session_*`/`plan_edited_by_agent`/`thread_renamed`
-// are echoes the Agent itself produced. `agent_cancel_requested` is handled
+// Events that should wake the Agent for a new Turn. Human-originated state
+// changes only; `agent_*` / `plan_edited_by_agent` / `thread_renamed` are
+// echoes the Agent itself produced. `agent_cancel_requested` is handled
 // in-Turn (SIGINT-equivalent), not via re-spawn.
 //
 // `reply_added` and `discussion_message_posted` are kind-allowed but MUST
-// be author-filtered — both Dev and Agent emit them; waking on Agent's own
-// reply causes a ping-pong loop. Same logic applies to both Local CLI
-// (per-Turn nudge) and Hosted Mailbox (per-VM-wake).
+// be author-filtered — both human Devs and the Agent emit them; waking on
+// the Agent's own reply causes a ping-pong loop. The Agent's own posts have
+// `author_user_id === null`, so anything non-null is from a human.
+//
+// Mention-aware silencing happens inside the Agent's prompt, not here: every
+// human message wakes the runtime, and the Agent decides whether to reply
+// based on the `mentions` sidecar carried on the event payload.
+//
 // `plan_edited_by_dev` is intentionally NOT a wake kind. The Console's
 // auto-save fires it on every debounce flush, so waking on it would spawn
-// the hosted runner per-keystroke. The agent still sees the event on its
-// next woken turn and pulls the plan before editing.
+// the hosted runner per-keystroke.
 // `comment_resolved` / `comment_unresolved` / `comment_deleted` are Dev
 // housekeeping — they reshape the comment surface but don't ask the Agent
-// to produce new work. Excluded so they don't churn the runtime.
+// to produce new work.
 const WAKE_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
   'comment_added',
   'reply_added',
@@ -177,7 +181,9 @@ const WAKE_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
 
 export function shouldWake(event: Event): boolean {
   if (!WAKE_KINDS.has(event.kind)) return false;
-  if (event.kind === 'reply_added') return event.reply.author === 'dev';
-  if (event.kind === 'discussion_message_posted') return event.message.author === 'dev';
+  if (event.kind === 'reply_added') return event.reply.author_user_id !== null;
+  if (event.kind === 'discussion_message_posted') {
+    return event.message.author_user_id !== null;
+  }
   return true;
 }

@@ -16,7 +16,8 @@ export function registerDeleteBlock(
       const threadId = await resolveThreadId();
       if (!threadId) return threadIdRequired();
       try {
-        await deleteBlock(threadId, args.block_id, 'agent');
+        // Agent is always null updated_by_user_id.
+        await deleteBlock(threadId, args.block_id, null);
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
       } catch (err) {
         if (err instanceof NotFoundError) {

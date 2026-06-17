@@ -16,7 +16,8 @@ export function registerUpdateBlock(
       const threadId = await resolveThreadId();
       if (!threadId) return threadIdRequired();
       try {
-        await updateBlock(threadId, args.block_id, args.html, 'agent');
+        // Agent is always null updated_by_user_id.
+        await updateBlock(threadId, args.block_id, args.html, null);
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
       } catch (err) {
         if (err instanceof NotFoundError) {

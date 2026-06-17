@@ -4,6 +4,7 @@ import {
 } from '@tempo/contracts/http';
 import { postMessage } from '@tempo/server';
 import type { RequestHandler } from 'express';
+import { callerUserId } from '../../lib/caller';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
 
@@ -16,10 +17,7 @@ export const createDiscussionMessageHandler: RequestHandler<{ id: string }> = as
     return;
   }
   try {
-    const message = await postMessage(req.params.id, 'dev', {
-      text: parsed.data.text,
-      attachments: parsed.data.attachments,
-    });
+    const message = await postMessage(req.params.id, callerUserId(req), parsed.data);
     send(res, CreateDiscussionMessageResponse)(message);
   } catch (err) {
     const msg = (err as Error).message;

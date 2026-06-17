@@ -15,10 +15,12 @@ export function registerPostReply(
       const threadId = await resolveThreadId();
       if (!threadId) return threadIdRequired();
       try {
+        // Agent is always null author_user_id.
         const reply = await postReply(
           args.comment_id,
           args.payload,
-          'agent',
+          null,
+          args.mentions ?? null,
           args.attachments,
           threadId,
         );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuth } from '@clerk/nextjs';
+import { useAuth, useUser } from '@clerk/nextjs';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTodo } from '@tempo/contracts';
@@ -68,12 +68,17 @@ export function useThreadEvents(
 ) {
   const qc = useQueryClient();
   const { getToken } = useAuth();
+  const { user } = useUser();
   const cursorRef = useRef(initialCursor);
   cursorRef.current = initialCursor;
   // Latest-ref so a new callback identity on every parent render doesn't
   // re-subscribe (the effect deps are [threadId, qc] only).
   const planEditedByAgentRef = useRef(onPlanEditedByAgent);
   planEditedByAgentRef.current = onPlanEditedByAgent;
+  // Keep the current user id in a ref so the SSE handler closure can read it
+  // without being part of the effect deps (avoids re-subscribing on user change).
+  const userIdRef = useRef<string | null>(user?.id ?? null);
+  userIdRef.current = user?.id ?? null;
 
   useEffect(() => {
     if (!threadId) return;
@@ -108,7 +113,7 @@ export function useThreadEvents(
             if (!parsed.success) return;
             const ev = parsed.data;
             cursorRef.current = ev.id;
-            apply(qc, threadId, ev);
+            apply(qc, threadId, ev, userIdRef.current);
             if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
           } catch {
             // ignore malformed frame
@@ -140,6 +145,7 @@ function apply(
   qc: ReturnType<typeof useQueryClient>,
   threadId: string,
   ev: z.infer<typeof Event>,
+  currentUserId: string | null,
 ): void {
   applyLiveActivity(qc, threadId, ev);
 
@@ -161,8 +167,8 @@ function apply(
       ev.kind === 'agent_mode_changed' ||
       ev.kind === 'agent_turn_ended' ||
       ev.kind === 'plan_edited_by_agent' ||
-      (ev.kind === 'reply_added' && ev.reply.author === 'agent') ||
-      (ev.kind === 'discussion_message_posted' && ev.message.author === 'agent');
+      (ev.kind === 'reply_added' && ev.reply.author_user_id === null) ||
+      (ev.kind === 'discussion_message_posted' && ev.message.author_user_id === null);
     const next: ThreadView = {
       ...prev,
       last_event_id: ev.id,
@@ -189,11 +195,13 @@ function apply(
       case 'plan_edited_by_dev':
       case 'plan_edited_by_agent': {
         // Body markdown is fetched on refetch (the SSE event carries only the timestamp).
-        // Bump updated_at + updated_by together so the two metadata fields can't disagree
-        // in the cache between the SSE write and the refetch landing.
-        const by: 'agent' | 'dev' = ev.kind === 'plan_edited_by_agent' ? 'agent' : 'dev';
+        // Bump updated_at + updated_by_user_id together so the two metadata fields can't
+        // disagree in the cache between the SSE write and the refetch landing.
+        // agent edit → null; dev edit → current user id (best-effort; refetch corrects it).
+        const updatedByUserId: string | null =
+          ev.kind === 'plan_edited_by_agent' ? null : currentUserId;
         const body = next.plan.body
-          ? { ...next.plan.body, updated_at: ev.updated_at, updated_by: by }
+          ? { ...next.plan.body, updated_at: ev.updated_at, updated_by_user_id: updatedByUserId }
           : next.plan.body;
         return { ...next, plan: { ...next.plan, body } };
       }
@@ -201,14 +209,14 @@ function apply(
         return {
           ...next,
           comments: next.comments.map((c) =>
-            c.id === ev.comment_id ? { ...c, resolved_by: 'dev' } : c,
+            c.id === ev.comment_id ? { ...c, resolved_by_user_id: currentUserId } : c,
           ),
         };
       case 'comment_unresolved':
         return {
           ...next,
           comments: next.comments.map((c) =>
-            c.id === ev.comment_id ? { ...c, resolved_by: null } : c,
+            c.id === ev.comment_id ? { ...c, resolved_by_user_id: null } : c,
           ),
         };
       case 'comment_deleted':
@@ -329,7 +337,7 @@ function applyLiveActivity(
       // Dev message starts a fresh Agent turn — drop the previous turn's todos
       // and tool stream, then flip turnActive so the widget mounts immediately
       // with "Agent working…" instead of waiting on the Agent's first event.
-      if (ev.message.author === 'dev') {
+      if (ev.message.author_user_id !== null) {
         qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       }
       return;
@@ -337,7 +345,7 @@ function applyLiveActivity(
       qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       return;
     case 'reply_added':
-      if (ev.reply.author === 'dev') {
+      if (ev.reply.author_user_id !== null) {
         qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       }
       return;

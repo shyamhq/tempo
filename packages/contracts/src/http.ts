@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { AgentTodo, Event } from './events';
 import {
-  Actor,
   AgentBlock,
   AgentType,
   AttachmentId,
@@ -11,6 +10,7 @@ import {
   DiscussionMessage,
   EventId,
   IsoTimestamp,
+  Mention,
   Plan,
   Question,
   Reply,
@@ -165,6 +165,7 @@ export const CreateCommentRequest = z.object({
   plan_context: z.string(),
   anchor_block_id: z.string().max(128).nullable().optional(),
   first_reply_text: z.string().min(1).optional(),
+  first_reply_mentions: z.array(Mention).optional(),
   attachments: z.array(AttachmentId).max(8).default([]),
 });
 export const CreateCommentResponse = Comment;
@@ -176,6 +177,7 @@ export const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 export const CreateReplyRequest = z.object({
   payload: ReplyPayload,
   attachments: z.array(AttachmentId).max(8).default([]),
+  mentions: z.array(Mention).optional(),
 });
 export const CreateReplyResponse = Reply;
 
@@ -290,22 +292,25 @@ export type CliRefreshResponse = z.infer<typeof CliRefreshResponse>;
 // round-trips for data.
 const TurnHydrationReply = z.object({
   id: z.string(),
-  author: Actor,
+  author_user_id: z.string().nullable(),
   text: z.string(),
+  mentions: z.array(Mention).nullable(),
 });
 const TurnHydrationComment = z.object({
   id: z.string(),
   plan_quote: z.string(),
   anchor_block_id: z.string().nullable(),
-  resolved_by: z.literal('dev').nullable(),
+  author_user_id: z.string().nullable(),
+  resolved_by_user_id: z.string().nullable(),
   replies: z.array(TurnHydrationReply),
 });
 const TurnHydrationMessage = z.object({
   id: z.string(),
-  author: Actor,
+  author_user_id: z.string().nullable(),
   text: z.string().nullable(),
   questions: z.array(Question).nullable(),
   attachments: z.array(AttachmentRef),
+  mentions: z.array(Mention).nullable(),
 });
 export const TurnHydration = z.object({
   thread: z.object({ title: z.string(), description: z.string().nullable() }),

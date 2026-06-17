@@ -14,7 +14,8 @@ export const writePlanHandler: RequestHandler<{ id: string }> = async (req, res)
     return;
   }
   try {
-    const result = await writePlan(req.params.id, parsed.data.pm_json, 'dev');
+    const updated_by_user_id = req.caller.kind === 'browser' ? req.caller.userId : null;
+    const result = await writePlan(req.params.id, parsed.data.pm_json, updated_by_user_id);
     send(res, WritePlanResponse)({ ok: true, updated_at: result.updated_at });
   } catch (err) {
     if (err instanceof ValidationError) {

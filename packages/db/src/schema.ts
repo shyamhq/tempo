@@ -74,7 +74,8 @@ export const plans = pgTable('plans', {
   // Plain text column holding stringified ProseMirror JSON. Callers do their
   // own JSON.parse / JSON.stringify so the storage layer doesn't double-encode.
   body_pm_json: text('body_pm_json'),
-  updated_by: text('updated_by', { enum: ['dev', 'agent'] }),
+  // NULL = agent edit; non-null = Clerk user id of the Dev who last wrote.
+  updated_by_user_id: text('updated_by_user_id'),
   // Nullable + no default: set only on first plan edit, not on row insert.
   updated_at: timestamp('updated_at', { withTimezone: true, mode: 'date' }),
   created_at: timestampDate('created_at'),
@@ -88,7 +89,9 @@ export const comments = pgTable('comments', {
   plan_quote: text('plan_quote').notNull(),
   plan_context: text('plan_context').notNull(),
   anchor_block_id: text('anchor_block_id'),
-  resolved_by: text('resolved_by', { enum: ['dev'] }),
+  // NULL = agent-authored comment (rare); non-null = Clerk user id.
+  author_user_id: text('author_user_id'),
+  resolved_by_user_id: text('resolved_by_user_id'),
   created_at: timestampDate('created_at'),
 });
 
@@ -97,8 +100,13 @@ export const replies = pgTable('replies', {
   comment_id: text('comment_id')
     .notNull()
     .references(() => comments.id),
-  author: text('author', { enum: ['dev', 'agent'] }).notNull(),
+  // NULL = Agent reply; non-null = Clerk user id of the human who posted.
+  author_user_id: text('author_user_id'),
   text: text('text'),
+  // Sidecar [{id, kind:'user'|'agent', label}] extracted from the body at post
+  // time. Source of truth for @mentions — read by the Agent to decide whether
+  // to reply, read by the UI to render colored tokens inline.
+  mentions: jsonb('mentions'),
   created_at: timestampDate('created_at'),
 });
 
@@ -109,9 +117,12 @@ export const discussion_messages = pgTable(
     thread_id: text('thread_id')
       .notNull()
       .references(() => threads.id),
-    author: text('author', { enum: ['dev', 'agent'] }).notNull(),
+    // NULL = Agent message; non-null = Clerk user id of the human who posted.
+    author_user_id: text('author_user_id'),
     text: text('text'),
     questions: jsonb('questions'),
+    // Sidecar [{id, kind:'user'|'agent', label}] — see replies.mentions.
+    mentions: jsonb('mentions'),
     created_at: timestampDate('created_at'),
   },
   (t) => [index('idx_discussion_messages_thread').on(t.thread_id, t.created_at, t.id)],

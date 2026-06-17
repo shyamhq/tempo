@@ -25,8 +25,17 @@ export type ConnectToken = z.infer<typeof ConnectToken>;
 // returns all events since thread creation.
 export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 
-export const Actor = z.enum(['dev', 'agent']);
-export type Actor = z.infer<typeof Actor>;
+// A @mention extracted from a Discussion message or Comment reply body. `id`
+// is the Clerk user id for kind='user', the literal 'agent' for kind='agent'.
+// `label` is the display name captured at post time so the row renders
+// stably even if the user is renamed later. Sidecar only — never embedded
+// in body text on the wire.
+export const Mention = z.object({
+  id: z.string(),
+  kind: z.enum(['user', 'agent']),
+  label: z.string(),
+});
+export type Mention = z.infer<typeof Mention>;
 
 export const IsoTimestamp = z.iso.datetime();
 export type IsoTimestamp = z.infer<typeof IsoTimestamp>;
@@ -40,7 +49,8 @@ export type IsoTimestamp = z.infer<typeof IsoTimestamp>;
 export const PlanBody = z.object({
   pm_json: z.unknown(),
   updated_at: IsoTimestamp,
-  updated_by: Actor,
+  // NULL = Agent edit; non-null = Clerk user id of the Dev who last wrote.
+  updated_by_user_id: z.string().nullable(),
 });
 export type PlanBody = z.infer<typeof PlanBody>;
 
@@ -137,9 +147,11 @@ export type AttachmentRef = z.infer<typeof AttachmentRef>;
 export const Reply = z.object({
   id: ReplyId,
   comment_id: CommentId,
-  author: Actor,
+  // NULL = Agent; non-null = Clerk user id of the human who posted.
+  author_user_id: z.string().nullable(),
   payload: ReplyPayload,
   attachments: z.array(AttachmentRef).default([]),
+  mentions: z.array(Mention).nullable(),
   created_at: IsoTimestamp,
 });
 export type Reply = z.infer<typeof Reply>;
@@ -150,7 +162,9 @@ export const Comment = z.object({
   plan_quote: z.string(),
   plan_context: z.string(),
   anchor_block_id: z.string().nullable(),
-  resolved_by: z.literal('dev').nullable(),
+  // NULL = Agent-authored (rare); non-null = Clerk user id.
+  author_user_id: z.string().nullable(),
+  resolved_by_user_id: z.string().nullable(),
   created_at: IsoTimestamp,
   replies: z.array(Reply),
 });
@@ -163,10 +177,17 @@ export type Comment = z.infer<typeof Comment>;
 export const DiscussionMessage = z.object({
   id: MessageId,
   thread_id: ThreadId,
-  author: Actor,
+  // NULL = Agent; non-null = Clerk user id of the human who posted.
+  author_user_id: z.string().nullable(),
   text: z.string().min(1).max(8_000).nullable(),
   questions: z.array(Question).nullable(),
   attachments: z.array(AttachmentRef).default([]),
+  mentions: z.array(Mention).nullable(),
   created_at: IsoTimestamp,
 });
 export type DiscussionMessage = z.infer<typeof DiscussionMessage>;
+
+// Convenience predicate used everywhere a row's author needs the binary
+// "is this the Agent" branch — see `Mention` for the surrounding model.
+export const isAgent = (row: { author_user_id: string | null }): boolean =>
+  row.author_user_id === null;

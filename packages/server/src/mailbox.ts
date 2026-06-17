@@ -67,16 +67,23 @@ export async function getTurnHydration(threadId: string): Promise<TurnHydration 
       id: c.id,
       plan_quote: c.plan_quote,
       anchor_block_id: c.anchor_block_id,
-      resolved_by: c.resolved_by,
-      replies: c.replies.map((r) => ({ id: r.id, author: r.author, text: r.payload.text })),
+      author_user_id: c.author_user_id,
+      resolved_by_user_id: c.resolved_by_user_id,
+      replies: c.replies.map((r) => ({
+        id: r.id,
+        author_user_id: r.author_user_id,
+        text: r.payload.text,
+        mentions: r.mentions,
+      })),
     })),
     discussion: {
       messages: messages.map((m) => ({
         id: m.id,
-        author: m.author,
+        author_user_id: m.author_user_id,
         text: m.text,
         questions: m.questions,
         attachments: m.attachments,
+        mentions: m.mentions,
       })),
     },
   };

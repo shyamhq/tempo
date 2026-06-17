@@ -5,15 +5,20 @@
 // thread" here refers to BlockNote's annotation entity — Tempo's Comment +
 // Replies. Distinct from Tempo's planning `Thread`.
 
+import { useOrganization } from '@clerk/nextjs';
 import type { CommentData } from '@blocknote/core/comments';
 import { CommentsExtension } from '@blocknote/core/comments';
 import type { ThreadProps } from '@blocknote/react';
-import { useBlockNoteEditor, useUsers } from '@blocknote/react';
+import { useBlockNoteEditor } from '@blocknote/react';
+import type { Mention } from '@tempo/contracts';
 import { Check, CornerDownLeft, Loader2, Maximize2, Trash2 } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
-import { MarkdownText } from '@/components/thread/markdown-text';
+import { useRef, useState } from 'react';
+import type { MentionableInputRef } from '@/components/thread/mention/mentionable-input';
+import { MentionableInput } from '@/components/thread/mention/mentionable-input';
+import { MentionedText } from '@/components/thread/mention/mentioned-text';
+import { useMentionCandidates } from '@/components/thread/mention/use-mention-candidates';
+import { extractBlockNoteText } from './comment-thread-bridge';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useThreadUi } from '@/store/thread-ui';
 
@@ -32,27 +37,21 @@ export function PlanCommentCard({
   const ext = editor.getExtension(CommentsExtension);
   const threadStore = ext?.threadStore;
 
-  const authorIds = [...new Set(thread.comments.map((c) => c.userId))];
-  const users = useUsers(authorIds);
+  const { memberships } = useOrganization({ memberships: true });
 
-  const [replyDraft, setReplyDraft] = useState('');
+  const [replyHasText, setReplyHasText] = useState(false);
   const [sending, setSending] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const replyRef = useRef<MentionableInputRef>(null);
+  const candidates = useMentionCandidates();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: replyDraft is the resize trigger
-  useLayoutEffect(() => {
-    const el = replyRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [replyDraft]);
-
-  const canReply = replyDraft.trim().length > 0 && !sending && threadStore !== undefined;
+  const canReply = replyHasText && !sending && threadStore !== undefined;
 
   const sendReply = async () => {
-    if (!canReply || !threadStore) return;
+    if (!canReply || !threadStore || !replyRef.current) return;
+    const doc = replyRef.current.serialise();
+    if (doc.text.length === 0) return;
     setSending(true);
     try {
       await threadStore.addComment({
@@ -61,12 +60,15 @@ export function PlanCommentCard({
           body: [
             {
               type: 'paragraph',
-              content: [{ type: 'text', text: replyDraft.trim(), styles: {} }],
+              content: [{ type: 'text', text: doc.text, styles: {} }],
             },
           ],
+          // Carries mentions through the bridge to createReply.
+          metadata: doc.mentions.length > 0 ? { mentions: doc.mentions } : undefined,
         },
       });
-      setReplyDraft('');
+      replyRef.current.clear();
+      setReplyHasText(false);
     } finally {
       setSending(false);
     }
@@ -98,13 +100,6 @@ export function PlanCommentCard({
       window.alert('Delete failed. The comment is unchanged.');
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const onReplyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      void sendReply();
     }
   };
 
@@ -159,7 +154,7 @@ export function PlanCommentCard({
           <PlanCommentRow
             key={c.id}
             comment={c}
-            username={users.get(c.userId)?.username ?? c.userId}
+            username={resolveAuthorLabel(c.userId, memberships?.data)}
           />
         ))}
       </div>
@@ -187,15 +182,18 @@ export function PlanCommentCard({
       ) : (
         <>
           <div className="px-4 pt-1.5">
-            <Textarea
-              ref={replyRef}
-              placeholder="Reply…"
-              value={replyDraft}
-              onChange={(e) => setReplyDraft(e.target.value)}
-              onKeyDown={onReplyKeyDown}
-              rows={1}
-              className="text-body-sm min-h-0 resize-none overflow-hidden bg-surface-2 border-hairline rounded-lg px-3.5 py-2.5"
-            />
+            <div className="relative rounded-lg border border-hairline bg-surface-2 px-3.5 py-2.5">
+              <MentionableInput
+                ref={replyRef}
+                placeholder="Reply…"
+                candidates={candidates}
+                minHeight={20}
+                maxHeight={160}
+                className="text-body-sm"
+                onSubmit={() => void sendReply()}
+                onChange={(doc) => setReplyHasText(doc.text.length > 0)}
+              />
+            </div>
           </div>
           <div className="flex items-center justify-between gap-2 px-3 pt-3 pb-4">
             <div className="flex items-center gap-1">
@@ -255,8 +253,20 @@ export function PlanCommentCard({
   );
 }
 
+type MembershipRow = NonNullable<ReturnType<typeof useOrganization>['memberships']>['data'];
+
+function resolveAuthorLabel(userId: string, members: MembershipRow | null | undefined): string {
+  const m = members?.find((x) => x.publicUserData?.userId === userId);
+  const pub = m?.publicUserData;
+  if (!pub) return userId;
+  const name = `${pub.firstName ?? ''} ${pub.lastName ?? ''}`.trim();
+  return name || pub.identifier || userId;
+}
+
 function PlanCommentRow({ comment, username }: { comment: CommentData; username: string }) {
-  const text = comment.body ? extractText(comment.body as BlockLike[]) : '';
+  const text = comment.body ? extractBlockNoteText(comment.body as never) : '';
+  const mentions = ((comment.metadata as { mentions?: Mention[] } | null | undefined)?.mentions ??
+    null) as Mention[] | null;
   return (
     <div className="px-4 py-2.5 border-t border-hairline-soft first:border-t-0">
       <div className="flex items-center gap-2 mb-1.5">
@@ -269,7 +279,7 @@ function PlanCommentRow({ comment, username }: { comment: CommentData; username:
         </span>
       </div>
       {text.length > 0 ? (
-        <MarkdownText text={text} className="[&_p]:text-body-sm" />
+        <MentionedText text={text} mentions={mentions} className="text-body-sm" />
       ) : (
         <span className="text-body-sm text-ink-tertiary italic">(deleted)</span>
       )}
@@ -279,24 +289,4 @@ function PlanCommentRow({ comment, username }: { comment: CommentData; username:
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
-
-type InlineLike = { text?: string };
-type BlockLike = { content?: InlineLike[]; children?: BlockLike[] };
-
-function extractText(blocks: BlockLike[]): string {
-  const out: string[] = [];
-  for (const block of blocks) {
-    if (Array.isArray(block.content)) {
-      for (const inline of block.content) {
-        if (typeof inline.text === 'string') out.push(inline.text);
-      }
-    }
-    if (Array.isArray(block.children) && block.children.length > 0) {
-      const nested = extractText(block.children);
-      if (nested) out.push(nested);
-    }
-    out.push('\n');
-  }
-  return out.join('').trim();
 }

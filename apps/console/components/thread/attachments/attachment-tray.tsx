@@ -25,7 +25,7 @@ type Uploader = Pick<ReturnType<typeof useAttachmentUploader>, 'items' | 'addFil
 
 export function useAttachmentSurface(
   uploader: Uploader,
-  pasteTargetRef: React.RefObject<HTMLTextAreaElement | null>,
+  pasteTargetRef: React.RefObject<HTMLElement | null>,
   disabled = false,
 ) {
   const onDrop = useCallback(
