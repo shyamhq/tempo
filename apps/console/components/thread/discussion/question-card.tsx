@@ -5,7 +5,7 @@ import { Check, ChevronDown, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { useWorkerApi } from '@/hooks/use-worker-api';
 import { MarkdownText } from '../markdown-text';
-import { AgentIdentity } from './agent-identity';
+import { formatTime } from './message-list';
 
 type Draft =
   | { type: 'single_choice'; choice: string | null; custom: string }
@@ -73,7 +73,21 @@ export function LiveQuestionCard({
     <div className="space-y-3">
       {message.text ? (
         <div>
-          <AgentIdentity created_at={message.created_at} />
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="inline-flex items-center gap-1.5 text-micro-uppercase uppercase text-accent-deep">
+              <span aria-hidden className="size-[5px] rounded-full bg-current" />
+              Agent
+            </span>
+            <span aria-hidden className="text-micro font-normal text-ink-tertiary tabular-nums">
+              ·
+            </span>
+            <time
+              dateTime={message.created_at}
+              className="text-micro font-normal text-ink-tertiary tabular-nums"
+            >
+              {formatTime(message.created_at)}
+            </time>
+          </div>
           <div className="text-body-sm leading-[1.6] text-ink">
             <MarkdownText text={message.text} />
           </div>

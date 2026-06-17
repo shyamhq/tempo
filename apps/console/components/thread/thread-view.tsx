@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { AgentTrails } from '@/components/thread/agent-trails';
 import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
-import { DiscussionPanel } from '@/components/thread/discussion/discussion-panel';
+import { DiscussionPanel, ResizeHandle } from '@/components/thread/discussion/discussion-panel';
 import { PlanCommentGutter } from '@/components/thread/editor/plan-comment-gutter';
 import type { PlanEditorHandle } from '@/components/thread/editor/plan-editor';
 import { HostedAgentControl } from '@/components/thread/hosted-agent-control';
@@ -323,76 +323,76 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </div>
         </div>
       ) : (
-      <div
-        className={`px-3 py-6 grid gap-4 ${gridClass} animate-in fade-in slide-in-from-bottom-2 duration-500`}
-        style={gridStyle}
-      >
-        {discussionOpen ? (
-          <aside className="-mt-6 h-[calc(100dvh-5rem)] sticky top-14 flex flex-col min-h-0 bg-canvas border-r border-hairline">
-            <RailTabStrip
-              activeTab={activeRailTab}
-              // Selecting Discussion fully closes the Comment tab — keeping
-              // both alive while the user reads Discussion leaves
-              // `enlargedCommentId` set and resurrects the tab on the next
-              // gutter click. One-tab-at-a-time was the original spec.
-              onSelectDiscussion={closeEnlarged}
-              onSelectComment={() => setActiveRailTab('comment')}
-              onCloseCommentTab={closeEnlarged}
-              showCommentTab={enlargedCommentId !== null}
-              onCloseRail={closeDiscussion}
-            />
-            <div className="flex-1 min-h-0">
-              {activeRailTab === 'comment' && enlargedCommentId !== null ? (
-                <div ref={setPanelMount} className="h-full overflow-hidden" />
-              ) : (
-                <DiscussionPanel
-                  threadId={threadId}
-                  messages={view.discussion.messages}
-                  approved={approved}
-                />
-              )}
-            </div>
-          </aside>
-        ) : null}
+        <div
+          className={`px-3 py-6 grid gap-4 ${gridClass} animate-in fade-in slide-in-from-bottom-2 duration-500`}
+          style={gridStyle}
+        >
+          {discussionOpen ? (
+            <aside className="-mt-6 h-[calc(100dvh-5rem)] sticky top-14 flex flex-col min-h-0 bg-canvas border-r border-hairline relative">
+              <ResizeHandle />
+              <RailTabStrip
+                activeTab={activeRailTab}
+                // Selecting Discussion fully closes the Comment tab — keeping
+                // both alive while the user reads Discussion leaves
+                // `enlargedCommentId` set and resurrects the tab on the next
+                // gutter click. One-tab-at-a-time was the original spec.
+                onSelectDiscussion={closeEnlarged}
+                onSelectComment={() => setActiveRailTab('comment')}
+                onCloseCommentTab={closeEnlarged}
+                showCommentTab={enlargedCommentId !== null}
+                onCloseRail={closeDiscussion}
+              />
+              <div className="flex-1 min-h-0">
+                {activeRailTab === 'comment' && enlargedCommentId !== null ? (
+                  <div ref={setPanelMount} className="h-full overflow-hidden" />
+                ) : (
+                  <DiscussionPanel
+                    threadId={threadId}
+                    messages={view.discussion.messages}
+                    approved={approved}
+                  />
+                )}
+              </div>
+            </aside>
+          ) : null}
 
-        <section className="min-h-[calc(100dvh-7rem)] flex flex-col">
-          {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
-          {view.plan.body === null ? (
-            <EmptyPlanState />
-          ) : (
-            <div
-              className={`rounded-md transition-shadow duration-700 ${
-                planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
-              }`}
-            >
-              <div ref={planColumnRef} data-plan-column className="flex items-start">
-                {/* The editor is mounted unconditionally so onReady can fire
+          <section className="min-h-[calc(100dvh-7rem)] flex flex-col">
+            {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
+            {view.plan.body === null ? (
+              <EmptyPlanState />
+            ) : (
+              <div
+                className={`rounded-md transition-shadow duration-700 ${
+                  planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
+                }`}
+              >
+                <div ref={planColumnRef} data-plan-column className="flex items-start">
+                  {/* The editor is mounted unconditionally so onReady can fire
                     and we can call applyPmJson — but we hide it visually until
                     the initial PM JSON has been applied. Avoids the empty-doc
                     flash that would otherwise appear during the two-step init. */}
-                <div className={`flex-1 min-w-0 ${pmJsonApplied ? '' : 'invisible'}`}>
-                  <PlanEditor
-                    threadId={threadId}
-                    comments={view.comments}
-                    onUserEdit={notifyEdit}
-                    onReady={setEditorHandle}
-                    readOnly={approved}
-                  />
+                  <div className={`flex-1 min-w-0 ${pmJsonApplied ? '' : 'invisible'}`}>
+                    <PlanEditor
+                      threadId={threadId}
+                      comments={view.comments}
+                      onUserEdit={notifyEdit}
+                      onReady={setEditorHandle}
+                      readOnly={approved}
+                    />
+                  </div>
+                  {pmJsonApplied ? (
+                    <PlanCommentGutter
+                      comments={view.comments}
+                      editorHandle={editorHandle}
+                      anchorRef={planColumnRef}
+                    />
+                  ) : null}
                 </div>
-                {pmJsonApplied ? (
-                  <PlanCommentGutter
-                    comments={view.comments}
-                    editorHandle={editorHandle}
-                    anchorRef={planColumnRef}
-                  />
-                ) : null}
+                {pmJsonApplied ? null : <EmptyPlanState />}
               </div>
-              {pmJsonApplied ? null : <EmptyPlanState />}
-            </div>
-          )}
-        </section>
-
-      </div>
+            )}
+          </section>
+        </div>
       )}
 
       {/* AgentTrails is position:fixed and lives outside the layout branches
@@ -489,11 +489,11 @@ function RailTabStrip({
   onCloseRail: () => void;
 }) {
   const baseTab =
-    'inline-flex items-center gap-1.5 h-8 px-3 rounded-t-md text-caption font-medium border border-b-0 transition-colors';
-  const inactive = 'border-transparent text-ink-subtle hover:text-ink';
-  const active = 'border-hairline bg-canvas text-ink';
+    'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-caption font-medium transition-colors';
+  const inactive = 'text-ink-subtle hover:text-ink hover:bg-surface-2';
+  const active = 'bg-surface-2 text-ink';
   return (
-    <div className="flex items-end gap-1 px-2 pt-1 bg-surface-2 border-b border-hairline h-12">
+    <div className="flex items-center gap-0.5 px-3 h-10 border-b border-hairline-soft shrink-0">
       <button
         type="button"
         onClick={onSelectDiscussion}
@@ -524,16 +524,14 @@ function RailTabStrip({
           </button>
         </div>
       ) : null}
-      <div className="ml-auto flex items-center gap-2 pb-1.5 pr-1">
-        <button
-          type="button"
-          onClick={onCloseRail}
-          aria-label="Close rail"
-          className="inline-flex items-center justify-center h-7 w-7 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-3 transition-colors"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onCloseRail}
+        aria-label="Close rail"
+        className="ml-auto inline-flex items-center justify-center size-7 rounded-md text-ink-subtle hover:text-ink hover:bg-surface-2 transition-colors"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }

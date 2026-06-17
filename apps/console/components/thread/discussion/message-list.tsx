@@ -1,10 +1,10 @@
 'use client';
 
 import type { DiscussionMessage } from '@tempo/contracts';
+import { Sparkles } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AttachmentStrip } from '../attachments/attachment-strip';
 import { MarkdownText } from '../markdown-text';
-import { AgentIdentity } from './agent-identity';
 import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function MessageList({
@@ -67,17 +67,15 @@ export function MessageList({
           const dayKey = dayKeyOf(m.created_at);
           const showDay = dayKey !== lastDayKey;
           const isQuestion = m.questions !== null;
-          // Question carriers stand on their own — never share author-grouping
-          // margins with neighbouring bubbles, in either direction.
           const sameAuthor = !showDay && !isQuestion && lastAuthor === m.author;
           lastDayKey = dayKey;
           lastAuthor = isQuestion ? null : m.author;
           const isLive = isQuestion && i === lastIdx;
           const marginClass = isQuestion
-            ? 'mt-[18px]'
+            ? 'mt-6'
             : sameAuthor
-              ? 'mt-1.5'
-              : 'mt-[18px] first:mt-0';
+              ? 'mt-3 first:mt-0'
+              : 'mt-6 first:mt-0';
           return (
             <div key={m.id} className={marginClass}>
               {showDay ? <DayDivider iso={m.created_at} /> : null}
@@ -86,7 +84,7 @@ export function MessageList({
               ) : m.questions !== null ? (
                 <MinimizedQuestionCard message={m} />
               ) : (
-                <MessageRow message={m} showIdentity={!sameAuthor} />
+                <MessageRow message={m} />
               )}
             </div>
           );
@@ -102,58 +100,45 @@ const ENTER_ANIM = {
   animation: 'discussion-message-enter 140ms cubic-bezier(0.22, 1, 0.36, 1) both',
 };
 
-function MessageRow({
-  message,
-  showIdentity,
-}: {
-  message: DiscussionMessage;
-  showIdentity: boolean;
-}) {
-  const timeLabel = formatTime(message.created_at);
+function MessageRow({ message }: { message: DiscussionMessage }) {
+  const isAgent = message.author === 'agent';
   // Question-carrying messages render via LiveQuestionCard / MinimizedQuestionCard;
   // this row only handles text-only messages, so `text` is non-null here.
   const text = message.text ?? '';
 
-  if (message.author === 'agent') {
-    return (
-      <div style={ENTER_ANIM}>
-        {showIdentity ? (
-          <AgentIdentity created_at={message.created_at} />
-        ) : (
-          <time dateTime={message.created_at} className="sr-only">
-            {timeLabel}
-          </time>
-        )}
-        <div className="text-body-sm leading-[1.6] text-ink [overflow-wrap:anywhere]">
-          {text.length > 0 ? <MarkdownText text={text} className="[&_p]:text-body-sm" /> : null}
-          <AttachmentStrip attachments={message.attachments} />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col items-end" style={ENTER_ANIM}>
-      {showIdentity ? (
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <span className="text-micro-uppercase uppercase text-ink-subtle">You</span>
-          <span aria-hidden className="text-micro font-normal text-ink-tertiary tabular-nums">
-            ·
-          </span>
-          <time
-            dateTime={message.created_at}
-            className="text-micro font-normal text-ink-tertiary tabular-nums"
-          >
-            {timeLabel}
-          </time>
+    <div style={ENTER_ANIM}>
+      <div className="flex items-center gap-2 mb-1.5">
+        <div
+          aria-hidden
+          className={`size-6 rounded-full flex-shrink-0 flex items-center justify-center ${
+            isAgent ? 'bg-accent/15 text-accent-deep' : 'bg-surface-3 text-ink-subtle'
+          }`}
+        >
+          {isAgent ? (
+            <Sparkles className="size-3" />
+          ) : (
+            <span className="text-[10px] font-bold leading-none">Y</span>
+          )}
         </div>
-      ) : (
-        <time dateTime={message.created_at} className="sr-only">
-          {timeLabel}
+        <span className={`text-caption font-semibold ${isAgent ? 'text-accent-deep' : 'text-ink'}`}>
+          {isAgent ? 'Agent' : 'You'}
+        </span>
+        <time
+          dateTime={message.created_at}
+          className="text-micro font-normal text-ink-tertiary tabular-nums"
+        >
+          {formatTime(message.created_at)}
         </time>
-      )}
-      <div className="max-w-[85%] rounded-lg rounded-br-xs bg-surface-2 px-3.5 py-2 text-body-sm leading-[1.55] text-ink [overflow-wrap:anywhere]">
-        {text.length > 0 ? <MarkdownText text={text} className="[&_p]:text-body-sm" /> : null}
+      </div>
+      <div
+        className={`text-body-sm leading-[1.65] text-ink [overflow-wrap:anywhere] ${
+          isAgent ? '' : 'bg-stone-100 rounded-lg px-3.5 py-2.5'
+        }`}
+      >
+        {text.length > 0 ? (
+          <MarkdownText text={text} className="[&_p]:text-body-sm [&_p]:leading-[1.65]" />
+        ) : null}
         <AttachmentStrip attachments={message.attachments} />
       </div>
     </div>
@@ -174,7 +159,7 @@ function dayKeyOf(iso: string): string {
   return iso.slice(0, 10);
 }
 
-function formatTime(iso: string): string {
+export function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }

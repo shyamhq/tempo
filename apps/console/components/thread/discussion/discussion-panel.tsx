@@ -32,10 +32,7 @@ export function DiscussionPanel({
     : null;
 
   return (
-    <aside
-      aria-label="Discussion"
-      className="relative flex flex-col h-full min-h-0 bg-canvas overflow-hidden"
-    >
+    <aside aria-label="Discussion" className="relative flex flex-col h-full min-h-0 bg-canvas">
       <MessageList messages={messages} threadId={threadId} emptyState={<EmptyState />} />
       <MessageComposer
         threadId={threadId}
@@ -49,12 +46,11 @@ export function DiscussionPanel({
         <span className="sr-only">. </span>
         general discussion, not tied to a selection
       </p>
-      <ResizeHandle />
     </aside>
   );
 }
 
-function ResizeHandle() {
+export function ResizeHandle() {
   const width = useThreadUi((s) => s.discussionWidth);
   // Action ref is stable for the lifetime of the store — read once instead of
   // taking out a reactive subscription that can never fire.
@@ -127,9 +123,11 @@ function ResizeHandle() {
           setWidth(MAX_DISCUSSION_WIDTH);
         }
       }}
+      data-dragging={dragging ? '' : undefined}
       className="absolute top-0 right-0 h-full w-1.5 -mr-[3px] cursor-col-resize group focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/15 z-10"
     >
-      <div className="absolute inset-y-0 right-[2px] w-px bg-hairline group-hover:bg-accent group-focus-visible:bg-accent transition-colors" />
+      <div className="absolute inset-y-0 right-[2px] w-px bg-hairline group-hover:bg-accent group-focus-visible:bg-accent group-data-[dragging]:bg-accent group-data-[dragging]:w-0.5 transition-colors" />
+      <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 h-10 w-1 rounded-full bg-accent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[dragging]:opacity-100 transition-opacity" />
     </div>
   );
 }
