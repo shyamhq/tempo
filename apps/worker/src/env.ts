@@ -15,6 +15,12 @@ const schema = z.object({
   // sk_hosted_* JWTs at VM-provision time and verifies them on every
   // incoming MCP call from the Sandbox.
   HOSTED_AUTH_SECRET: z.string().min(32),
+  // Console→Worker server-to-server token. The Console's event-log post-hook
+  // POSTs to /hosted/wake with `Authorization: Bearer int_${WORKER_INTERNAL_TOKEN}`
+  // to auto-spawn a Sandbox on wake-eligible Dev events. Distinct from the
+  // other secrets so leaking the worker→sandbox path doesn't grant server-
+  // side trust (or vice versa).
+  WORKER_INTERNAL_TOKEN: z.string().min(32),
   // Token hash pepper — added to SHA-256 input so a stolen DB dump cannot be
   // brute-forced without this value. Rotate requires re-issuing all tokens.
   TOKEN_HASH_PEPPER: z.string().min(32),

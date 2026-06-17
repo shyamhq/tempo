@@ -2,7 +2,7 @@ import { UpdateBlockInput } from '@tempo/contracts/mcp';
 import { NotFoundError, ValidationError } from '@tempo/errors';
 import { updateBlock } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerUpdateBlock(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -14,7 +14,7 @@ export function registerUpdateBlock(
     UpdateBlockInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         await updateBlock(threadId, args.block_id, args.html, 'agent');
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };

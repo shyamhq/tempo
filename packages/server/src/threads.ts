@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { ThreadSummary } from '@tempo/contracts';
+import type { AgentType, ThreadSummary } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import {
   attachments,
@@ -8,13 +8,12 @@ import {
   events,
   plans,
   replies,
-  sessions,
   spaces,
   threads,
   vm_runs,
 } from '@tempo/db/schema';
 import { NotFoundError, ValidationError } from '@tempo/errors';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { appendEvent } from './event-log';
 import { newPlanId, newThreadId } from './ids';
 import { deletePrefix } from './r2';
@@ -24,6 +23,7 @@ export async function createThread(
   spaceId: string,
   title: string,
   description: string,
+  agent_type: AgentType,
 ): Promise<{ thread: ThreadSummary; connect_token: string }> {
   // 24 random bytes = 32 url-safe base64 chars (no padding).
   const token = `tmp_${randomBytes(24).toString('base64url')}`;
@@ -41,11 +41,12 @@ export async function createThread(
       title,
       description,
       connect_token: token,
+      agent_type,
       sort_order,
     });
     await tx.insert(plans).values({ id: newPlanId(), thread_id: id });
   });
-  return { thread: { id, title, description }, connect_token: token };
+  return { thread: { id, title, description, agent_type }, connect_token: token };
 }
 
 export async function getConnectToken(threadId: string): Promise<{ connect_token: string }> {
@@ -59,7 +60,6 @@ export async function getConnectToken(threadId: string): Promise<{ connect_token
 }
 
 export async function listThreads(workspaceId: string, spaceId?: string) {
-  // Single LATERAL join — per-thread "latest session status" without an N+1.
   const filter = spaceId
     ? sql`t.workspace_id = ${workspaceId} AND t.space_id = ${spaceId}`
     : sql`t.workspace_id = ${workspaceId}`;
@@ -67,19 +67,12 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     id: string;
     title: string;
     description: string;
-    status: 'unapproved' | 'approved';
+    agent_type: 'local' | 'hosted';
     updated_at: Date | null;
-    session_status: 'connected' | 'disconnected' | null;
+    agent_last_seen_at: Date | null;
   }>(sql`
-    SELECT t.id, t.title, t.description, t.status, t.updated_at,
-           s.status AS session_status
+    SELECT t.id, t.title, t.description, t.agent_type, t.updated_at, t.agent_last_seen_at
     FROM threads t
-    LEFT JOIN LATERAL (
-      SELECT status FROM sessions
-      WHERE thread_id = t.id
-      ORDER BY created_at DESC
-      LIMIT 1
-    ) s ON true
     WHERE ${filter}
     ORDER BY t.updated_at DESC
   `);
@@ -87,27 +80,15 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     id: r.id,
     title: r.title,
     description: r.description,
-    status: r.status,
-    session_status: r.session_status ?? 'pending',
+    agent_type: r.agent_type,
     updated_at: r.updated_at?.toISOString() ?? null,
+    agent_last_seen_at: r.agent_last_seen_at?.toISOString() ?? null,
   }));
 }
 
 export async function getThread(threadId: string) {
   const [row] = await db.select().from(threads).where(eq(threads.id, threadId)).limit(1);
   return row ?? null;
-}
-
-export async function approveThread(threadId: string) {
-  const prior = await getThread(threadId);
-  if (!prior) throw new NotFoundError('thread_not_found');
-  await db
-    .update(threads)
-    .set({ status: 'approved', updated_at: new Date() })
-    .where(eq(threads.id, threadId));
-  if (prior.status !== 'approved') {
-    await appendEvent(threadId, { kind: 'status_changed', from: prior.status, to: 'approved' });
-  }
 }
 
 export async function deleteThread(threadId: string): Promise<void> {
@@ -134,7 +115,6 @@ export async function deleteThread(threadId: string): Promise<void> {
     await tx.delete(comments).where(eq(comments.thread_id, threadId));
     await tx.delete(discussion_messages).where(eq(discussion_messages.thread_id, threadId));
     await tx.delete(events).where(eq(events.thread_id, threadId));
-    await tx.delete(sessions).where(eq(sessions.thread_id, threadId));
     await tx.delete(vm_runs).where(eq(vm_runs.thread_id, threadId));
     await tx.delete(plans).where(eq(plans.thread_id, threadId));
     await tx.delete(threads).where(eq(threads.id, threadId));
@@ -161,6 +141,7 @@ export async function updateThread(
         id: threads.id,
         title: threads.title,
         description: threads.description,
+        agent_type: threads.agent_type,
         workspace_id: threads.workspace_id,
       })
       .from(threads)
@@ -190,6 +171,7 @@ export async function updateThread(
         id: t.id,
         title: patch.title ?? t.title,
         description: patch.description ?? t.description,
+        agent_type: t.agent_type,
       },
       titleChanged,
     };
@@ -206,71 +188,46 @@ export async function updateThread(
   return result.thread;
 }
 
-export async function reopenThread(threadId: string) {
-  const prior = await getThread(threadId);
-  if (!prior) throw new NotFoundError('thread_not_found');
+// Bumped whenever the Agent (CLI or Hosted runner) touches any Worker route.
+// Console derives presence as `now() - agent_last_seen_at < 60s`. Conditional
+// update — skipped if the column was already touched in the last 10s — caps
+// write volume to ~6 per minute per active Thread regardless of tool-call
+// rate. No row, no sessions table, no in-memory map.
+export async function bumpAgentLastSeen(threadId: string): Promise<void> {
   await db
     .update(threads)
-    .set({ status: 'unapproved', updated_at: new Date() })
-    .where(eq(threads.id, threadId));
-  if (prior.status !== 'unapproved') {
-    await appendEvent(threadId, { kind: 'status_changed', from: prior.status, to: 'unapproved' });
-  }
-}
-
-// Source of truth is the event log — both CLI and hosted runtimes append
-// `session_*` events on lifecycle transitions, but only the CLI/MCP path
-// keeps the `sessions` row's `status` column updated. Reading from `events`
-// keeps the UI in sync with the actual last known state regardless of mode.
-const SESSION_KINDS = [
-  'session_connected',
-  'session_disconnected',
-  'session_initiating',
-  'session_failed',
-] as const;
-type SessionKind = (typeof SESSION_KINDS)[number];
-const KIND_TO_STATUS: Record<SessionKind, 'connected' | 'disconnected' | 'initiating' | 'failed'> =
-  {
-    session_connected: 'connected',
-    session_disconnected: 'disconnected',
-    session_initiating: 'initiating',
-    session_failed: 'failed',
-  };
-
-export async function latestSessionStatus(threadId: string) {
-  const [last] = await db
-    .select({ kind: events.kind })
-    .from(events)
+    .set({ agent_last_seen_at: sql`now()` })
     .where(
       and(
-        eq(events.thread_id, threadId),
-        inArray(events.kind, SESSION_KINDS as unknown as string[]),
+        eq(threads.id, threadId),
+        sql`(${threads.agent_last_seen_at} IS NULL OR ${threads.agent_last_seen_at} < now() - interval '10 seconds')`,
       ),
-    )
-    .orderBy(desc(events.id))
-    .limit(1);
-  if (!last) return 'pending';
-  return KIND_TO_STATUS[last.kind as SessionKind] ?? 'pending';
+    );
 }
 
-// Repo chrome for the Thread header: the most-recent session's repo metadata,
-// or {null, null} if no Agent has ever connected.
-export async function latestAttachedRepo(
+// CLI shutdown signal handler called this — null the column so the Console
+// flips presence to idle immediately on the next SSE delivery, instead of
+// waiting for the 60s window to age out.
+export async function markAgentDisconnected(threadId: string): Promise<void> {
+  await db
+    .update(threads)
+    .set({ agent_last_seen_at: null })
+    .where(eq(threads.id, threadId));
+}
+
+// Dev pressed Stop on the Thread header. Thread-scoped — connected Agent
+// reads `agent_cancel_requested` on its next event drain and aborts the Turn.
+export async function cancelAgentTurn(
   threadId: string,
-): Promise<{ attached_repo_remote: string | null; attached_repo_path: string | null }> {
-  const [s] = await db
-    .select({
-      attached_repo_remote: sessions.attached_repo_remote,
-      attached_repo_path: sessions.attached_repo_path,
-    })
-    .from(sessions)
-    .where(eq(sessions.thread_id, threadId))
-    .orderBy(desc(sessions.created_at))
+): Promise<{ ok: true } | { ok: false; error: 'thread_not_found' }> {
+  const [t] = await db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(eq(threads.id, threadId))
     .limit(1);
-  return {
-    attached_repo_remote: s?.attached_repo_remote ?? null,
-    attached_repo_path: s?.attached_repo_path ?? null,
-  };
+  if (!t) return { ok: false, error: 'thread_not_found' };
+  await appendEvent(threadId, { kind: 'agent_cancel_requested' });
+  return { ok: true };
 }
 
 // Phase 4b: thread-level auth checks. Agent ctx carries workspace_id only;

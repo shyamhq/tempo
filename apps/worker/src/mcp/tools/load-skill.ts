@@ -5,7 +5,7 @@ const LoadSkillInput = z.object({
   name: z.string().min(1),
 });
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerLoadSkill(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -19,7 +19,7 @@ export function registerLoadSkill(
     LoadSkillInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       const body = loadSkill(args.name);
       if (!body) {
         const available = listSkills()

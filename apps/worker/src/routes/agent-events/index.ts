@@ -1,5 +1,5 @@
 import { AgentEventRequest } from '@tempo/contracts/http';
-import { type AppendPayload, appendEvent } from '@tempo/server';
+import { type AppendPayload, appendEvent, markAgentDisconnected } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
 import { touch } from '../../hosted/supervisor';
@@ -35,6 +35,9 @@ export const agentEventsHandler: RequestHandler = async (req, res) => {
   }
 
   try {
+    // CLI explicit goodbye: null the presence column before emitting the event,
+    // so a Console refetch that races the SSE delivery still sees idle.
+    if (event.kind === 'agent_disconnected') await markAgentDisconnected(thread_id);
     await appendEvent(thread_id, event as AppendPayload);
     if (req.caller.kind === 'hosted') touch(thread_id);
     res.status(204).end();

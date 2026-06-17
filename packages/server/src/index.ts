@@ -9,6 +9,5 @@ export * from './mailbox';
 export * from './plan';
 export * from './r2';
 export * from './replies';
-export * from './sessions';
 export * from './threads';
 export * from './trails';

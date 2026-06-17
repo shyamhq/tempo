@@ -13,8 +13,18 @@ import {
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api-client';
 
-export function ConnectButton({ threadId }: { threadId: string }) {
-  const [open, setOpen] = useState(false);
+export function ConnectButton({
+  threadId,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  threadId: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const [copied, setCopied] = useState(false);
 
   // Only fetch when the dialog is open; cache indefinitely — the token is

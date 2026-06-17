@@ -1,10 +1,8 @@
 import { sql } from 'drizzle-orm';
 import {
   bigserial,
-  boolean,
   check,
   doublePrecision,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -30,9 +28,6 @@ export const workspaces = pgTable('workspaces', {
   name: text('name').notNull(),
   clerk_org_id: text('clerk_org_id').notNull().unique(),
   agent_api_key: text('agent_api_key').notNull().unique(),
-  // Slice 2 — gates the Hosted runtime per Workspace. Worker reads this in
-  // the Mailbox enqueue decision; admin UI is a follow-up slice.
-  hosted_enabled: boolean('hosted_enabled').notNull().default(false),
   created_at: timestampDate('created_at'),
 });
 
@@ -58,45 +53,17 @@ export const threads = pgTable('threads', {
     .references(() => spaces.id),
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
-  status: text('status', { enum: ['unapproved', 'approved'] })
-    .notNull()
-    .default('unapproved'),
   connect_token: text('connect_token').notNull(),
+  agent_type: text('agent_type', { enum: ['local', 'hosted'] }).notNull(),
+  // Bumped whenever the Agent (CLI or Hosted runner) hits a Worker route.
+  // Console derives "is the Agent reachable" as (now() - agent_last_seen_at) < 60s.
+  // Single source of truth for presence — no separate sessions table, no
+  // in-memory map. Nullable until the first contact.
+  agent_last_seen_at: nullableTimestamp('agent_last_seen_at'),
   sort_order: doublePrecision('sort_order').notNull().default(0),
   created_at: timestampDate('created_at'),
   updated_at: timestampDate('updated_at'),
 });
-
-export const sessions = pgTable(
-  'sessions',
-  {
-    id: text('id').primaryKey(),
-    thread_id: text('thread_id')
-      .notNull()
-      .references(() => threads.id),
-    status: text('status', { enum: ['pending', 'connected', 'disconnected'] })
-      .notNull()
-      .default('pending'),
-    last_seen_at: timestampDate('last_seen_at'),
-    attached_repo_remote: text('attached_repo_remote'),
-    attached_repo_path: text('attached_repo_path'),
-    // Nullable: only set when the session is established via Worker MCP
-    // (slice 1c-1 onwards). Old Console-routed sessions leave this NULL.
-    mcp_session_id: text('mcp_session_id'),
-    created_at: timestampDate('created_at'),
-  },
-  (t) => [
-    uniqueIndex('idx_sessions_one_connected_per_thread')
-      .on(t.thread_id)
-      .where(sql`${t.status} = 'connected'`),
-    // The MCP transport assigns one UUID per session. Two concurrent
-    // tempo_attach calls with the same id (rapid reconnect) must not both
-    // insert; the partial unique index lets `.onConflictDoNothing()` win.
-    uniqueIndex('idx_sessions_mcp_session_id')
-      .on(t.mcp_session_id)
-      .where(sql`${t.mcp_session_id} IS NOT NULL`),
-  ],
-);
 
 export const plans = pgTable('plans', {
   id: text('id').primaryKey(),

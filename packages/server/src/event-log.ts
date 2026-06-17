@@ -1,9 +1,11 @@
 import type { AttachmentRef, Event } from '@tempo/contracts';
+import { shouldWake } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { newEventId } from '@tempo/db/ids';
-import { events } from '@tempo/db/schema';
+import { events, threads } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { listAttachmentsForParents } from './attachments';
+import { isHostedReadyToWake } from './mailbox';
 
 export type AppendPayload = Event extends infer E
   ? E extends { id: string; created_at: string }
@@ -31,7 +33,44 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
     payload_json: stripAttachmentUrls(event) as unknown as Record<string, unknown>,
     created_at: created_at_date,
   });
+  if (shouldWake(event)) void routeWake(threadId);
   return event;
+}
+
+// Dev wake event landed → if the Thread is Hosted and no Sandbox is alive,
+// fire-and-forget a wake to the Worker. Local Threads are no-ops: the CLI
+// long-poll picks up wake events natively when connected, and the UI banner
+// covers the disconnected case.
+// ponytail: HTTP fire-and-forget. Upgrade to a `pending_wakes` table + worker
+// LISTEN/poll when multi-worker delivery guarantees matter.
+async function routeWake(threadId: string): Promise<void> {
+  try {
+    const [thread] = await db
+      .select({ agent_type: threads.agent_type })
+      .from(threads)
+      .where(eq(threads.id, threadId))
+      .limit(1);
+    if (thread?.agent_type !== 'hosted') return;
+    const { live } = await isHostedReadyToWake(threadId);
+    if (live) return;
+    const workerUrl = process.env.WORKER_URL ?? 'http://localhost:3001';
+    const secret = process.env.WORKER_INTERNAL_TOKEN;
+    if (!secret) {
+      // Misconfigured deployment — auto-wake silently failing would look like
+      // the Worker is healthy but Hosted Threads never start. Surface loudly.
+      console.error('routeWake: WORKER_INTERNAL_TOKEN not set — auto-wake disabled');
+      return;
+    }
+    const resp = await fetch(`${workerUrl}/api/threads/${threadId}/hosted/wake`, {
+      method: 'POST',
+      headers: { authorization: `Bearer int_${secret}` },
+    });
+    if (!resp.ok) {
+      console.error('routeWake: worker rejected wake', { threadId, status: resp.status });
+    }
+  } catch (err) {
+    console.error('routeWake failed', { threadId, err });
+  }
 }
 
 export async function readEventsAfter(threadId: string, cursor: string): Promise<Event[]> {

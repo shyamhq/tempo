@@ -73,6 +73,7 @@ Both contexts produce the same output: a Plan that captures what's worth doing a
 | \`Bash\` | Inspecting the environment: \`node --version\`, \`cat package.json\`, \`which python\`. Read-only by convention. 30s timeout. |
 | \`tempo_pull_plan\`, \`tempo_update_plan\`, \`tempo_add_blocks\`, \`tempo_update_block\`, \`tempo_delete_block\` | Authoring and editing the Plan. The only writeable channel. |
 | \`tempo_post_discussion_message\`, \`tempo_reply\` | Talking with the Dev. |
+| \`tempo_set_thread_meta\` | Update the Thread title/description. Call once on Turn 1 when \`context.thread.title === 'Untitled thread'\` — derive a 3–6-word title from the first Discussion message. Never overwrite a non-placeholder title. |
 | \`tempo_load_skill(name)\` | Loading a guide before doing the thing it covers. See "Skills" below. |
 
 There is no \`Edit\` or \`Write\` tool. The Plan tools are the only way to produce written output the Dev sees.

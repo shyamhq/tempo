@@ -1,38 +1,26 @@
 import type { Event } from '@tempo/contracts';
-import type { TurnHydration } from '@tempo/contracts/http';
 import { shouldWake } from '@tempo/contracts';
+import type { TurnHydration } from '@tempo/contracts/http';
 import { db } from '@tempo/db/client';
-import { events, threads, vm_runs, workspaces } from '@tempo/db/schema';
+import { events, threads, vm_runs } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { listCommentsForThread } from './comments';
 import { listMessagesForThread } from './discussion';
 import { getPlanBlocks } from './plan';
 
 // Hosted Agent runtime helpers — used by the Worker's wake/drain routes and
-// the Console state endpoint. Wake-on-NOTIFY is deliberately not a thing:
-// VMs spin up only from an explicit "Run Hosted Agent" click. No mailbox
-// table, no LISTEN, no auto-spawn hook.
+// the Console state endpoint. Per-Thread `agent_type` decides the runtime;
+// no workspace-level gate. Hosted Threads auto-spawn a Sandbox when a
+// wake-eligible event lands (event-log.ts post-hook fires the wake), and the
+// "Run Hosted Agent" button is the manual fallback for dead VMs.
 
-async function readHostedFlag(threadId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ enabled: workspaces.hosted_enabled })
-    .from(workspaces)
-    .innerJoin(threads, eq(threads.workspace_id, workspaces.id))
-    .where(eq(threads.id, threadId))
-    .limit(1);
-  return row?.enabled ?? false;
-}
-
-// Hosted state snapshot for the Console card: workspace flag + live VM
-// metadata (or null if no Sandbox is currently provisioned).
+// Hosted state snapshot for the Console card: live VM metadata, or null if
+// no Sandbox is currently provisioned.
 // ponytail: vm.ended_at is wallclock-updated by the supervisor; a Worker
 // crash leaves the row open. Add a heartbeat / TTL column when the gap bites.
-export async function getHostedState(threadId: string): Promise<{
-  hosted_enabled: boolean;
-  vm: { sandbox_id: string; started_at: string } | null;
-}> {
-  const enabled = await readHostedFlag(threadId);
-  if (!enabled) return { hosted_enabled: false, vm: null };
+export async function getHostedState(
+  threadId: string,
+): Promise<{ vm: { sandbox_id: string; started_at: string } | null }> {
   const [row] = await db
     .select({
       sandbox_id: vm_runs.sandbox_id,
@@ -42,21 +30,15 @@ export async function getHostedState(threadId: string): Promise<{
     .where(and(eq(vm_runs.thread_id, threadId), isNull(vm_runs.ended_at)))
     .orderBy(desc(vm_runs.started_at))
     .limit(1);
-  if (!row?.sandbox_id) return { hosted_enabled: true, vm: null };
-  return {
-    hosted_enabled: true,
-    vm: { sandbox_id: row.sandbox_id, started_at: row.started_at.toISOString() },
-  };
+  if (!row?.sandbox_id) return { vm: null };
+  return { vm: { sandbox_id: row.sandbox_id, started_at: row.started_at.toISOString() } };
 }
 
-// True when the wake endpoint should refuse to spawn — Hosted is on AND a
-// Sandbox is already alive for this thread.
-export async function isHostedReadyToWake(threadId: string): Promise<{
-  hosted_enabled: boolean;
-  live: boolean;
-}> {
+// True when a Sandbox is already alive for this thread — the wake endpoint
+// and the event-log post-hook both use this to skip a redundant spawn.
+export async function isHostedReadyToWake(threadId: string): Promise<{ live: boolean }> {
   const state = await getHostedState(threadId);
-  return { hosted_enabled: state.hosted_enabled, live: state.vm !== null };
+  return { live: state.vm !== null };
 }
 
 // Everything the runner needs to start a Turn without any MCP round-trips.
@@ -68,7 +50,6 @@ export async function getTurnHydration(threadId: string): Promise<TurnHydration 
     .select({
       title: threads.title,
       description: threads.description,
-      status: threads.status,
     })
     .from(threads)
     .where(eq(threads.id, threadId))

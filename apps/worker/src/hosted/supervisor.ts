@@ -69,7 +69,6 @@ export async function spawnHosted(opts: {
   spawning.add(threadId);
 
   try {
-    await appendEvent(threadId, { kind: 'session_initiating' });
     const run = await provision({ threadId, workspaceId });
     live.set(threadId, { run, expiresTimer: armReapTimer(threadId) });
     log.info(
@@ -84,11 +83,6 @@ export async function spawnHosted(opts: {
     return { status: 'spawned', vm_run_id: run.vm_run_id, sandbox_id: run.sandbox.sandboxId };
   } catch (err) {
     log.error({ err, threadId, event: 'wake:failed' }, 'provision failed');
-    const reason = (err instanceof Error ? err.message : String(err)).slice(0, 200);
-    await appendEvent(threadId, {
-      kind: 'session_failed',
-      reason: `provision_failed: ${reason}`,
-    }).catch((e) => log.warn({ err: e, threadId }, 'failed to post session_failed'));
     throw err;
   } finally {
     spawning.delete(threadId);
@@ -105,9 +99,6 @@ async function reap(threadId: string, reason: string): Promise<void> {
     vm_run_id: entry.run.vm_run_id,
     exit_reason: reason,
   });
-  await appendEvent(threadId, { kind: 'session_disconnected' }).catch((e) =>
-    log.warn({ err: e, threadId }, 'failed to post session_disconnected'),
-  );
 }
 
 export async function stopSupervisor(): Promise<void> {
@@ -133,8 +124,5 @@ export async function startSupervisor(): Promise<void> {
       .update(vm_runs)
       .set({ ended_at: sql`now()`, exit_reason: 'orphaned_by_restart' })
       .where(sql`${vm_runs.id} = ${row.id}`);
-    await appendEvent(row.thread_id, { kind: 'session_disconnected' }).catch((e) =>
-      log.warn({ err: e, threadId: row.thread_id }, 'orphan sweep: append failed'),
-    );
   }
 }

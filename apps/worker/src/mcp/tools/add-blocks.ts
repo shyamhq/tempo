@@ -2,7 +2,7 @@ import { AddBlocksInput } from '@tempo/contracts/mcp';
 import { NotFoundError, ValidationError } from '@tempo/errors';
 import { addBlocks } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerAddBlocks(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -14,7 +14,7 @@ export function registerAddBlocks(
     AddBlocksInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         const result = await addBlocks(
           threadId,

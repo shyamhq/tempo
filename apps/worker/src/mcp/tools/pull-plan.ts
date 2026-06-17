@@ -1,7 +1,7 @@
 import { PullPlanInput } from '@tempo/contracts/mcp';
 import { getPlanBlocks } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerPullPlan(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -13,7 +13,7 @@ export function registerPullPlan(
     PullPlanInput.shape,
     async (_args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       const result = await getPlanBlocks(threadId);
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },

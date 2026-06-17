@@ -308,13 +308,12 @@ async function main(): Promise<void> {
   try {
     await maybeCloneRepo();
   } catch (err) {
-    await postAgentEvent({ kind: 'session_failed', reason: 'repo_clone_failed' });
+    logger.error({ err, threadId: env.threadId }, 'runner: repo_clone_failed');
     throw err;
   }
 
-  // Runner is fully booted — surface the connected state to Console.
-  // (Supervisor.reap emits session_disconnected when the sandbox dies.)
-  await postAgentEvent({ kind: 'session_connected' });
+  // Presence is derived from `threads.agent_last_seen_at`, which gets bumped on
+  // every MCP tool call. No need for a "connected" lifecycle event.
 
   // Initial provider (path: /init) — only used for buildToolset, which reads
   // tool definitions and doesn't actually make a request. Every Turn rebuilds

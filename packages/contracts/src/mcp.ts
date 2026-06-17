@@ -9,17 +9,8 @@ import {
   QuestionInput,
   ReplyId,
   ReplyPayload,
-  ThreadId,
   ThreadSummary,
 } from './primitives';
-
-export const AttachInput = z.object({ thread_id: ThreadId });
-// tempo_attach is now a session-registration handshake only. Full thread state
-// is pre-injected into the agent's --print message by the CLI runner before
-// Claude spawns — no data round-trip needed.
-export const AttachOutput = z.object({
-  thread_id: ThreadId,
-});
 
 export const PullPlanInput = z.object({});
 export const PullPlanOutput = AgentPlanBlocks;
@@ -102,7 +93,6 @@ export const SetThreadMetaInput = z.object({
 export const SetThreadMetaOutput = z.object({ thread: ThreadSummary });
 
 export const McpTool = z.enum([
-  'tempo_attach',
   'tempo_pull_plan',
   'tempo_update_block',
   'tempo_add_blocks',
@@ -117,7 +107,7 @@ export type McpTool = z.infer<typeof McpTool>;
 
 export const McpErrorCode = z.enum([
   'comment_not_found',
-  'session_not_found',
+  'thread_id_required',
   'invalid_cursor',
   'invalid_input',
   'internal_error',

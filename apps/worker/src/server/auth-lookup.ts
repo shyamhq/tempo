@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createClerkClient } from '@clerk/backend';
 import { db } from '@tempo/db/client';
-import { sessions, threads, userTokens, workspaces } from '@tempo/db/schema';
+import { threads, userTokens, workspaces } from '@tempo/db/schema';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { env } from '../env';
 
@@ -100,44 +100,26 @@ export async function assertMembership(
   return { workspaceId: wsRow.id, memberId: match.id };
 }
 
-// Look up a session row by its MCP session id, scoped to the thread.
-export async function getSessionByMcpId(
-  mcpSessionId: string,
-  threadId: string,
-): Promise<{ id: string } | null> {
-  const [row] = await db
-    .select({ id: sessions.id })
-    .from(sessions)
-    .where(and(eq(sessions.mcp_session_id, mcpSessionId), eq(sessions.thread_id, threadId)))
-    .limit(1);
-  return row ?? null;
-}
-
-// Resolves a thread_id from a sticky MCP session UUID. Called by every
-// MCP tool other than tempo_attach (which establishes the mapping).
-// Returns null when no session row exists for this MCP session UUID,
-// which means the Agent never called tempo_attach for this connection.
-export async function getThreadIdForMcpSession(mcpSessionId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ thread_id: sessions.thread_id })
-    .from(sessions)
-    .where(eq(sessions.mcp_session_id, mcpSessionId))
-    .limit(1);
-  return row?.thread_id ?? null;
-}
-
-// Caller-aware threadId resolution. Hosted callers carry threadId in their
-// JWT (cli-auth.ts mints sk_hosted_* with it baked in), so they skip the
-// sticky-session DB lookup entirely. CLI / browser callers still need the
-// session row tempo_attach establishes, because their tokens identify a
-// user, not a thread. Returns null when no thread can be resolved — the
-// tool then surfaces session_not_found to the agent.
+// Caller-aware threadId resolution + authorization. Hosted callers carry the
+// threadId in their JWT; CLI / browser callers pass it on `X-Tempo-Thread-Id`.
+// Runs `authorizeThread` so a forged header can't unlock cross-workspace access.
+// On success, fires the presence bump (`agent_last_seen_at`) since this is the
+// single per-tool entry point that has both the authorized threadId and the
+// signal that the Agent just touched us. Returns null on missing/forbidden,
+// which tools surface as `thread_id_required`.
 export async function resolveThreadIdForCaller(
   caller: import('../auth').Caller,
-  getMcpSessionId: () => string | undefined,
+  headerThreadId: string | undefined,
 ): Promise<string | null> {
-  if (caller.kind === 'hosted') return caller.threadId;
-  const mcpSessionId = getMcpSessionId();
-  if (!mcpSessionId) return null;
-  return getThreadIdForMcpSession(mcpSessionId);
+  const candidate = caller.kind === 'hosted' ? caller.threadId : (headerThreadId ?? null);
+  if (!candidate) return null;
+  try {
+    const { authorizeThread } = await import('../auth');
+    await authorizeThread(caller, candidate);
+  } catch {
+    return null;
+  }
+  const { bumpAgentLastSeen } = await import('@tempo/server');
+  void bumpAgentLastSeen(candidate).catch(() => {});
+  return candidate;
 }

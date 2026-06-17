@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tempo — Agent choice prototypes</title>
+
+<style>
+  :root {
+    --canvas: #ffffff;
+    --surface-2: #f6f7f9;
+    --surface-3: #eff1f4;
+    --ink: #0a0a0a;
+    --ink-muted: #3d3d3d;
+    --ink-subtle: #64748b;
+    --ink-tertiary: #94a3b8;
+    --hairline: #e5e7eb;
+    --hairline-soft: #f0f0f0;
+    --hairline-strong: #d1d5db;
+    --accent: #00d4a4;
+    --accent-deep: #069072;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--surface-3); font-family: var(--font-sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+
+  /* Switcher ─────────────────────────────────────────────────────────────── */
+  .switcher {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--canvas);
+    border-bottom: 1px solid var(--hairline);
+    padding: 12px 24px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .switcher h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .switcher .spacer { flex: 1; }
+  .switcher button {
+    appearance: none; border: 1px solid var(--hairline); background: var(--canvas); color: var(--ink-subtle);
+    font: inherit; font-size: 12px; font-weight: 500;
+    padding: 6px 12px; border-radius: 999px; cursor: pointer; transition: all .15s ease;
+  }
+  .switcher button:hover { color: var(--ink); border-color: var(--ink-tertiary); }
+  .switcher button.active { background: var(--ink); color: var(--canvas); border-color: var(--ink); }
+
+  /* Frame — mimics the real /threads/new shell ─────────────────────────── */
+  .frame {
+    background: var(--canvas);
+    min-height: calc(100vh - 50px);
+    display: flex; flex-direction: column;
+  }
+  .frame-header {
+    flex: none; height: 53px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 22px; border-bottom: 1px solid var(--hairline);
+    font-size: 13px; color: var(--ink-muted);
+  }
+  .frame-header .brand { display: flex; align-items: center; gap: 9px; font-weight: 500; }
+  .frame-header .brand .logo {
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    border-radius: 4px; background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent); font-size: 11px; font-weight: 700;
+  }
+  .frame-header .brand .sep { color: var(--hairline-strong); }
+  .frame-header .brand .crumb { color: var(--ink-tertiary); font-weight: 400; }
+  .frame-header .meta { display: flex; align-items: center; gap: 12px; font-size: 12.5px; color: var(--ink-tertiary); }
+  .frame-header .cancel { color: var(--ink-subtle); text-decoration: none; }
+  .frame-header .cancel:hover { color: var(--ink); }
+
+  .stage {
+    flex: 1; min-height: 0; overflow: auto;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 24px 64px;
+  }
+  .stage-inner { width: 100%; max-width: 680px; display: flex; flex-direction: column; align-items: center; }
+
+  /* New thread eyebrow */
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-tertiary); margin-bottom: 16px;
+  }
+  .eyebrow .spk { color: var(--accent-deep); font-size: 14px; line-height: 1; }
+  .stage h1 {
+    font-size: clamp(28px, 4vw, 40px); font-weight: 600; letter-spacing: -0.02em;
+    line-height: 1.08; margin: 0 0 12px; text-align: center;
+  }
+  .stage .sub {
+    font-size: 16px; line-height: 1.6; color: var(--ink-tertiary);
+    text-align: center; max-width: 46ch; margin: 0 0 28px;
+  }
+
+  /* Compose box */
+  .compose {
+    width: 100%; background: var(--canvas);
+    border: 1px solid var(--hairline); border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02), 0 8px 24px rgba(15,23,42,.04);
+    overflow: hidden;
+  }
+  .compose textarea {
+    display: block; width: 100%; min-height: 132px;
+    padding: 20px 20px 8px; font-family: inherit; font-size: 16px; line-height: 1.6;
+    color: var(--ink); background: transparent; border: 0; resize: none; outline: none;
+  }
+  .compose textarea::placeholder { color: var(--ink-tertiary); }
+  .compose-bar {
+    display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+  }
+  .compose-bar .add {
+    appearance: none; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--hairline);
+    background: var(--canvas); color: var(--ink-subtle); cursor: pointer; font-size: 16px;
+  }
+  .start-btn {
+    appearance: none; height: 38px; padding: 0 14px; border: 0; border-radius: 8px;
+    background: var(--ink); color: var(--canvas);
+    font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 9px;
+  }
+  .start-btn[disabled] { background: var(--surface-2); color: var(--ink-tertiary); cursor: default; }
+  .start-btn kbd {
+    font-family: var(--font-mono); font-size: 11px; padding: 3px 5px; border-radius: 3px;
+    background: color-mix(in srgb, white 15%, transparent); color: white;
+  }
+  .start-btn[disabled] kbd { background: var(--canvas); border: 1px solid var(--hairline); color: var(--ink-tertiary); }
+
+  .hint {
+    margin-top: 18px; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--ink-tertiary);
+  }
+  .hint kbd {
+    font-family: var(--font-mono); font-size: 11px; padding: 2px 5px; border-radius: 3px;
+    background: var(--surface-2); border: 1px solid var(--hairline); color: var(--ink-subtle);
+  }
+
+  /* ───────────────────────────────────────────────────────────────────────
+     Shared agent-choice card (used in all three variants)
+   ───────────────────────────────────────────────────────────────────────── */
+  .choice-card {
+    flex: 1; background: var(--canvas); border: 1.5px solid var(--hairline);
+    border-radius: 12px; padding: 18px; cursor: pointer; transition: all .15s ease;
+    text-align: left; display: flex; flex-direction: column; min-width: 0;
+  }
+  .choice-card:hover { border-color: var(--ink-tertiary); }
+  .choice-card.selected {
+    border-color: var(--accent); background: color-mix(in srgb, var(--accent) 4%, var(--canvas));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+  .choice-card .head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .choice-card .icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-2); color: var(--ink-subtle); font-size: 16px;
+  }
+  .choice-card.selected .icon { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-deep); }
+  .choice-card h3 { margin: 0; font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
+  .choice-card .blurb { font-size: 13px; line-height: 1.55; color: var(--ink-subtle); margin: 4px 0 12px; }
+  .choice-card ul { margin: 0; padding: 0; list-style: none; }
+  .choice-card li {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 12.5px; line-height: 1.5; color: var(--ink-muted); padding: 3px 0;
+  }
+  .choice-card li .dot { color: var(--accent-deep); font-weight: 700; flex-shrink: 0; }
+
+  /* Permanence note — quiet, not alarmist */
+  .permanent-note {
+    font-size: 12px; color: var(--ink-tertiary);
+    margin: 10px 0 22px; text-align: center;
+  }
+
+  /* Shared row for two side-by-side choice cards */
+  .choice-row { display: flex; gap: 12px; width: 100%; }
+
+  /* CLI snippet */
+  .cli {
+    margin-top: 12px; padding: 10px 12px; border-radius: 6px;
+    background: var(--surface-2); border: 1px solid var(--hairline);
+    font-family: var(--font-mono); font-size: 12px; color: var(--ink); overflow-x: auto;
+  }
+  .cli .prompt { color: var(--ink-tertiary); margin-right: 8px; }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     VARIANT A — Choice cards ABOVE the textarea, Hosted default-selected.
+     Decision is made before the user starts typing the brief. Lowest
+     cognitive load — the runner gates everything that follows.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     VARIANT B — Decision modal after Start click.
+     Compose stays clean; Start triggers a blocking modal. The modal owns
+     the immutability messaging at maximum prominence. Risk: extra click
+     for every Thread; users may resent the modal at high volume.
+   ═══════════════════════════════════════════════════════════════════════ */
+  .vb .scrim {
+    position: fixed; inset: 0; background: rgba(10,11,13,.55); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+    opacity: 0; pointer-events: none; transition: opacity .15s ease;
+  }
+  .vb .scrim.open { opacity: 1; pointer-events: auto; }
+  .vb .modal {
+    width: min(560px, calc(100vw - 32px));
+    background: var(--canvas); border-radius: 14px;
+    box-shadow: 0 20px 80px rgba(0,0,0,.25);
+    overflow: hidden; transform: translateY(8px); transition: transform .2s ease;
+  }
+  .vb .scrim.open .modal { transform: translateY(0); }
+  .vb .modal-head { padding: 22px 24px 6px; }
+  .vb .modal-head .immutable { margin: 0 0 12px; }
+  .vb .modal-head h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  .vb .modal-head p { margin: 0; font-size: 13px; color: var(--ink-subtle); line-height: 1.55; }
+  .vb .modal-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 24px 18px; }
+  .vb .modal-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 14px 24px; border-top: 1px solid var(--hairline-soft);
+  }
+  .vb .modal-foot .left { font-size: 12px; color: var(--ink-tertiary); }
+  .vb .modal-foot .btn {
+    appearance: none; border: 0; border-radius: 8px; height: 36px; padding: 0 14px;
+    font: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer;
+  }
+  .vb .modal-foot .btn.ghost { background: transparent; color: var(--ink-subtle); border: 1px solid var(--hairline); }
+  .vb .modal-foot .btn.ghost:hover { color: var(--ink); border-color: var(--ink-tertiary); }
+  .vb .modal-foot .btn.primary { background: var(--ink); color: var(--canvas); }
+  .vb .modal-foot .btn.primary[disabled] { background: var(--surface-2); color: var(--ink-tertiary); cursor: default; }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     VARIANT C — Two-step gate page.
+     Step 1: compose. Hitting Start morphs the screen to step 2 — a full
+     agent-choice page with side-by-side detailed comparison.
+     Most weight on the decision. Risk: feels like a wizard for what could
+     be a one-step task; back/forward needed.
+   ═══════════════════════════════════════════════════════════════════════ */
+  .vc .step-dots { display: inline-flex; gap: 8px; margin-bottom: 14px; }
+  .vc .step-dots span {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--hairline-strong);
+  }
+  .vc .step-dots span.active { background: var(--ink); }
+  .vc .summary {
+    width: 100%; padding: 12px 16px; border: 1px solid var(--hairline); border-radius: 10px;
+    background: var(--surface-2); font-size: 13px; line-height: 1.55; color: var(--ink-muted);
+    margin-bottom: 18px; display: flex; gap: 10px; align-items: flex-start;
+  }
+  .vc .summary .lab { font-weight: 600; color: var(--ink-subtle); white-space: nowrap; }
+  .vc .summary .edit {
+    margin-left: auto; flex-shrink: 0;
+    background: transparent; border: 0; color: var(--ink-subtle); cursor: pointer; font: inherit; font-size: 12px;
+  }
+  .vc .summary .edit:hover { color: var(--ink); text-decoration: underline; }
+  .vc .actions { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 22px; }
+  .vc .actions .back {
+    background: transparent; border: 0; color: var(--ink-subtle); cursor: pointer; font: inherit; font-size: 13px;
+  }
+  .vc .actions .back:hover { color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <h1>Tempo — Agent choice prototypes</h1>
+  <div class="spacer"></div>
+  <button data-v="A" class="active">A — Inline cards</button>
+  <button data-v="B">B — Decision modal</button>
+  <button data-v="C">C — Two-step gate</button>
+</div>
+
+<!-- ═══════════ VARIANT A ═══════════ -->
+<div class="frame va" data-variant="A" style="display: flex;">
+  <div class="frame-header">
+    <div class="brand">
+      <span class="logo">T</span><span>Tempo</span>
+      <span class="sep">/</span><span class="crumb">New thread</span>
+    </div>
+    <div class="meta">
+      <span>Personal</span>
+      <a class="cancel" href="#">Cancel</a>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stage-inner">
+      <span class="eyebrow"><span class="spk">✦</span> New thread</span>
+      <h1>What do you want to plan?</h1>
+      <p class="sub">Describe the change. The Agent reads your codebase and drafts a Plan you and your team can edit together before anything runs.</p>
+
+      <div class="choice-row">
+        <button class="choice-card selected" data-pick="hosted" id="va-hosted">
+          <div class="head">
+            <div class="icon">☁</div>
+            <h3>Hosted agent</h3>
+          </div>
+          <p class="blurb">Runs in a Tempo sandbox that clones your repo.</p>
+          <ul>
+            <li><span class="dot">›</span> Always on — no one's laptop needs to be awake</li>
+            <li><span class="dot">›</span> Tempo clones your repo into an isolated VM</li>
+            <li><span class="dot">›</span> Full repo + filesystem + shell</li>
+          </ul>
+        </button>
+        <button class="choice-card" data-pick="local" id="va-local">
+          <div class="head">
+            <div class="icon">⌘</div>
+            <h3>Local agent</h3>
+          </div>
+          <p class="blurb">Runs on your machine. Code never leaves your laptop.</p>
+          <ul>
+            <li><span class="dot">›</span> Uses your own Claude API key</li>
+            <li><span class="dot">›</span> Full repo + filesystem + shell</li>
+            <li><span class="dot">›</span> Needs <code>npx tempo-agent connect …</code> running</li>
+          </ul>
+        </button>
+      </div>
+      <p class="permanent-note">Tempo runs where you point it — can't switch mid-Thread.</p>
+
+      <div class="compose">
+        <textarea id="va-text" placeholder="Describe the change you want to plan…"></textarea>
+        <div class="compose-bar">
+          <button class="add" type="button">+</button>
+          <button class="start-btn" id="va-start" type="button" disabled>
+            Start thread <kbd>↵</kbd>
+          </button>
+        </div>
+      </div>
+
+      <p class="hint">
+        <kbd>↵</kbd> to start
+        <span style="color: var(--hairline-strong)">·</span>
+        <kbd>⇧</kbd><kbd>↵</kbd> for newline
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ VARIANT B ═══════════ -->
+<div class="frame vb" data-variant="B" style="display: none;">
+  <div class="frame-header">
+    <div class="brand">
+      <span class="logo">T</span><span>Tempo</span>
+      <span class="sep">/</span><span class="crumb">New thread</span>
+    </div>
+    <div class="meta">
+      <span>Personal</span>
+      <a class="cancel" href="#">Cancel</a>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stage-inner">
+      <span class="eyebrow"><span class="spk">✦</span> New thread</span>
+      <h1>What do you want to plan?</h1>
+      <p class="sub">Describe the change. The Agent reads your codebase and drafts a Plan you can edit together before anything runs.</p>
+      <div class="compose">
+        <textarea id="vb-text" placeholder="Describe the change you want to plan…">Add a hosted-AI fallback when the CLI hasn't connected within 60s</textarea>
+        <div class="compose-bar">
+          <button class="add" type="button">+</button>
+          <button class="start-btn" type="button" id="vb-open">Start thread <kbd>↵</kbd></button>
+        </div>
+      </div>
+      <p class="hint">
+        <kbd>↵</kbd> to start
+        <span style="color: var(--hairline-strong)">·</span>
+        <kbd>⇧</kbd><kbd>↵</kbd> for newline
+      </p>
+    </div>
+  </div>
+
+  <div class="scrim" id="vb-scrim">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Where should the Agent run?</h2>
+        <p>Hosted runs in a Tempo sandbox — always on, no laptop needed. Local runs on your machine and your code never leaves it.</p>
+      </div>
+      <div class="modal-body">
+        <button class="choice-card selected" data-pick="hosted" id="vb-hosted">
+          <div class="head">
+            <div class="icon">☁</div>
+            <h3>Hosted agent</h3>
+          </div>
+          <p class="blurb">Runs in a Tempo sandbox that clones your repo. Always on, your laptop can be off.</p>
+        </button>
+        <button class="choice-card" data-pick="local" id="vb-local">
+          <div class="head">
+            <div class="icon">⌘</div>
+            <h3>Local agent</h3>
+          </div>
+          <p class="blurb">Runs on your machine. Code never leaves your laptop — uses your Claude API key. The CLI must stay running.</p>
+          <div class="cli"><span class="prompt">$</span>npx tempo-agent connect &lt;token&gt;</div>
+        </button>
+      </div>
+      <div class="modal-foot">
+        <span class="left">Tempo runs where you point it — can't switch mid-Thread.</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn ghost" id="vb-cancel">Cancel</button>
+          <button class="btn primary" id="vb-confirm" disabled>Create Thread</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ VARIANT C ═══════════ -->
+<div class="frame vc" data-variant="C" style="display: none;">
+  <div class="frame-header">
+    <div class="brand">
+      <span class="logo">T</span><span>Tempo</span>
+      <span class="sep">/</span><span class="crumb">New thread</span>
+    </div>
+    <div class="meta">
+      <span>Personal</span>
+      <a class="cancel" href="#">Cancel</a>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="stage-inner" id="vc-step1">
+      <span class="step-dots"><span class="active"></span><span></span></span>
+      <span class="eyebrow"><span class="spk">✦</span> New thread · step 1 of 2</span>
+      <h1>What do you want to plan?</h1>
+      <p class="sub">Describe the change. The Agent reads your codebase and drafts a Plan you can edit together before anything runs.</p>
+      <div class="compose">
+        <textarea id="vc-text" placeholder="Describe the change you want to plan…">Add a hosted-AI fallback when the CLI hasn't connected within 60s</textarea>
+        <div class="compose-bar">
+          <button class="add" type="button">+</button>
+          <button class="start-btn" type="button" id="vc-next">Next: Pick agent →</button>
+        </div>
+      </div>
+      <p class="hint"><kbd>↵</kbd> to continue</p>
+    </div>
+
+    <div class="stage-inner" id="vc-step2" style="display: none;">
+      <span class="step-dots"><span></span><span class="active"></span></span>
+      <span class="eyebrow"><span class="spk">✦</span> New thread · step 2 of 2</span>
+      <h1 style="font-size: clamp(22px, 3vw, 30px);">Where should the Agent run?</h1>
+      <p class="sub">Pick where this Thread's Agent lives. This is permanent — pick what fits the work.</p>
+
+      <div class="summary">
+        <span class="lab">Thread:</span>
+        <span id="vc-summary">Add a hosted-AI fallback when the CLI hasn't connected within 60s</span>
+        <button class="edit" id="vc-edit">Edit</button>
+      </div>
+
+      <div class="choice-row">
+        <button class="choice-card selected" data-pick="hosted" id="vc-hosted">
+          <div class="head">
+            <div class="icon">☁</div>
+            <h3>Hosted agent</h3>
+          </div>
+          <p class="blurb">Runs in a Tempo sandbox that clones your repo on demand.</p>
+          <ul>
+            <li><span class="dot">›</span> Always on — no one's laptop needs to be awake</li>
+            <li><span class="dot">›</span> Tempo spins up an isolated VM and clones your repo</li>
+            <li><span class="dot">›</span> Full shell + filesystem inside the VM</li>
+            <li><span class="dot">›</span> No CLI to install or keep running</li>
+          </ul>
+        </button>
+        <button class="choice-card" data-pick="local" id="vc-local">
+          <div class="head">
+            <div class="icon">⌘</div>
+            <h3>Local agent</h3>
+          </div>
+          <p class="blurb">Runs on your machine. Code never leaves your laptop.</p>
+          <ul>
+            <li><span class="dot">›</span> Uses your own Claude API key</li>
+            <li><span class="dot">›</span> Full repo + filesystem + shell access</li>
+            <li><span class="dot">›</span> Laptop must stay awake while the Agent works</li>
+            <li><span class="dot">›</span> Needs the Tempo CLI running</li>
+          </ul>
+          <div class="cli" style="margin-top: 14px;"><span class="prompt">$</span>npx tempo-agent connect &lt;token&gt;</div>
+        </button>
+      </div>
+
+      <p class="permanent-note">Tempo runs where you point it — can't switch mid-Thread.</p>
+
+      <div class="actions">
+        <button class="back" id="vc-back">← Back</button>
+        <button class="start-btn" id="vc-create" disabled>Create Thread <kbd>↵</kbd></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ─── Switcher ─────────────────────────────────────────────────────────
+  const frames = [...document.querySelectorAll('.frame')];
+  const buttons = [...document.querySelectorAll('.switcher button')];
+  const showVariant = (v) => {
+    frames.forEach((f) => (f.style.display = f.dataset.variant === v ? 'flex' : 'none'));
+    buttons.forEach((b) => b.classList.toggle('active', b.dataset.v === v));
+  };
+  buttons.forEach((b) => b.addEventListener('click', () => showVariant(b.dataset.v)));
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
+    const cur = buttons.findIndex((b) => b.classList.contains('active'));
+    if (e.key === 'ArrowRight') buttons[(cur + 1) % buttons.length].click();
+    if (e.key === 'ArrowLeft') buttons[(cur - 1 + buttons.length) % buttons.length].click();
+  });
+
+  // ─── A — cards above textarea, Hosted pre-selected ────────────────────
+  const vaText = document.getElementById('va-text');
+  const vaStart = document.getElementById('va-start');
+  const vaLocal = document.getElementById('va-local');
+  const vaHosted = document.getElementById('va-hosted');
+  let vaPick = 'hosted';
+  const vaSync = () => { vaStart.disabled = vaText.value.trim().length === 0; };
+  vaText.addEventListener('input', vaSync);
+  const vaSet = (p) => {
+    vaPick = p;
+    vaLocal.classList.toggle('selected', p === 'local');
+    vaHosted.classList.toggle('selected', p === 'hosted');
+  };
+  vaLocal.addEventListener('click', () => vaSet('local'));
+  vaHosted.addEventListener('click', () => vaSet('hosted'));
+
+  // ─── B — decision modal, Hosted pre-selected ──────────────────────────
+  const vbScrim = document.getElementById('vb-scrim');
+  const vbOpen = document.getElementById('vb-open');
+  const vbCancel = document.getElementById('vb-cancel');
+  const vbConfirm = document.getElementById('vb-confirm');
+  const vbLocal = document.getElementById('vb-local');
+  const vbHosted = document.getElementById('vb-hosted');
+  let vbPick = 'hosted';
+  vbConfirm.disabled = false;
+  vbOpen.addEventListener('click', () => vbScrim.classList.add('open'));
+  vbCancel.addEventListener('click', () => { vbScrim.classList.remove('open'); });
+  const vbSet = (p) => {
+    vbPick = p;
+    vbLocal.classList.toggle('selected', p === 'local');
+    vbHosted.classList.toggle('selected', p === 'hosted');
+    vbConfirm.disabled = !p;
+  };
+  vbLocal.addEventListener('click', () => vbSet('local'));
+  vbHosted.addEventListener('click', () => vbSet('hosted'));
+
+  // ─── C — two-step gate ────────────────────────────────────────────────
+  const vcStep1 = document.getElementById('vc-step1');
+  const vcStep2 = document.getElementById('vc-step2');
+  const vcText = document.getElementById('vc-text');
+  const vcNext = document.getElementById('vc-next');
+  const vcBack = document.getElementById('vc-back');
+  const vcEdit = document.getElementById('vc-edit');
+  const vcSummary = document.getElementById('vc-summary');
+  const vcLocal = document.getElementById('vc-local');
+  const vcHosted = document.getElementById('vc-hosted');
+  const vcCreate = document.getElementById('vc-create');
+  let vcPick = 'hosted';
+  vcCreate.disabled = false;
+  vcNext.addEventListener('click', () => {
+    vcSummary.textContent = vcText.value.trim() || '(no description)';
+    vcStep1.style.display = 'none';
+    vcStep2.style.display = 'flex';
+  });
+  vcBack.addEventListener('click', () => { vcStep1.style.display = 'flex'; vcStep2.style.display = 'none'; });
+  vcEdit.addEventListener('click', () => { vcStep1.style.display = 'flex'; vcStep2.style.display = 'none'; });
+  const vcSet = (p) => {
+    vcPick = p;
+    vcLocal.classList.toggle('selected', p === 'local');
+    vcHosted.classList.toggle('selected', p === 'hosted');
+    vcCreate.disabled = !p;
+  };
+  vcLocal.addEventListener('click', () => vcSet('local'));
+  vcHosted.addEventListener('click', () => vcSet('hosted'));
+</script>
+
+</body>
+</html>

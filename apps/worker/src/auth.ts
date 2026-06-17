@@ -17,14 +17,18 @@ import {
 
 export { ForbiddenError };
 
-// The four Bearer flavors Worker accepts, after middleware identification.
+// The Bearer flavors Worker accepts, after middleware identification.
 // Routes never branch on `kind` — they call authorizeThread / authorizeComment
 // which folds the dispatch into one place.
+// `internal` is the Console-server caller — used by the event-log post-hook
+// to auto-spawn a Sandbox on Dev wake events. Trusted to any Thread (no
+// workspace check) because it's gated by the shared WORKER_INTERNAL_TOKEN.
 export type Caller =
   | { kind: 'agent'; workspaceId: string }
   | { kind: 'cli'; userId: string }
   | { kind: 'browser'; userId: string }
-  | { kind: 'hosted'; threadId: string; workspaceId: string; sessionId: string };
+  | { kind: 'hosted'; threadId: string; workspaceId: string; sessionId: string }
+  | { kind: 'internal' };
 
 declare global {
   namespace Express {
@@ -51,6 +55,11 @@ async function identify(header: string | undefined): Promise<Caller> {
     const row = await lookupUserByToken(token);
     if (!row) throw new ForbiddenError('bad_user_token');
     return { kind: 'cli', userId: row.user_id };
+  }
+
+  if (token.startsWith('int_')) {
+    if (token === `int_${env.WORKER_INTERNAL_TOKEN}`) return { kind: 'internal' };
+    throw new ForbiddenError('bad_internal_token');
   }
 
   if (token.startsWith('sk_hosted_')) {
@@ -96,15 +105,16 @@ async function identify(header: string | undefined): Promise<Caller> {
 // - agent: thread.workspace_id must equal caller.workspaceId (the agent key
 //   is workspace-scoped; cross-workspace use is rejected).
 // - cli/browser: delegates to assertMembership (DB + Clerk SDK).
+// - internal: trusted server-to-server, scope is the Thread's workspace.
 export async function authorizeThread(caller: Caller, threadId: string): Promise<string> {
-  if (caller.kind === 'agent') {
+  if (caller.kind === 'agent' || caller.kind === 'internal') {
     const [thread] = await db
       .select({ workspace_id: threads.workspace_id })
       .from(threads)
       .where(eq(threads.id, threadId))
       .limit(1);
     if (!thread) throw new ForbiddenError('thread_not_found');
-    if (thread.workspace_id !== caller.workspaceId) {
+    if (caller.kind === 'agent' && thread.workspace_id !== caller.workspaceId) {
       throw new ForbiddenError('cross_workspace');
     }
     return thread.workspace_id;
@@ -194,12 +204,15 @@ export const ensureCommentAccess: RequestHandler<{ id: string }> = async (req, r
 };
 
 // SSE and other user-facing routes — reject any non-User caller. Hosted
-// is also rejected (a Sandbox-side agent has no business reading the SSE
-// feed; its wake-up channel is Mailbox). Name kept as `rejectAgent` for
-// the one mount site; rename to `rejectNonUser` when a third non-User
-// kind appears.
+// and internal are also rejected on user-only paths (Sandbox agents have no
+// business reading the SSE feed, and server-to-server callers don't reach
+// for it either). The wake route uses its own per-kind allowlist.
 export const rejectAgent: RequestHandler = (req, res, next) => {
-  if (req.caller.kind === 'agent' || req.caller.kind === 'hosted') {
+  if (
+    req.caller.kind === 'agent' ||
+    req.caller.kind === 'hosted' ||
+    req.caller.kind === 'internal'
+  ) {
     res.status(403).json({ error: 'forbidden' });
     return;
   }

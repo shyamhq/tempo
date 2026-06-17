@@ -3,7 +3,7 @@ import { longPoll } from '@tempo/server';
 
 const MAX_WAIT_SECONDS = 25;
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerPoll(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -15,7 +15,7 @@ export function registerPoll(
     PollInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       const result = await longPoll(threadId, args.cursor, MAX_WAIT_SECONDS);
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },

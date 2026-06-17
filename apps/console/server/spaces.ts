@@ -6,7 +6,6 @@ import {
   events,
   plans,
   replies,
-  sessions,
   spaces,
   threads,
 } from '@tempo/db/schema';
@@ -96,7 +95,6 @@ export async function deleteSpace(spaceId: string, workspaceId: string): Promise
       await tx.delete(comments).where(inArray(comments.thread_id, threadIds));
       await tx.delete(discussion_messages).where(inArray(discussion_messages.thread_id, threadIds));
       await tx.delete(events).where(inArray(events.thread_id, threadIds));
-      await tx.delete(sessions).where(inArray(sessions.thread_id, threadIds));
       await tx.delete(plans).where(inArray(plans.thread_id, threadIds));
       await tx.delete(threads).where(inArray(threads.id, threadIds));
     }

@@ -2,7 +2,7 @@ import { UpdatePlanInput } from '@tempo/contracts/mcp';
 import { ConflictError, ValidationError } from '@tempo/errors';
 import { updatePlan } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerUpdatePlan(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -14,7 +14,7 @@ export function registerUpdatePlan(
     UpdatePlanInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         const result = await updatePlan(threadId, args.html, 'agent');
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ids: result.ids }) }] };

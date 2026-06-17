@@ -3,7 +3,6 @@ import { latestEventId, readEventsAfter } from './event-log';
 
 const POLL_INTERVAL_MS = 500;
 const SSE_HEARTBEAT_MS = 25_000;
-const PRESENCE_CHECK_MS = 5_000;
 
 export async function longPoll(
   threadId: string,
@@ -25,15 +24,7 @@ export async function longPoll(
   }
 }
 
-// `isFresh` is a process-scoped lookup the caller injects. When omitted
-// the SSE stream skips presence frames entirely — the contract is "ask
-// or don't ask," never "guess." Worker passes apps/worker presence.isFresh;
-// other callers (none today) pay no presence cost.
-export function sseStream(
-  threadId: string,
-  cursor: string,
-  opts: { isFresh?: (threadId: string) => boolean } = {},
-): Response {
+export function sseStream(threadId: string, cursor: string): Response {
   const encoder = new TextEncoder();
   let closed = false;
   let current = cursor;
@@ -51,19 +42,8 @@ export function sseStream(
 
       const heartbeat = setInterval(() => enqueue(`: ping\n\n`), SSE_HEARTBEAT_MS);
 
-      let lastFresh: boolean | null = null;
-      let nextPresenceAt = 0;
-
       try {
         while (!closed) {
-          if (opts.isFresh && Date.now() >= nextPresenceAt) {
-            nextPresenceAt = Date.now() + PRESENCE_CHECK_MS;
-            const fresh = opts.isFresh(threadId);
-            if (fresh !== lastFresh) {
-              enqueue(`event: presence\ndata: ${JSON.stringify({ fresh })}\n\n`);
-              lastFresh = fresh;
-            }
-          }
           const evs = await readEventsAfter(threadId, current);
           for (const e of evs) {
             enqueue(`event: ${e.kind}\ndata: ${JSON.stringify(e)}\n\n`);

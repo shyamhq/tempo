@@ -3,19 +3,20 @@
 import { CommentsExtension } from '@blocknote/core/comments';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { GetThreadResponse } from '@tempo/contracts/http';
-import { ArrowLeft, Check, GitBranch, Loader2, RefreshCcw, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, Check, Loader2, RefreshCcw, Sparkles, X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { z } from 'zod';
 import { useShallow } from 'zustand/react/shallow';
 import { AgentTrails } from '@/components/thread/agent-trails';
-import { ConnectButton } from '@/components/thread/connect-button';
 import { DiscussionButton } from '@/components/thread/discussion/discussion-button';
 import { DiscussionPanel, ResizeHandle } from '@/components/thread/discussion/discussion-panel';
 import { PlanCommentGutter } from '@/components/thread/editor/plan-comment-gutter';
 import type { PlanEditorHandle } from '@/components/thread/editor/plan-editor';
 import { HostedAgentControl } from '@/components/thread/hosted-agent-control';
+import { LocalDisconnectedBanner } from '@/components/thread/local-disconnected-banner';
 
 const PlanEditor = dynamic(
   () => import('@/components/thread/editor/plan-editor').then((m) => m.PlanEditor),
@@ -25,9 +26,7 @@ const PlanEditor = dynamic(
 import { useAuth } from '@clerk/nextjs';
 import { type SaveStatus, usePlanAutoSave } from '@/components/thread/editor/use-plan-auto-save';
 import { HandoffBanner } from '@/components/thread/handoff-banner';
-import { RecheckPlanButton } from '@/components/thread/recheck-plan-button';
-import { Button } from '@/components/ui/button';
-import { useLiveActivityGroup, useThreadEvents } from '@/hooks/use-thread-events';
+import { useThreadEvents } from '@/hooks/use-thread-events';
 import { useWorkerApi } from '@/hooks/use-worker-api';
 import { api, WORKER_URL } from '@/lib/api-client';
 import { useThreadUi } from '@/store/thread-ui';
@@ -68,6 +67,10 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     queryFn: () => api.getThread(threadId),
     initialData: initial,
     staleTime: 30_000,
+    // Refresh agent_last_seen_at so the presence chip reflects ongoing CLI
+    // long-poll bumps. SSE pushes plan/comment/discussion updates surgically,
+    // but the column ages out without a refetch. 30s matches staleTime.
+    refetchInterval: 30_000,
   });
 
   const [editorHandle, setEditorHandle] = useState<PlanEditorHandle | null>(null);
@@ -132,8 +135,24 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   }, [planUpdatedAt]);
 
   const view = data ?? initial;
-  const approved = view.status === 'approved';
-  const agentPresent = useLiveActivityGroup(threadId).agentPresent;
+  // Single source of truth for "is the Agent reachable" — bumped server-side
+  // on every MCP call / long-poll. 60s window matches the Worker's heartbeat
+  // budget (CLI long-polls cycle every ~25s; 60s gives 2× safety).
+  const agentPresent = useAgentPresence(view.agent_last_seen_at);
+
+  // Connect dialog state is lifted so the LocalDisconnectedBanner's "Connect"
+  // CTA can open the same dialog the header button does, and so the
+  // ?connect=1 query param (set by NewThreadCompose on Local creation) can
+  // auto-open on first mount and then be stripped.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [connectOpen, setConnectOpen] = useState(() => searchParams.get('connect') === '1');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: strip-once on mount
+  useEffect(() => {
+    if (searchParams.get('connect') === '1') {
+      router.replace(`/threads/${threadId}`);
+    }
+  }, []);
 
   const persistPmJson = useCallback(
     async (pmJson: unknown) => {
@@ -192,7 +211,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     getPmJson: () => editorHandle?.getPmJson() ?? null,
     persist: persistPmJson,
     unloadBeacon,
-    readOnly: approved,
   });
 
   // Initial load — one-shot when the editor handle and pm_json are both
@@ -210,13 +228,6 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     pmJsonAppliedRef.current = true;
     setPmJsonApplied(true);
   }, [editorHandle, view]);
-
-  const approve = async () => {
-    await api.approveThread(threadId);
-  };
-  const reopen = async () => {
-    await api.reopenThread(threadId);
-  };
 
   const getPlanMarkdown = useCallback(async (): Promise<string> => {
     if (!editorHandle) return '';
@@ -274,7 +285,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   }, [discussionOpen, closeDiscussion]);
 
   return (
-    <div className="min-h-dvh">
+    <div
+      className={
+        view.plan.body === null ? 'h-dvh flex flex-col overflow-hidden' : 'min-h-dvh flex flex-col'
+      }
+    >
       <header className="sticky top-0 z-20 border-b border-hairline bg-canvas/85 backdrop-blur">
         <div className="px-6 h-14 flex items-center gap-3">
           <Link href="/" className="text-ink-subtle hover:text-ink" aria-label="Back to Threads">
@@ -282,44 +297,34 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </Link>
           <div className="flex items-center gap-3 min-w-0">
             <h1 className="font-display text-sm font-semibold truncate">{view.thread.title}</h1>
-            {approved ? null : <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />}
+            <PlanSaveStatus status={saveStatus} lastSavedAt={lastSavedAt} />
           </div>
           <div className="flex-1" />
-          <RepoChip remote={view.attached_repo_remote} path={view.attached_repo_path} />
-          <div className="w-px h-5 bg-hairline mx-1" />
-          {approved ? null : (
-            <RecheckPlanButton threadId={threadId} sessionStatus={view.session_status} />
-          )}
-          <HostedAgentControl
-            threadId={threadId}
-            sessionStatus={view.session_status}
-            cliConnected={agentPresent === true}
-          />
-          <ConnectButton threadId={threadId} />
-          {approved ? (
-            <Button variant="ghost" onClick={reopen}>
-              Reopen
-            </Button>
-          ) : (
-            <Button variant="primary" onClick={approve}>
-              Approve
-            </Button>
-          )}
+          {view.thread.agent_type === 'hosted' ? (
+            <HostedAgentControl
+              threadId={threadId}
+              agentType={view.thread.agent_type}
+              agentPresent={agentPresent}
+            />
+          ) : null}
         </div>
       </header>
 
-      {view.plan.body === null && !approved ? (
+      {view.thread.agent_type === 'local' && !agentPresent ? (
+        <LocalDisconnectedBanner
+          threadId={threadId}
+          connectOpen={connectOpen}
+          onConnectOpenChange={setConnectOpen}
+        />
+      ) : null}
+
+      {view.plan.body === null ? (
         // Pre-Plan phase: there's no artifact yet, so the conversation is the
-        // page. Show DiscussionPanel centered at chat-panel width; the rail
-        // grid + plan column + floating DiscussionButton FAB are all
-        // suppressed below.
-        <div className="px-4 py-6 flex justify-center animate-in fade-in duration-300">
-          <div className="w-full max-w-4xl h-[calc(100dvh-7rem)] flex flex-col">
-            <DiscussionPanel
-              threadId={threadId}
-              messages={view.discussion.messages}
-              approved={approved}
-            />
+        // page. Fill remaining viewport — flex-1 + min-h-0 lets the message
+        // list scroll internally without the page itself overflowing.
+        <div className="flex-1 min-h-0 flex justify-center px-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-4xl min-h-0 flex flex-col">
+            <DiscussionPanel threadId={threadId} messages={view.discussion.messages} />
           </div>
         </div>
       ) : (
@@ -346,62 +351,49 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
                 {activeRailTab === 'comment' && enlargedCommentId !== null ? (
                   <div ref={setPanelMount} className="h-full overflow-hidden" />
                 ) : (
-                  <DiscussionPanel
-                    threadId={threadId}
-                    messages={view.discussion.messages}
-                    approved={approved}
-                  />
+                  <DiscussionPanel threadId={threadId} messages={view.discussion.messages} />
                 )}
               </div>
             </aside>
           ) : null}
 
           <section className="min-h-[calc(100dvh-7rem)] flex flex-col">
-            {approved ? <HandoffBanner getPlanMarkdown={getPlanMarkdown} /> : null}
-            {view.plan.body === null ? (
-              <EmptyPlanState />
-            ) : (
-              <div
-                className={`rounded-md transition-shadow duration-700 ${
-                  planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
-                }`}
-              >
-                <div ref={planColumnRef} data-plan-column className="flex items-start">
-                  {/* The editor is mounted unconditionally so onReady can fire
+            <HandoffBanner getPlanMarkdown={getPlanMarkdown} />
+            <div
+              className={`rounded-md transition-shadow duration-700 ${
+                planUpdatedAt ? 'ring-2 ring-accent/40' : 'ring-0'
+              }`}
+            >
+              <div ref={planColumnRef} data-plan-column className="flex items-start">
+                {/* The editor is mounted unconditionally so onReady can fire
                     and we can call applyPmJson — but we hide it visually until
                     the initial PM JSON has been applied. Avoids the empty-doc
                     flash that would otherwise appear during the two-step init. */}
-                  <div className={`flex-1 min-w-0 ${pmJsonApplied ? '' : 'invisible'}`}>
-                    <PlanEditor
-                      threadId={threadId}
-                      comments={view.comments}
-                      onUserEdit={notifyEdit}
-                      onReady={setEditorHandle}
-                      readOnly={approved}
-                    />
-                  </div>
-                  {pmJsonApplied ? (
-                    <PlanCommentGutter
-                      comments={view.comments}
-                      editorHandle={editorHandle}
-                      anchorRef={planColumnRef}
-                    />
-                  ) : null}
+                <div className={`flex-1 min-w-0 ${pmJsonApplied ? '' : 'invisible'}`}>
+                  <PlanEditor
+                    threadId={threadId}
+                    comments={view.comments}
+                    onUserEdit={notifyEdit}
+                    onReady={setEditorHandle}
+                  />
                 </div>
-                {pmJsonApplied ? null : <EmptyPlanState />}
+                {pmJsonApplied ? (
+                  <PlanCommentGutter
+                    comments={view.comments}
+                    editorHandle={editorHandle}
+                    anchorRef={planColumnRef}
+                  />
+                ) : null}
               </div>
-            )}
+              {pmJsonApplied ? null : <EmptyPlanState />}
+            </div>
           </section>
         </div>
       )}
 
       {/* AgentTrails is position:fixed and lives outside the layout branches
           so it stays visible in both Pre-Plan and Plan phases. */}
-      <AgentTrails
-        threadId={threadId}
-        sessionStatus={view.session_status}
-        failedReason={view.session_failed_reason ?? null}
-      />
+      <AgentTrails threadId={threadId} agentPresent={agentPresent} />
 
       {planUpdatedAt ? (
         <div
@@ -413,7 +405,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      {view.plan.body === null && !approved ? null : (
+      {view.plan.body === null ? null : (
         <DiscussionButton
           open={discussionOpen}
           unreadCount={unreadCount}
@@ -548,27 +540,17 @@ function EmptyPlanState() {
   );
 }
 
-function RepoChip({ remote, path }: { remote: string | null; path: string | null }) {
-  if (!remote && !path) return null;
-  const label = remote ? shortRemote(remote) : (path ?? '');
-  const title = [remote, path].filter(Boolean).join(' — ');
-  return (
-    <span
-      title={title}
-      className="inline-flex items-center gap-1 text-xs text-ink-subtle px-2 py-0.5 rounded border border-hairline max-w-[16rem] truncate"
-    >
-      <GitBranch className="h-3 w-3 shrink-0" />
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
-function shortRemote(remote: string): string {
-  try {
-    const u = new URL(remote);
-    const seg = u.pathname.replace(/^\/+|\.git$/g, '');
-    return seg || u.hostname;
-  } catch {
-    return remote;
-  }
+// 60s window — see threads.agent_last_seen_at comment in db schema. The hook
+// also ticks every second so the boolean flips automatically without a fresh
+// query, matching how the user expects a stale value to age out.
+const PRESENCE_WINDOW_MS = 60_000;
+const PRESENCE_TICK_MS = 5_000;
+function useAgentPresence(iso: string | null): boolean {
+  const present = iso !== null && Date.now() - new Date(iso).getTime() < PRESENCE_WINDOW_MS;
+  const [, force] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => force((n) => n + 1), PRESENCE_TICK_MS);
+    return () => clearInterval(t);
+  }, []);
+  return present;
 }

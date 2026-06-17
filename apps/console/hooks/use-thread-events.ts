@@ -25,10 +25,6 @@ export type LiveActivity = {
   // landed since). The widget shows a spinner on the latest tool while
   // turnActive; on Stop it becomes a dot — the rest of the card stays.
   turnActive: boolean;
-  // Derived from the server's ephemeral `presence` SSE frames (which read the
-  // connected session's last_seen_at). `null` = not yet observed (treat as
-  // present); `true`/`false` = explicit signal. Never persisted server-side.
-  agentPresent: boolean | null;
 };
 
 // Activity stream cap — keeps the in-memory list bounded if Claude bursts
@@ -38,7 +34,6 @@ const EMPTY_ACTIVITY: LiveActivity = {
   todos: null,
   entries: [],
   turnActive: false,
-  agentPresent: null,
 };
 
 export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
@@ -106,20 +101,6 @@ export function useThreadEvents(
           if (!res.ok) throw new Error(`SSE open failed: ${res.status}`);
         },
         onmessage: (msg) => {
-          if (msg.event === 'presence') {
-            try {
-              const data = JSON.parse(msg.data);
-              if (typeof data?.fresh !== 'boolean') return;
-              qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
-                ...(prev ?? EMPTY_ACTIVITY),
-                agentPresent: data.fresh,
-              }));
-            } catch {
-              // ignore malformed frame
-            }
-            return;
-          }
-          // All other events carry a typed Event payload.
           if (!msg.event || !EventKind.options.includes(msg.event as z.infer<typeof EventKind>))
             return;
           try {
@@ -165,9 +146,27 @@ function apply(
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;
+    // Any agent-authored event is proof of life — refresh the cached presence
+    // timestamp so the chip doesn't say "idle" while a tool call is mid-flight.
+    // The 30s refetch backstop covers quiet-but-connected periods; this covers
+    // active-but-not-yet-refetched windows. `agent_cancel_requested` is
+    // dev-authored (Stop button) and `agent_disconnected` is the goodbye —
+    // both excluded here; the latter is handled explicitly below.
+    const agentAlive =
+      ev.kind === 'agent_tool_use' ||
+      ev.kind === 'agent_tool_failed' ||
+      ev.kind === 'agent_narration' ||
+      ev.kind === 'agent_thought' ||
+      ev.kind === 'agent_todos_updated' ||
+      ev.kind === 'agent_mode_changed' ||
+      ev.kind === 'agent_turn_ended' ||
+      ev.kind === 'plan_edited_by_agent' ||
+      (ev.kind === 'reply_added' && ev.reply.author === 'agent') ||
+      (ev.kind === 'discussion_message_posted' && ev.message.author === 'agent');
     const next: ThreadView = {
       ...prev,
       last_event_id: ev.id,
+      agent_last_seen_at: agentAlive ? new Date().toISOString() : prev.agent_last_seen_at,
     };
     switch (ev.kind) {
       case 'comment_added':
@@ -217,14 +216,10 @@ function apply(
           ...next,
           comments: next.comments.filter((c) => c.id !== ev.comment_id),
         };
-      case 'session_connected':
-        return { ...next, session_status: 'connected', session_failed_reason: null };
-      case 'session_disconnected':
-        return { ...next, session_status: 'disconnected' };
-      case 'session_initiating':
-        return { ...next, session_status: 'initiating', session_failed_reason: null };
-      case 'session_failed':
-        return { ...next, session_status: 'failed', session_failed_reason: ev.reason };
+      case 'agent_disconnected':
+        // CLI clean shutdown — null the presence so the UI flips to idle
+        // immediately instead of waiting for the 60s window to age out.
+        return { ...next, agent_last_seen_at: null };
       case 'discussion_message_posted': {
         if (next.discussion.messages.some((m) => m.id === ev.message.id)) return next;
         return {
@@ -350,13 +345,10 @@ function applyLiveActivity(
 }
 
 // Dev-side trigger: clear stale Agent state and mount the widget right away.
-// Preserves agentPresent (it's an independent signal from the heartbeat path,
-// not part of the turn's tool stream).
-function devTriggered(prev: LiveActivity | undefined): LiveActivity {
+function devTriggered(): LiveActivity {
   return {
     todos: null,
     entries: [],
     turnActive: true,
-    agentPresent: prev?.agentPresent ?? null,
   };
 }

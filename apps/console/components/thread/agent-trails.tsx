@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import type { SessionStatus, Trail, TrailStep } from '@tempo/contracts';
+import type { Trail, TrailStep } from '@tempo/contracts';
 import { Brain, ChevronDown, ChevronUp, Maximize2, Minus, Wrench, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveActivityGroup } from '@/hooks/use-thread-events';
@@ -10,30 +10,15 @@ import { cn } from '@/lib/utils';
 
 type Mode = 'chip' | 'card' | 'drawer';
 
-type Presence = 'connected' | 'starting' | 'failed' | 'idle';
-
-function presenceFromSession(status: SessionStatus): Presence {
-  // `pending` means no Agent has ever attached for this Thread — distinct from
-  // `initiating`, which fires when the Hosted runner auto-wakes or the CLI
-  // starts handshaking. Don't pulse the chip until something is actually
-  // coming up.
-  if (status === 'connected') return 'connected';
-  if (status === 'initiating') return 'starting';
-  if (status === 'failed') return 'failed';
-  return 'idle';
-}
+type Presence = 'connected' | 'idle';
 
 const PRESENCE_DOT: Record<Presence, string> = {
   connected: 'bg-success animate-pulse',
-  starting: 'bg-accent animate-pulse',
-  failed: 'bg-danger',
   idle: 'bg-ink-tertiary',
 };
 
 const PRESENCE_LABEL: Record<Presence, string> = {
   connected: 'Agent connected',
-  starting: 'Agent starting…',
-  failed: 'Agent failed',
   idle: 'Agent idle',
 };
 
@@ -71,12 +56,10 @@ const SURFACE_LABEL: Record<Trail['surface'], string> = {
 
 export function AgentTrails({
   threadId,
-  sessionStatus,
-  failedReason,
+  agentPresent,
 }: {
   threadId: string;
-  sessionStatus: SessionStatus;
-  failedReason?: string | null;
+  agentPresent: boolean;
 }) {
   const [mode, setMode] = useState<Mode>('chip');
   const { data } = useQuery({
@@ -87,7 +70,7 @@ export function AgentTrails({
   const trails = data?.trails ?? [];
   const live = useLiveActivityGroup(threadId);
   const liveTrail = useMemo(() => synthesizeLiveTrail(live), [live]);
-  const presence = presenceFromSession(sessionStatus);
+  const presence: Presence = agentPresent ? 'connected' : 'idle';
   const merged = useMemo(
     () => (liveTrail ? [liveTrail, ...trails.filter((t) => t.status !== 'live')] : trails),
     [liveTrail, trails],
@@ -196,7 +179,7 @@ export function AgentTrails({
           {liveTrail ? SURFACE_LABEL[liveTrail.surface] : 'Agent activity'}
         </span>
         <span className="block text-caption text-ink truncate">
-          {chipStatusText(presence, chipStep, liveTrail !== null, failedReason)}
+          {chipStatusText(presence, chipStep, liveTrail !== null)}
         </span>
       </span>
       <ChevronUp className="h-3.5 w-3.5 text-ink-tertiary" />
@@ -455,12 +438,7 @@ function synthesizeLiveTrail(live: ReturnType<typeof useLiveActivityGroup>): Tra
   };
 }
 
-function chipStatusText(
-  presence: Presence,
-  step: TrailStep | null,
-  isLive: boolean,
-  failedReason?: string | null,
-): string {
+function chipStatusText(presence: Presence, step: TrailStep | null, isLive: boolean): string {
   if (isLive) {
     if (step?.kind === 'tool') {
       const label = TOOL_LABELS[step.tool] ?? step.tool;
@@ -475,7 +453,6 @@ function chipStatusText(
     }
     return 'Working…';
   }
-  if (presence === 'failed' && failedReason) return failedReason;
   return PRESENCE_LABEL[presence];
 }
 

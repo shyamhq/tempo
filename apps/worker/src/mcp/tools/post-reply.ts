@@ -1,7 +1,7 @@
 import { PostReplyInput } from '@tempo/contracts/mcp';
 import { postReply } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerPostReply(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -13,7 +13,7 @@ export function registerPostReply(
     PostReplyInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         const reply = await postReply(
           args.comment_id,

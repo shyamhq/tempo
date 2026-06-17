@@ -3,9 +3,7 @@ import {
   deleteThread,
   getPlan,
   getThread,
-  latestAttachedRepo,
   latestEventId,
-  latestSessionStatus,
   listCommentsForThread,
   listMessagesForThread,
   threadBelongsToWorkspace,
@@ -56,24 +54,24 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const thread = await getThread(id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, comments, messages, session_status, repo, last_event_id] = await Promise.all([
+  const [plan, comments, messages, last_event_id] = await Promise.all([
     getPlan(id),
     listCommentsForThread(id),
     listMessagesForThread(id),
-    latestSessionStatus(id),
-    latestAttachedRepo(id),
     latestEventId(id),
   ]);
   return ok({
-    thread: { id: thread.id, title: thread.title, description: thread.description },
+    thread: {
+      id: thread.id,
+      title: thread.title,
+      description: thread.description,
+      agent_type: thread.agent_type,
+    },
     space_id: thread.space_id,
-    status: thread.status,
     plan,
     comments,
     discussion: { messages },
-    session_status,
-    attached_repo_remote: repo.attached_repo_remote,
-    attached_repo_path: repo.attached_repo_path,
+    agent_last_seen_at: thread.agent_last_seen_at?.toISOString() ?? null,
     last_event_id,
   });
 }

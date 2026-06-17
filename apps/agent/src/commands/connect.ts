@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import {
   type Event,
   shouldWake,
@@ -12,7 +11,6 @@ import {
 import { AcpSession, type StopReason } from '../acp/session';
 import { type Credentials, read, refresh } from '../credentials';
 import { env } from '../env';
-import { postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';
 
 const REFRESH_BEFORE_EXPIRY_S = 60;
@@ -43,15 +41,7 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
     `Connecting to ${access.workspace_name}'s Thread "${access.thread_title}"...\n`,
   );
 
-  await postLifecycleEvent({
-    workerUrl: creds.worker_url,
-    token: creds.token,
-    threadId,
-    event: { kind: 'session_initiating' },
-  });
-
   let token = creds.token;
-  const connId = randomBytes(8).toString('hex');
   let cursor = access.latest_event_id;
   let abortPoll: AbortController | null = null;
   let session: AcpSession | null = null;
@@ -117,14 +107,7 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       }
 
       abortPoll = new AbortController();
-      const polled = await pollEvents(
-        threadId,
-        cursor,
-        creds.worker_url,
-        token,
-        connId,
-        abortPoll.signal,
-      );
+      const polled = await pollEvents(threadId, cursor, creds.worker_url, token, abortPoll.signal);
       abortPoll = null;
       if (stopping) break;
 
@@ -141,6 +124,12 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       if (polled === 'aborted') break;
 
       cursor = polled.cursor;
+      // Stop button: Dev pressed Cancel on the Thread → server emits
+      // `agent_cancel_requested`. Not a wake kind (we don't restart the Turn),
+      // but the live session must abort its in-flight prompt.
+      if (polled.events.some((e) => e.kind === 'agent_cancel_requested')) {
+        session?.cancel().catch(() => null);
+      }
       const events = polled.events.filter(shouldWake);
       if (events.length === 0) continue;
 
@@ -173,17 +162,34 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
     if (terminalFailReason) {
-      await postLifecycleEvent({
-        workerUrl: creds.worker_url,
-        token,
-        threadId,
-        event: { kind: 'session_failed', reason: terminalFailReason },
-      });
+      process.stderr.write(`tempo connect: ${terminalFailReason}\n`);
     }
+    await postAgentDisconnected(threadId, creds.worker_url, token);
     await session?.close();
   }
 
   process.exit(exitCode);
+}
+
+// Best-effort goodbye on clean shutdown. Worker handler nulls
+// `threads.agent_last_seen_at` and emits `agent_disconnected` so the Console
+// flips presence to idle without waiting for the 60s window. Hard kills don't
+// reach this path; they age out via the column window.
+async function postAgentDisconnected(
+  threadId: ThreadId,
+  workerUrl: string,
+  token: string,
+): Promise<void> {
+  try {
+    await fetch(`${workerUrl}/api/agent-events`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ thread_id: threadId, event: { kind: 'agent_disconnected' } }),
+      signal: AbortSignal.timeout(2000),
+    });
+  } catch (err) {
+    logger.debug({ err }, 'connect: agent_disconnected post failed (continuing exit)');
+  }
 }
 
 type PromptOutcome = 'ok' | 'failed';
@@ -268,7 +274,6 @@ async function pollEvents(
   cursor: string,
   workerUrl: string,
   token: string,
-  connId: string,
   signal: AbortSignal,
 ): Promise<PollResult> {
   const url =
@@ -277,7 +282,7 @@ async function pollEvents(
   let res: Response;
   try {
     res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}`, 'X-Tempo-Conn-Id': connId },
+      headers: { Authorization: `Bearer ${token}` },
       signal,
     });
   } catch (err) {

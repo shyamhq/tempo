@@ -42,6 +42,17 @@ Without `class="language-html-block"` (or `data-language="html-block"`) the bloc
 
 Always include `<!doctype html>` and `<html lang="en">`. Always include `<meta charset="utf-8">` and `<meta name="viewport" content="width=device-width,initial-scale=1">` in the `<head>`. Without these the iframe renders in quirks mode and font sizing is unpredictable.
 
+## Inserting an HTML block into the Plan
+
+When calling `tempo_add_blocks`, the `blocks` parameter must be a JSON array
+of strings — not a single string. Each string is one block's HTML.
+
+Correct:
+blocks: ["<pre><code class=\"language-html-block\"><!doctype html>...</code></pre>"]
+
+Wrong (string, not array):
+blocks: "<pre><code class=\"language-html-block\"><!doctype html>...</code></pre>"
+
 ## Tailwind via CDN — the default styling path
 
 Use Tailwind for every HTML block. The iframe is sandboxed; the CDN script loads at iframe init and JIT-compiles classes from the markup. No build step, no Tempo config.

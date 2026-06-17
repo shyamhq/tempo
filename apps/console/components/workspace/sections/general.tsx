@@ -1,7 +1,7 @@
 'use client';
 
 import { useOrganization } from '@clerk/nextjs';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -18,21 +18,6 @@ export function GeneralSection() {
   useEffect(() => {
     if (organization?.name) setName(organization.name);
   }, [organization?.name]);
-
-  const qc = useQueryClient();
-  const flags = useQuery({
-    queryKey: ['workspace-flags'],
-    queryFn: () => api.getWorkspaceFlags(),
-    enabled: !readOnly && isLoaded,
-  });
-
-  const toggleHosted = useMutation({
-    mutationFn: (enabled: boolean) => api.updateWorkspace({ hosted_enabled: enabled }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['workspace-flags'] }),
-    // Surface failure so the user knows the box didn't actually save. invalidate
-    // still runs so the checkbox snaps back to the server value.
-    onError: () => qc.invalidateQueries({ queryKey: ['workspace-flags'] }),
-  });
 
   const save = useMutation({
     mutationFn: async (next: string) => {
@@ -77,39 +62,6 @@ export function GeneralSection() {
           </p>
         ) : null}
       </div>
-
-      <section className="mb-8 max-w-2xl border-t border-hairline pt-6">
-        <h3 className="mb-1 text-body-sm font-medium text-ink">Hosted Agent</h3>
-        <p className="mb-3 text-caption text-ink-subtle">
-          Run the planning Agent in Tempo's infrastructure when no local
-          <code className="mx-1 rounded bg-surface-2 px-1 py-0.5 text-micro">tempo-agent</code>
-          CLI is connected. Costs are billed per-second; idle Sandboxes are reaped after ~10
-          minutes.
-        </p>
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            disabled={readOnly || !flags.data || toggleHosted.isPending}
-            checked={!!flags.data?.hosted_enabled}
-            onChange={(e) => toggleHosted.mutate(e.target.checked)}
-            className="h-4 w-4 rounded border-hairline"
-          />
-          <span className="text-caption text-ink">
-            {flags.data?.hosted_enabled ? 'Enabled' : 'Disabled'}
-            {toggleHosted.isPending ? ' (saving…)' : ''}
-          </span>
-        </label>
-        {toggleHosted.isError ? (
-          <p className="mt-2 text-micro text-danger">
-            Failed to save. The setting was rolled back.
-          </p>
-        ) : null}
-        {readOnly ? (
-          <p className="mt-2 text-micro text-ink-tertiary">
-            Only admins can change Hosted Agent settings.
-          </p>
-        ) : null}
-      </section>
 
       <footer className="mt-10 flex justify-end gap-2 border-t border-hairline pt-6">
         <Button

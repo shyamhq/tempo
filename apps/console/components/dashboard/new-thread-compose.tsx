@@ -1,8 +1,8 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import type { Space } from '@tempo/contracts';
-import { Bug, Check, Copy, RefreshCcw, Search, Sparkles } from 'lucide-react';
+import type { AgentType, Space } from '@tempo/contracts';
+import { Bug, Cloud, Command, RefreshCcw, Search, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,10 +16,7 @@ import type { PendingAttachment } from '@/hooks/use-attachment-uploader';
 import { useWorkerApi } from '@/hooks/use-worker-api';
 import { ApiError, api } from '@/lib/api-client';
 
-type Phase =
-  | { kind: 'compose' }
-  | { kind: 'submitting' }
-  | { kind: 'created'; threadId: string; connectCmd: string };
+type Phase = { kind: 'compose' } | { kind: 'submitting' };
 
 const CHIPS: { label: string; lead: string; Icon: typeof Sparkles }[] = [
   { label: 'Add a feature', lead: 'Add a new feature: ', Icon: Sparkles },
@@ -59,7 +56,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
   const [text, setText] = useState('');
   const [phase, setPhase] = useState<Phase>({ kind: 'compose' });
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [agentType, setAgentType] = useState<AgentType>('hosted');
   const [pending, setPending] = useState<Pending[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Track every blob: URL we mint so revoke runs on remove and on unmount.
@@ -153,6 +150,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
         title: 'Untitled thread',
         description: '',
         space_id: space.id,
+        agent_type: agentType,
       });
       // Sequential init + PUT per pending file. All-or-nothing for v1:
       // a failure here surfaces as the same error toast as a failed
@@ -178,11 +176,11 @@ export function NewThreadCompose({ space }: { space: Space }) {
       });
       qc.invalidateQueries({ queryKey: ['space-threads', space.id] });
       qc.invalidateQueries({ queryKey: ['spaces'] });
-      setPhase({
-        kind: 'created',
-        threadId: res.thread.id,
-        connectCmd: `npx tempo-agent connect ${res.connect_token}`,
-      });
+      // Local Threads auto-open the Connect modal on landing; Hosted Threads
+      // route straight in (the VM auto-spawns on the discussion_message_posted
+      // event via the event-log post-hook).
+      const qs = agentType === 'local' ? '?connect=1' : '';
+      router.push(`/threads/${res.thread.id}${qs}`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Failed to create Thread.');
       setPhase({ kind: 'compose' });
@@ -205,13 +203,6 @@ export function NewThreadCompose({ space }: { space: Space }) {
     // stack across Chromium/Firefox/WebKit, so Ctrl/Cmd+Z reverts the chip insert.
     // The synthetic input event it fires flows through onChange to update `text`.
     document.execCommand('insertText', false, lead);
-  };
-
-  const copy = async () => {
-    if (phase.kind !== 'created') return;
-    await navigator.clipboard.writeText(phase.connectCmd);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -246,82 +237,170 @@ export function NewThreadCompose({ space }: { space: Space }) {
             What do you want to plan?
           </h1>
           <p className="text-body-md text-ink-tertiary leading-[1.6] text-center max-w-[46ch] mb-7">
-            Describe the change. The Agent reads your codebase and drafts a Plan you can edit
-            together before anything runs.
+            Describe the change. The Agent reads your codebase and drafts a Plan you and your team
+            can edit together before anything runs.
           </p>
 
-          {phase.kind === 'created' ? (
-            <CreatedCard
-              connectCmd={phase.connectCmd}
-              copied={copied}
-              onCopy={copy}
-              spaceId={space.id}
-              onOpen={() => router.push(`/threads/${phase.threadId}`)}
+          <AgentTypeCards selected={agentType} onChange={setAgentType} disabled={isSubmitting} />
+          <p className="mt-2 mb-5 text-micro text-ink-tertiary text-center">
+            Tempo runs where you point it — can't switch mid-Thread.
+          </p>
+
+          <div
+            {...rootProps}
+            className="relative w-full bg-canvas border border-hairline rounded-xl shadow-compose transition focus-within:border-accent focus-within:shadow-focus-soft overflow-hidden"
+          >
+            <AttachmentDragOverlay active={isDragActive} />
+            {pending.length > 0 ? (
+              <div className="px-5 pt-5">
+                <AttachmentThumbnails uploader={uploaderShim} />
+              </div>
+            ) : null}
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={onTextareaKeyDown}
+              placeholder="Describe the change you want to plan…"
+              disabled={isSubmitting}
+              className="block w-full min-h-[132px] max-h-[280px] px-5 pt-5 pb-2 text-body-md leading-[1.6] text-ink placeholder:text-ink-tertiary bg-transparent border-0 resize-none focus:outline-none disabled:cursor-not-allowed"
             />
-          ) : (
-            <>
-              <div
-                {...rootProps}
-                className="relative w-full bg-canvas border border-hairline rounded-xl shadow-compose transition focus-within:border-accent focus-within:shadow-focus-soft overflow-hidden"
+            <div className="flex items-center justify-between px-3 pb-3">
+              <AttachmentAddButton uploader={uploaderShim} disabled={isSubmitting} />
+              <StartButton
+                state={canSubmit ? 'on' : isSubmitting ? 'submitting' : 'off'}
+                onClick={submit}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 justify-center mt-[18px]">
+            {CHIPS.map(({ label, lead, Icon }) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => prefill(lead)}
+                disabled={isSubmitting}
+                className="inline-flex items-center gap-[7px] px-3 py-1.5 rounded-full border border-hairline bg-canvas text-caption text-ink-subtle hover:bg-surface-2 hover:border-hairline-strong transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <AttachmentDragOverlay active={isDragActive} />
-                {pending.length > 0 ? (
-                  <div className="px-5 pt-5">
-                    <AttachmentThumbnails uploader={uploaderShim} />
-                  </div>
-                ) : null}
-                <textarea
-                  ref={textareaRef}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={onTextareaKeyDown}
-                  placeholder="Describe the change you want to plan…"
-                  disabled={isSubmitting}
-                  className="block w-full min-h-[132px] max-h-[280px] px-5 pt-5 pb-2 text-body-md leading-[1.6] text-ink placeholder:text-ink-tertiary bg-transparent border-0 resize-none focus:outline-none disabled:cursor-not-allowed"
-                />
-                <div className="flex items-center justify-between px-3 pb-3">
-                  <AttachmentAddButton uploader={uploaderShim} disabled={isSubmitting} />
-                  <StartButton
-                    state={canSubmit ? 'on' : isSubmitting ? 'submitting' : 'off'}
-                    onClick={submit}
-                  />
-                </div>
-              </div>
+                <Icon className="h-[14px] w-[14px] text-ink-tertiary" strokeWidth={1.9} />
+                {label}
+              </button>
+            ))}
+          </div>
 
-              <div className="flex flex-wrap gap-2 justify-center mt-[18px]">
-                {CHIPS.map(({ label, lead, Icon }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => prefill(lead)}
-                    disabled={isSubmitting}
-                    className="inline-flex items-center gap-[7px] px-3 py-1.5 rounded-full border border-hairline bg-canvas text-caption text-ink-subtle hover:bg-surface-2 hover:border-hairline-strong transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Icon className="h-[14px] w-[14px] text-ink-tertiary" strokeWidth={1.9} />
-                    {label}
-                  </button>
-                ))}
-              </div>
+          <p className="flex items-center gap-[7px] justify-center mt-[18px] text-micro font-normal text-ink-tertiary">
+            <Kbd>↵</Kbd>
+            <span>to start</span>
+            <span className="text-hairline-strong">·</span>
+            <Kbd>⇧</Kbd>
+            <Kbd>↵</Kbd>
+            <span>for newline</span>
+          </p>
 
-              <p className="flex items-center gap-[7px] justify-center mt-[18px] text-micro font-normal text-ink-tertiary">
-                <Kbd>↵</Kbd>
-                <span>to start</span>
-                <span className="text-hairline-strong">·</span>
-                <Kbd>⇧</Kbd>
-                <Kbd>↵</Kbd>
-                <span>for newline</span>
-              </p>
-
-              {error ? (
-                <p className="mt-4 text-xs text-danger" role="alert">
-                  {error}
-                </p>
-              ) : null}
-            </>
-          )}
+          {error ? (
+            <p className="mt-4 text-xs text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
         </div>
       </section>
     </div>
+  );
+}
+
+function AgentTypeCards({
+  selected,
+  onChange,
+  disabled,
+}: {
+  selected: AgentType;
+  onChange: (next: AgentType) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="flex w-full gap-3">
+      <AgentTypeCard
+        selected={selected === 'hosted'}
+        onSelect={() => onChange('hosted')}
+        disabled={disabled}
+        Icon={Cloud}
+        title="Hosted agent"
+        blurb="Runs in a Tempo sandbox that clones your repo."
+        bullets={[
+          'Always on — your laptop can be off',
+          'Tempo clones your repo into an isolated VM',
+          'Full repo + filesystem + shell',
+        ]}
+      />
+      <AgentTypeCard
+        selected={selected === 'local'}
+        onSelect={() => onChange('local')}
+        disabled={disabled}
+        Icon={Command}
+        title="Local agent"
+        blurb="Runs on your machine. Code never leaves your laptop."
+        bullets={[
+          'Uses your own Claude API key',
+          'Full repo + filesystem + shell',
+          <>
+            Needs <code className="font-mono">npx tempo-agent connect …</code> running
+          </>,
+        ]}
+      />
+    </div>
+  );
+}
+
+function AgentTypeCard({
+  selected,
+  onSelect,
+  disabled,
+  Icon,
+  title,
+  blurb,
+  bullets,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  disabled: boolean;
+  Icon: typeof Sparkles;
+  title: string;
+  blurb: string;
+  bullets: React.ReactNode[];
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      className={`flex-1 min-w-0 p-4 rounded-xl border-[1.5px] text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        selected
+          ? 'border-accent bg-accent/[0.04] ring-4 ring-accent/15'
+          : 'border-hairline bg-canvas hover:border-ink-tertiary'
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <span
+          className={`flex items-center justify-center size-icon-lg rounded-md ${
+            selected ? 'bg-accent/15 text-accent-deep' : 'bg-surface-2 text-ink-subtle'
+          }`}
+        >
+          <Icon className="h-4 w-4" strokeWidth={1.8} />
+        </span>
+        <h3 className="text-body-sm font-semibold text-ink">{title}</h3>
+      </div>
+      <p className="text-caption text-ink-subtle leading-[1.5] mb-3">{blurb}</p>
+      <ul className="space-y-1">
+        {bullets.map((b, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: static bullets list
+          <li key={i} className="flex items-start gap-2 text-micro text-ink-muted leading-[1.5]">
+            <span className="text-accent-deep font-semibold shrink-0">›</span>
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </button>
   );
 }
 
@@ -366,57 +445,6 @@ function StartButton({
         ↵
       </span>
     </button>
-  );
-}
-
-function CreatedCard({
-  connectCmd,
-  copied,
-  onCopy,
-  spaceId,
-  onOpen,
-}: {
-  connectCmd: string;
-  copied: boolean;
-  onCopy: () => void;
-  spaceId: string;
-  onOpen: () => void;
-}) {
-  return (
-    <div className="w-full bg-canvas border border-hairline rounded-xl shadow-compose p-6 text-left">
-      <h2 className="text-body-md font-semibold text-ink">
-        Thread created — connect the Agent to start
-      </h2>
-      <p className="text-caption text-ink-tertiary mt-1">
-        Run this in your repo. The Agent will pick up your first message and start drafting.
-      </p>
-      <div className="mt-4 rounded-md border border-hairline bg-surface-2 p-3 font-mono text-xs text-ink break-all flex items-start gap-2">
-        <span className="flex-1">{connectCmd}</span>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="shrink-0 text-ink-subtle hover:text-ink"
-          aria-label="Copy connect command"
-        >
-          {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-        </button>
-      </div>
-      <div className="mt-5 flex justify-end gap-2">
-        <Link
-          href={`/?space=${spaceId}`}
-          className="inline-flex items-center justify-center h-[38px] px-3.5 rounded-md text-body-sm font-semibold border border-hairline text-ink hover:bg-surface-2"
-        >
-          Close
-        </Link>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="inline-flex items-center h-[38px] px-3.5 rounded-md text-body-sm font-semibold bg-ink text-on-primary hover:bg-ink-muted"
-        >
-          Open Thread
-        </button>
-      </div>
-    </div>
   );
 }
 

@@ -1,4 +1,3 @@
-import type { SessionStatus } from '@tempo/contracts';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { DeleteThreadButton } from '@/components/dashboard/delete-thread-button';
@@ -10,11 +9,9 @@ import { listSpaces } from '@/server/spaces';
 
 export const dynamic = 'force-dynamic';
 
-const sessionTone = (s: SessionStatus) => {
-  if (s === 'connected') return 'success';
-  if (s === 'pending' || s === 'initiating') return 'accent';
-  return 'muted';
-};
+const PRESENCE_WINDOW_MS = 60_000;
+const agentPresent = (iso: string | null): boolean =>
+  iso !== null && Date.now() - new Date(iso).getTime() < PRESENCE_WINDOW_MS;
 
 export default async function HomePage({
   searchParams,
@@ -53,8 +50,7 @@ export default async function HomePage({
 
       <div className="flex items-center gap-3 px-3 h-9 border-y border-hairline bg-surface-2/40 text-micro-uppercase uppercase text-ink-tertiary">
         <span className="flex-1">Thread</span>
-        <span className="w-24 text-right">Session</span>
-        <span className="w-20 text-right">Status</span>
+        <span className="w-24 text-right">Agent</span>
         <span className="w-28 text-right">Updated</span>
         <span className="w-6" aria-hidden />
       </div>
@@ -93,7 +89,11 @@ export default async function HomePage({
                   ) : null}
                 </div>
                 <div className="w-24 text-right shrink-0">
-                  <Badge tone={sessionTone(t.session_status)}>{t.session_status}</Badge>
+                  {agentPresent(t.agent_last_seen_at) ? (
+                    <Badge tone="success">connected</Badge>
+                  ) : (
+                    <Badge tone="muted">idle</Badge>
+                  )}
                 </div>
                 <span className="w-28 text-right shrink-0 text-micro font-normal text-ink-tertiary tabular-nums">
                   {formatUpdated(t.updated_at)}

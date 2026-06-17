@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
     parsed.data.space_id,
     parsed.data.title,
     parsed.data.description,
+    parsed.data.agent_type,
   );
   return ok({ thread, connect_token }, 201);
 }

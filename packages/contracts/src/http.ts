@@ -3,6 +3,7 @@ import { AgentTodo, Event } from './events';
 import {
   Actor,
   AgentBlock,
+  AgentType,
   AttachmentId,
   AttachmentRef,
   Comment,
@@ -14,13 +15,10 @@ import {
   Question,
   Reply,
   ReplyPayload,
-  SessionId,
-  SessionStatus,
   Space,
   SpaceId,
   SpaceThreadLite,
   ThreadId,
-  ThreadStatus,
   ThreadSummary,
 } from './primitives';
 import { Trail } from './trails';
@@ -30,6 +28,7 @@ export const CreateThreadRequest = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(10_000),
   space_id: SpaceId,
+  agent_type: AgentType,
 });
 export const CreateThreadResponse = z.object({
   thread: ThreadSummary,
@@ -43,10 +42,10 @@ export const GetConnectTokenResponse = z.object({
 });
 
 // GET /api/threads/:id/hosted/state — live Hosted-runtime snapshot.
-// `hosted_enabled` mirrors the workspace flag; `vm` is non-null when a
-// Sandbox is currently provisioned (vm_runs row with ended_at IS NULL).
+// `vm` is non-null when a Sandbox is currently provisioned (vm_runs row
+// with ended_at IS NULL). Endpoint rejects with 400 when the Thread's
+// agent_type is not 'hosted'.
 export const HostedStateResponse = z.object({
-  hosted_enabled: z.boolean(),
   vm: z
     .object({
       sandbox_id: z.string(),
@@ -55,10 +54,11 @@ export const HostedStateResponse = z.object({
     .nullable(),
 });
 
-// POST /api/threads/:id/hosted/wake — explicit user-triggered Sandbox spawn.
+// POST /api/threads/:id/hosted/wake — Sandbox spawn (user-triggered button
+// or server-side post-hook on Dev wake-events). Rejects with 400 for
+// agent_type='local' Threads.
 // `spawned`: a new Sandbox is provisioning.
 // `already_running`: a Sandbox is alive (or mid-spawn) for this thread.
-// `hosted_off`: workspace has Hosted disabled — flip it in Settings.
 export const WakeHostedResponse = z.union([
   z.object({
     status: z.literal('spawned'),
@@ -69,7 +69,6 @@ export const WakeHostedResponse = z.union([
     status: z.literal('already_running'),
     sandbox_id: z.string(),
   }),
-  z.object({ status: z.literal('hosted_off') }),
 ]);
 
 // GET /api/threads?space_id=spc_…
@@ -79,9 +78,8 @@ export const ListThreadsQuery = z.object({
 export const ListThreadsResponse = z.object({
   threads: z.array(
     ThreadSummary.extend({
-      status: ThreadStatus,
-      session_status: SessionStatus,
       updated_at: IsoTimestamp,
+      agent_last_seen_at: IsoTimestamp.nullable(),
     }),
   ),
 });
@@ -124,20 +122,14 @@ export const ListSpaceThreadsResponse = z.object({
 export const GetThreadResponse = z.object({
   thread: ThreadSummary,
   space_id: SpaceId,
-  status: ThreadStatus,
   plan: Plan,
   comments: z.array(Comment),
   discussion: z.object({
     messages: z.array(DiscussionMessage),
   }),
-  session_status: SessionStatus,
-  // Populated by the SSE reducer on `session_failed`; never written by the
-  // server. Optional so older event-log replays without the field still parse.
-  session_failed_reason: z.string().nullable().optional(),
-  // Repo chrome for the Thread header (D5). Drawn from the latest connected
-  // session's `attached_repo_*`. Both null when no session has connected yet.
-  attached_repo_remote: z.string().nullable(),
-  attached_repo_path: z.string().nullable(),
+  // Console derives "is the Agent reachable" as
+  // `now() - agent_last_seen_at < 60s`. Null until first Agent contact.
+  agent_last_seen_at: IsoTimestamp.nullable(),
   last_event_id: EventId,
 });
 
@@ -147,56 +139,6 @@ export const GetThreadResponse = z.object({
 export const GetTrailsResponse = z.object({
   trails: z.array(Trail),
 });
-
-// POST /api/sessions
-// Header: Authorization: Bearer tmp_...
-// Body: { repo_remote?, repo_path? } — display-only metadata reported by Agent.
-export const CreateSessionRequest = z.object({
-  repo_remote: z.string().url().nullable().optional(),
-  repo_path: z.string().nullable().optional(),
-});
-// `agent_api_key` is returned from the handshake. The CLI exchanges its
-// thread-scoped `tmp_…` connect-token for this workspace-scoped key and uses
-// it as Bearer on every subsequent request. The connect-token is valid only
-// on this one route after Phase 4b.
-export const AgentApiKey = z.string().regex(/^sk_agent_/);
-export const CreateSessionResponse = z.object({
-  session_id: SessionId,
-  thread_id: ThreadId,
-  agent_api_key: AgentApiKey,
-});
-
-// POST /api/sessions/:id/tool-use
-// Recorded by the Agent driver when an assistant `tool_use` content block is
-// observed (one row per call).
-export const RecordToolUseRequest = z.object({
-  tool: z.string().min(1).max(64),
-  summary: z.string().max(200),
-});
-export const RecordToolUseResponse = z.object({ ok: z.literal(true) });
-
-// POST /api/sessions/:id/narration
-// Recorded by the stream-json Agent driver when an assistant `text` content
-// block is observed between tool calls. Bounded at ~4 paragraphs; longer prose
-// is rare and would be drift, not signal.
-export const RecordAgentNarrationRequest = z.object({
-  text: z.string().min(1).max(8000),
-});
-export const RecordAgentNarrationResponse = z.object({ ok: z.literal(true) });
-
-// POST /api/sessions/:id/todos-updated
-// Recorded by the Agent driver when a tool_use block names `TodoWrite`.
-// Carries the full todo list — each call rewrites the slate.
-export const RecordTodosUpdatedRequest = z.object({
-  todos: z.array(AgentTodo).max(50),
-});
-export const RecordTodosUpdatedResponse = z.object({ ok: z.literal(true) });
-
-// POST /api/sessions/:id/turn-ended
-// Recorded by the Agent driver when the per-turn `claude -p` child exits
-// cleanly. Empty body — the act of POSTing is the end-of-turn signal.
-export const RecordTurnEndedRequest = z.object({});
-export const RecordTurnEndedResponse = z.object({ ok: z.literal(true) });
 
 // GET /api/threads/:id/plan
 export const GetPlanResponse = Plan;
@@ -209,15 +151,6 @@ export const WritePlanRequest = z.object({
   pm_json: z.unknown(),
 });
 export const WritePlanResponse = z.object({
-  ok: z.literal(true),
-  updated_at: IsoTimestamp,
-});
-
-// POST /api/threads/:id/plan/recheck — Dev-initiated nudge. Appends a
-// `plan_edited_by_dev` event without touching the Plan body. The Plan body
-// itself is no longer auto-nudged on Dev writes (auto-save runs constantly);
-// the Dev hits Recheck when they want the Agent to re-read.
-export const RecheckPlanResponse = z.object({
   ok: z.literal(true),
   updated_at: IsoTimestamp,
 });
@@ -278,12 +211,6 @@ export const InitAttachmentResult = z.object({
 // `server/discussion.ts`, not the schema.
 export { PostDiscussionMessageInput as CreateDiscussionMessageRequest } from './mcp';
 export const CreateDiscussionMessageResponse = DiscussionMessage;
-
-// POST /api/threads/:id/approve
-export const ApproveThreadResponse = z.object({ ok: z.literal(true) });
-
-// POST /api/threads/:id/reopen
-export const ReopenThreadResponse = z.object({ ok: z.literal(true) });
 
 // PATCH /api/threads/:id  — rename, move between Spaces, reorder, and/or
 // rewrite the description. At least one field must be present.
@@ -381,7 +308,7 @@ const TurnHydrationMessage = z.object({
   attachments: z.array(AttachmentRef),
 });
 export const TurnHydration = z.object({
-  thread: z.object({ title: z.string(), description: z.string().nullable(), status: z.string() }),
+  thread: z.object({ title: z.string(), description: z.string().nullable() }),
   plan: z.object({ blocks: z.array(AgentBlock) }),
   comments: z.array(TurnHydrationComment),
   discussion: z.object({ messages: z.array(TurnHydrationMessage) }),
@@ -448,21 +375,8 @@ export const AgentModeChangedEvent = z.object({
   mode_id: z.string().max(64),
 });
 
-export const AgentSessionInitiatingEvent = z.object({
-  kind: z.literal('session_initiating'),
-});
-
-export const AgentSessionConnectedEvent = z.object({
-  kind: z.literal('session_connected'),
-});
-
-export const AgentSessionDisconnectedEvent = z.object({
-  kind: z.literal('session_disconnected'),
-});
-
-export const AgentSessionFailedEvent = z.object({
-  kind: z.literal('session_failed'),
-  reason: z.string().max(200),
+export const AgentDisconnectedEvent = z.object({
+  kind: z.literal('agent_disconnected'),
 });
 
 export const AgentEventRequest = z.object({
@@ -475,10 +389,7 @@ export const AgentEventRequest = z.object({
     AgentTodosUpdatedEvent,
     AgentModeChangedEvent,
     AgentTurnEndedEvent,
-    AgentSessionInitiatingEvent,
-    AgentSessionConnectedEvent,
-    AgentSessionDisconnectedEvent,
-    AgentSessionFailedEvent,
+    AgentDisconnectedEvent,
   ]),
 });
 export type AgentEventRequest = z.infer<typeof AgentEventRequest>;

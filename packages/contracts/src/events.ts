@@ -1,13 +1,5 @@
 import { z } from 'zod';
-import {
-  Comment,
-  CommentId,
-  DiscussionMessage,
-  EventId,
-  IsoTimestamp,
-  Reply,
-  SessionId,
-} from './primitives';
+import { Comment, CommentId, DiscussionMessage, EventId, IsoTimestamp, Reply } from './primitives';
 
 const eventBase = z.object({
   id: EventId,
@@ -92,27 +84,6 @@ export const AgentModeChangedEvent = eventBase.extend({
   mode_id: z.string().max(64),
 });
 
-export const SessionConnectedEvent = eventBase.extend({
-  kind: z.literal('session_connected'),
-});
-
-export const SessionDisconnectedEvent = eventBase.extend({
-  kind: z.literal('session_disconnected'),
-});
-
-// CLI emits before spawning claude; closes the dead zone between
-// `tempo-agent connect` and the first `tempo_attach`.
-export const SessionInitiatingEvent = eventBase.extend({
-  kind: z.literal('session_initiating'),
-});
-
-// CLI emits on claude spawn error or non-zero exit; `reason` carries the
-// raw error text (max 200 chars, no categorisation in MVP).
-export const SessionFailedEvent = eventBase.extend({
-  kind: z.literal('session_failed'),
-  reason: z.string().max(200),
-});
-
 export const DiscussionMessagePostedEvent = eventBase.extend({
   kind: z.literal('discussion_message_posted'),
   message: DiscussionMessage,
@@ -123,11 +94,19 @@ export const ThreadRenamedEvent = eventBase.extend({
   title: z.string().min(1).max(200),
 });
 
-// Dev pressed Stop on the active Agent turn. The CLI matches session_id against
-// its own TEMPO_SESSION_ID to ignore stale cancels meant for a prior session.
+// Dev pressed Stop on the active Agent turn. Thread-scoped — every connected
+// Agent on this Thread reacts. (Single-Agent-per-Thread is the only supported
+// shape, so there is no per-session targeting.)
 export const AgentCancelRequestedEvent = eventBase.extend({
   kind: z.literal('agent_cancel_requested'),
-  session_id: SessionId,
+});
+
+// CLI explicit goodbye on SIGINT/SIGTERM. The Worker handler that receives
+// this also nulls `threads.agent_last_seen_at`, so the Console flips presence
+// to idle without waiting for the 60s window. Hard kills (SIGKILL, laptop
+// sleep) never run the signal handler, so they still age out naturally.
+export const AgentDisconnectedEvent = eventBase.extend({
+  kind: z.literal('agent_disconnected'),
 });
 
 export const Event = z.discriminatedUnion('kind', [
@@ -145,13 +124,10 @@ export const Event = z.discriminatedUnion('kind', [
   AgentTodosUpdatedEvent,
   AgentModeChangedEvent,
   AgentTurnEndedEvent,
-  SessionConnectedEvent,
-  SessionDisconnectedEvent,
-  SessionInitiatingEvent,
-  SessionFailedEvent,
   DiscussionMessagePostedEvent,
   ThreadRenamedEvent,
   AgentCancelRequestedEvent,
+  AgentDisconnectedEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -170,13 +146,10 @@ export const EventKind = z.enum([
   'agent_todos_updated',
   'agent_mode_changed',
   'agent_turn_ended',
-  'session_connected',
-  'session_disconnected',
-  'session_initiating',
-  'session_failed',
   'discussion_message_posted',
   'thread_renamed',
   'agent_cancel_requested',
+  'agent_disconnected',
 ]);
 export type EventKind = z.infer<typeof EventKind>;
 

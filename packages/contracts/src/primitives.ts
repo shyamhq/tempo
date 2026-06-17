@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 export const ThreadId = z.string().regex(/^thr_[A-Z0-9]{26}$/);
 export const SpaceId = z.string().regex(/^spc_[A-Z0-9]{26}$/);
-export const SessionId = z.string().regex(/^ses_[A-Z0-9]{26}$/);
 export const PlanId = z.string().regex(/^pln_[A-Z0-9]{26}$/);
 export const CommentId = z.string().regex(/^cmt_[A-Z0-9]{26}$/);
 export const ReplyId = z.string().regex(/^rep_[A-Z0-9]{26}$/);
@@ -13,7 +12,6 @@ export const ConnectToken = z.string().regex(/^tmp_[A-Za-z0-9_-]{32,}$/);
 
 export type ThreadId = z.infer<typeof ThreadId>;
 export type SpaceId = z.infer<typeof SpaceId>;
-export type SessionId = z.infer<typeof SessionId>;
 export type PlanId = z.infer<typeof PlanId>;
 export type CommentId = z.infer<typeof CommentId>;
 export type ReplyId = z.infer<typeof ReplyId>;
@@ -27,18 +25,7 @@ export type ConnectToken = z.infer<typeof ConnectToken>;
 // returns all events since thread creation.
 export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 
-export const ThreadStatus = z.enum(['unapproved', 'approved']);
-export const SessionStatus = z.enum([
-  'pending',
-  'initiating',
-  'connected',
-  'disconnected',
-  'failed',
-]);
 export const Actor = z.enum(['dev', 'agent']);
-
-export type ThreadStatus = z.infer<typeof ThreadStatus>;
-export type SessionStatus = z.infer<typeof SessionStatus>;
 export type Actor = z.infer<typeof Actor>;
 
 export const IsoTimestamp = z.iso.datetime();
@@ -58,7 +45,6 @@ export const PlanBody = z.object({
 export type PlanBody = z.infer<typeof PlanBody>;
 
 export const Plan = z.object({
-  status: ThreadStatus,
   body: PlanBody.nullable(),
 });
 export type Plan = z.infer<typeof Plan>;
@@ -76,19 +62,14 @@ export const AgentPlanBlocks = z.object({
 });
 export type AgentPlanBlocks = z.infer<typeof AgentPlanBlocks>;
 
-// Lightweight Plan metadata returned by tempo_attach. The Agent calls
-// tempo_pull_plan when it needs block content; attach is a status handshake only.
-export const AgentPlanState = z.object({
-  status: ThreadStatus,
-  updated_at: z.string().nullable(),
-  updated_by: Actor.nullable(),
-});
-export type AgentPlanState = z.infer<typeof AgentPlanState>;
+export const AgentType = z.enum(['local', 'hosted']);
+export type AgentType = z.infer<typeof AgentType>;
 
 export const ThreadSummary = z.object({
   id: ThreadId,
   title: z.string(),
   description: z.string(),
+  agent_type: AgentType,
 });
 export type ThreadSummary = z.infer<typeof ThreadSummary>;
 
@@ -105,7 +86,6 @@ export type Space = z.infer<typeof Space>;
 export const SpaceThreadLite = z.object({
   id: ThreadId,
   title: z.string(),
-  status: ThreadStatus,
   sort_order: z.number(),
 });
 export type SpaceThreadLite = z.infer<typeof SpaceThreadLite>;

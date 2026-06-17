@@ -1,7 +1,7 @@
 import { SetThreadMetaInput } from '@tempo/contracts/mcp';
 import { updateThread } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerSetThreadMeta(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -9,11 +9,11 @@ export function registerSetThreadMeta(
 ): void {
   server.tool(
     'tempo_set_thread_meta',
-    "Update the Thread title and/or description. Call immediately after tempo_attach if thread.title === 'Untitled thread' — derive a 3–6-word title from the first Dev Discussion Message. Never overwrite a non-placeholder title.",
+    "Update the Thread title and/or description. Call once on Turn 1 if thread.title === 'Untitled thread' — derive a 3–6-word title from the first Dev Discussion Message. Never overwrite a non-placeholder title.",
     SetThreadMetaInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         const thread = await updateThread(threadId, {
           title: args.title,

@@ -2,7 +2,7 @@ import { DeleteBlockInput } from '@tempo/contracts/mcp';
 import { NotFoundError } from '@tempo/errors';
 import { deleteBlock } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerDeleteBlock(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -14,7 +14,7 @@ export function registerDeleteBlock(
     DeleteBlockInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         await deleteBlock(threadId, args.block_id, 'agent');
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };

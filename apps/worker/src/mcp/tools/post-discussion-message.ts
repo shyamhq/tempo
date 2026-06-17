@@ -1,7 +1,7 @@
 import { PostDiscussionMessageInput } from '@tempo/contracts/mcp';
 import { postMessage } from '@tempo/server';
 
-import { sessionNotFound } from './_shared';
+import { threadIdRequired } from './_shared';
 
 export function registerPostDiscussionMessage(
   server: import('@modelcontextprotocol/sdk/server/mcp.js').McpServer,
@@ -13,7 +13,7 @@ export function registerPostDiscussionMessage(
     PostDiscussionMessageInput.shape,
     async (args) => {
       const threadId = await resolveThreadId();
-      if (!threadId) return sessionNotFound();
+      if (!threadId) return threadIdRequired();
       try {
         const message = await postMessage(threadId, 'agent', args);
         return { content: [{ type: 'text', text: JSON.stringify({ message_id: message.id }) }] };
