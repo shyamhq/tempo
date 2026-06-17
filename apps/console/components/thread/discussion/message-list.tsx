@@ -124,7 +124,7 @@ function MessageRow({
             {timeLabel}
           </time>
         )}
-        <div className="text-body-sm leading-[1.6] text-ink">
+        <div className="text-body-sm leading-[1.6] text-ink [overflow-wrap:anywhere]">
           {text.length > 0 ? <MarkdownText text={text} className="[&_p]:text-body-sm" /> : null}
           <AttachmentStrip attachments={message.attachments} />
         </div>
@@ -152,7 +152,7 @@ function MessageRow({
           {timeLabel}
         </time>
       )}
-      <div className="max-w-[85%] rounded-lg rounded-br-xs bg-surface-2 px-3.5 py-2 text-body-sm leading-[1.55] text-ink">
+      <div className="max-w-[85%] rounded-lg rounded-br-xs bg-surface-2 px-3.5 py-2 text-body-sm leading-[1.55] text-ink [overflow-wrap:anywhere]">
         {text.length > 0 ? <MarkdownText text={text} className="[&_p]:text-body-sm" /> : null}
         <AttachmentStrip attachments={message.attachments} />
       </div>

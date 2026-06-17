@@ -308,7 +308,25 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       </header>
 
-      <div className={`px-6 py-6 grid gap-6 ${gridClass}`} style={gridStyle}>
+      {view.plan.body === null && !approved ? (
+        // Pre-Plan phase: there's no artifact yet, so the conversation is the
+        // page. Show DiscussionPanel centered at chat-panel width; the rail
+        // grid + plan column + floating DiscussionButton FAB are all
+        // suppressed below.
+        <div className="px-4 py-6 flex justify-center animate-in fade-in duration-300">
+          <div className="w-full max-w-4xl h-[calc(100dvh-7rem)] flex flex-col">
+            <DiscussionPanel
+              threadId={threadId}
+              messages={view.discussion.messages}
+              approved={approved}
+            />
+          </div>
+        </div>
+      ) : (
+      <div
+        className={`px-3 py-6 grid gap-4 ${gridClass} animate-in fade-in slide-in-from-bottom-2 duration-500`}
+        style={gridStyle}
+      >
         {discussionOpen ? (
           <aside className="-mt-6 h-[calc(100dvh-5rem)] sticky top-14 flex flex-col min-h-0 bg-canvas border-r border-hairline">
             <RailTabStrip
@@ -374,12 +392,16 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           )}
         </section>
 
-        <AgentTrails
-          threadId={threadId}
-          sessionStatus={view.session_status}
-          failedReason={view.session_failed_reason ?? null}
-        />
       </div>
+      )}
+
+      {/* AgentTrails is position:fixed and lives outside the layout branches
+          so it stays visible in both Pre-Plan and Plan phases. */}
+      <AgentTrails
+        threadId={threadId}
+        sessionStatus={view.session_status}
+        failedReason={view.session_failed_reason ?? null}
+      />
 
       {planUpdatedAt ? (
         <div
@@ -391,11 +413,13 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         </div>
       ) : null}
 
-      <DiscussionButton
-        open={discussionOpen}
-        unreadCount={unreadCount}
-        onClick={() => useThreadUi.getState().setDiscussionOpen(true)}
-      />
+      {view.plan.body === null && !approved ? null : (
+        <DiscussionButton
+          open={discussionOpen}
+          unreadCount={unreadCount}
+          onClick={() => useThreadUi.getState().setDiscussionOpen(true)}
+        />
+      )}
     </div>
   );
 }

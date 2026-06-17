@@ -1,6 +1,5 @@
 // In-memory CLI presence registry. "Fresh" = a CLI process is holding
-// a live SSE connection to the Thread right now (post-1d, the CLI is the
-// long-lived presence beacon — not MCP `last_seen_at`). Browser SSE
+// a live long-poll request to the Thread right now. Browser SSE
 // connections do NOT register here; only the CLI is "the Agent".
 //
 // Single-Worker assumption. Slice 2 may force gossip/Redis when Worker
@@ -9,6 +8,13 @@
 // Lives in apps/worker/src/server/ rather than packages/server/ on
 // purpose: a single Map<> is process-scoped. Importing from Console
 // would silently produce a second empty Map.
+//
+// We intentionally do NOT fire `session_disconnected` from this file.
+// A long-poll teardown is not a death signal — it just means that
+// drain cycle returned events; the CLI typically goes off and processes
+// them before opening the next request, leaving a gap that's not a
+// hard-kill. Use clean detach (MCP transport.onclose →
+// markSessionDisconnected) for the only reliable CLI disconnect.
 
 const live = new Map<string, Set<string>>();
 
@@ -29,7 +35,5 @@ export function removeConnection(threadId: string, connId: string): void {
 }
 
 export function isFresh(threadId: string): boolean {
-  // removeConnection deletes the entry when the set empties, so presence
-  // is just "is the key here?"
   return live.has(threadId);
 }
