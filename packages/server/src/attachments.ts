@@ -20,12 +20,11 @@ export async function initUpload(
   body: z.infer<typeof InitAttachmentInput>,
 ): Promise<z.infer<typeof InitAttachmentResult>> {
   const [t] = await db
-    .select({ id: threads.id, status: threads.status })
+    .select({ id: threads.id })
     .from(threads)
     .where(eq(threads.id, threadId))
     .limit(1);
   if (!t) throw new Error('thread_not_found');
-  if (t.status === 'approved') throw new Error('thread_approved');
 
   const id = newAttachmentId();
   const key = objectKey(threadId, id);

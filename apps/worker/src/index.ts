@@ -17,7 +17,7 @@ import {
   unresolveCommentHandler,
 } from './routes/browser/comments';
 import { createDiscussionMessageHandler } from './routes/browser/discussion';
-import { recheckPlanHandler, writePlanHandler } from './routes/browser/plan';
+import { writePlanHandler } from './routes/browser/plan';
 import { createReplyHandler } from './routes/browser/replies';
 import { cliExchangeHandler } from './routes/cli/exchange';
 import { cliRefreshHandler } from './routes/cli/refresh';
@@ -77,7 +77,6 @@ app.get('/api/threads/:id/events', bearerAuth, rejectAgent, ensureThreadAccess, 
 
 // Thread-scoped routes — bearerAuth → ensureThreadAccess sets req.workspaceId.
 app.post('/api/threads/:id/plan', bearerAuth, ensureThreadAccess, writePlanHandler);
-app.post('/api/threads/:id/plan/recheck', bearerAuth, ensureThreadAccess, recheckPlanHandler);
 app.post('/api/threads/:id/comments', bearerAuth, ensureThreadAccess, createCommentHandler);
 app.post(
   '/api/threads/:id/discussion/messages',

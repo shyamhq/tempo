@@ -1,5 +1,4 @@
 import {
-  ApproveThreadResponse,
   type CreateCommentRequest,
   CreateCommentResponse,
   type CreateDiscussionMessageRequest,
@@ -21,8 +20,6 @@ import {
   ListSpacesResponse,
   ListSpaceThreadsResponse,
   ListThreadsResponse,
-  RecheckPlanResponse,
-  ReopenThreadResponse,
   ResolveCommentResponse,
   UnresolveCommentResponse,
   type UpdateSpaceRequest,
@@ -41,7 +38,6 @@ const OkResponse = z.object({ ok: z.literal(true) });
 // Workspace identity is read client-side from Clerk's hooks
 // (`useOrganization`, `useOrganizationList`). Schemas below cover routes that
 // hit our DB or the Clerk admin SDK — not data already available client-side.
-const WorkspaceFlagsResponse = z.object({ hosted_enabled: z.boolean() });
 const MemberRole = z.enum(['admin', 'member']);
 
 const MembersResponse = z.object({
@@ -204,22 +200,14 @@ export const api = {
   getHostedState: (threadId: string) =>
     request('GET', `/api/threads/${threadId}/hosted/state`, undefined, HostedStateResponse),
 
-  approveThread: (threadId: string) =>
-    request('POST', `/api/threads/${threadId}/approve`, {}, ApproveThreadResponse),
-
-  reopenThread: (threadId: string) =>
-    request('POST', `/api/threads/${threadId}/reopen`, {}, ReopenThreadResponse),
-
   deleteThread: (threadId: string) =>
     request('DELETE', `/api/threads/${threadId}`, undefined, DeleteThreadResponse),
 
   updateThread: (threadId: string, input: z.infer<typeof UpdateThreadRequest>) =>
     request('PATCH', `/api/threads/${encodeURIComponent(threadId)}`, input, UpdateThreadResponse),
 
-  updateWorkspace: (input: { name?: string; hosted_enabled?: boolean }) =>
+  updateWorkspace: (input: { name: string }) =>
     request('PATCH', '/api/workspace', input, OkResponse),
-
-  getWorkspaceFlags: () => request('GET', '/api/workspace', undefined, WorkspaceFlagsResponse),
 
   deleteWorkspace: () => request('DELETE', '/api/workspace', undefined, OkResponse),
 
@@ -255,9 +243,6 @@ export function workerApi(getToken: () => Promise<string | null>) {
   return {
     writePlan: (threadId: string, input: z.input<typeof WritePlanRequest>) =>
       w('POST', `/api/threads/${threadId}/plan`, input, WritePlanResponse),
-
-    recheckPlan: (threadId: string) =>
-      w('POST', `/api/threads/${threadId}/plan/recheck`, {}, RecheckPlanResponse),
 
     createComment: (threadId: string, input: z.input<typeof CreateCommentRequest>) =>
       w('POST', `/api/threads/${threadId}/comments`, input, CreateCommentResponse),

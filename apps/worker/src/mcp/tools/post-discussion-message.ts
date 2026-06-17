@@ -32,11 +32,6 @@ export function registerPostDiscussionMessage(
             ],
           };
         }
-        if (msg === 'thread_approved') {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: 'thread_approved' }) }],
-          };
-        }
         throw err;
       }
     },

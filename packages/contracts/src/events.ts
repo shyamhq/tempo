@@ -7,7 +7,6 @@ import {
   IsoTimestamp,
   Reply,
   SessionId,
-  ThreadStatus,
 } from './primitives';
 
 const eventBase = z.object({
@@ -34,12 +33,6 @@ export const PlanEditedByDevEvent = eventBase.extend({
 export const PlanEditedByAgentEvent = eventBase.extend({
   kind: z.literal('plan_edited_by_agent'),
   updated_at: IsoTimestamp,
-});
-
-export const StatusChangedEvent = eventBase.extend({
-  kind: z.literal('status_changed'),
-  from: ThreadStatus,
-  to: ThreadStatus,
 });
 
 export const CommentResolvedEvent = eventBase.extend({
@@ -142,7 +135,6 @@ export const Event = z.discriminatedUnion('kind', [
   ReplyAddedEvent,
   PlanEditedByDevEvent,
   PlanEditedByAgentEvent,
-  StatusChangedEvent,
   CommentResolvedEvent,
   CommentUnresolvedEvent,
   CommentDeletedEvent,
@@ -168,7 +160,6 @@ export const EventKind = z.enum([
   'reply_added',
   'plan_edited_by_dev',
   'plan_edited_by_agent',
-  'status_changed',
   'comment_resolved',
   'comment_unresolved',
   'comment_deleted',
@@ -198,15 +189,17 @@ export type EventKind = z.infer<typeof EventKind>;
 // be author-filtered — both Dev and Agent emit them; waking on Agent's own
 // reply causes a ping-pong loop. Same logic applies to both Local CLI
 // (per-Turn nudge) and Hosted Mailbox (per-VM-wake).
+// `plan_edited_by_dev` is intentionally NOT a wake kind. The Console's
+// auto-save fires it on every debounce flush, so waking on it would spawn
+// the hosted runner per-keystroke. The agent still sees the event on its
+// next woken turn and pulls the plan before editing.
+// `comment_resolved` / `comment_unresolved` / `comment_deleted` are Dev
+// housekeeping — they reshape the comment surface but don't ask the Agent
+// to produce new work. Excluded so they don't churn the runtime.
 const WAKE_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
   'comment_added',
   'reply_added',
-  'comment_resolved',
-  'comment_unresolved',
-  'comment_deleted',
   'discussion_message_posted',
-  'plan_edited_by_dev',
-  'status_changed',
 ]);
 
 export function shouldWake(event: Event): boolean {

@@ -13,9 +13,8 @@ Your prompt content is a JSON string: \`{ thread_id, events, context? }\`.
 **Turn 2+** (\`context\` absent) — \`events\` holds everything new since your last turn. Act on each event:
 - \`comment_added\` / \`reply_added\` → \`tempo_post_reply\` on the comment
 - \`discussion_message_posted\` (author \`dev\`) → \`tempo_post_discussion_message\`
-- \`plan_edited_by_dev\` → call \`tempo_pull_plan\` to refresh your view, then reason about the edit
+- \`plan_edited_by_dev\` → call \`tempo_pull_plan\` to refresh your view before reasoning about the Plan or editing it
 - \`comment_resolved\` / \`comment_unresolved\` / \`comment_deleted\` → apply in-memory, no tool call
-- \`status_changed\` to \`approved\` → Plan is frozen, wait quietly
 
 **Do not** call \`tempo_attach\` — session is registered by the CLI runner before you spawn. **Do not** call \`tempo_poll\` — events are already in your message.
 
@@ -139,10 +138,6 @@ Good:
 Bad (leaks library name + status code + internal identifier):
 
 > \`tempo_update_block\` returned 404 not_found for \`abc123$\` — block missing from pm_json.
-
-## Approved Threads
-
-When a Thread's status flips to \`approved\`, the Plan is frozen and you wait quietly. If the Dev reopens it (\`status_changed\` to \`unapproved\`), resume normal work. The MCP write tools also 403 on an approved Thread, but the state payload tells you the same thing first — read it.
 
 ## When you cannot decide from what you have
 

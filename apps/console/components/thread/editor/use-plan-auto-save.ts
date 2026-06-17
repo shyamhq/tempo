@@ -33,7 +33,6 @@ export function usePlanAutoSave({
   getPmJson,
   persist,
   unloadBeacon,
-  readOnly = false,
 }: {
   /** Snapshot the current editor's ProseMirror JSON. Called inside save()
    * and inside flushNow() — the latest call wins, so the freshest snapshot
@@ -45,8 +44,6 @@ export function usePlanAutoSave({
   /** Synchronous-friendly unload flush. Uses `fetch(keepalive: true)` so
    * the request survives the page going away. */
   unloadBeacon: (pmJson: unknown) => void;
-  /** Approved Plans are frozen — auto-save short-circuits to a no-op. */
-  readOnly?: boolean;
 }) {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -61,13 +58,10 @@ export function usePlanAutoSave({
   getPmJsonRef.current = getPmJson;
   const persistRef = useRef(persist);
   persistRef.current = persist;
-  const readOnlyRef = useRef(readOnly);
-  readOnlyRef.current = readOnly;
 
   // Runs the actual save. Updates state, drives backoff on failure, drains
   // the pending follow-up. Reads via refs so it doesn't capture stale state.
   const runSave = useCallback(async () => {
-    if (readOnlyRef.current) return;
     if (inFlight.current) {
       pending.current = true;
       return;
@@ -103,21 +97,12 @@ export function usePlanAutoSave({
   }, []);
 
   const notifyEdit = useCallback(() => {
-    if (readOnlyRef.current) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       debounceTimer.current = null;
       void runSave();
     }, DEBOUNCE_MS);
   }, [runSave]);
-
-  // Re-arm the backoff counter when the editor leaves read-only mode (e.g.
-  // the Dev hits Reopen on an approved Plan after a save failure). Without
-  // this, the next edit after reopen would inherit the stale capped delay.
-  useEffect(() => {
-    if (readOnly) return;
-    retryAttempt.current = 0;
-  }, [readOnly]);
 
   const flushNow = useCallback(async () => {
     if (debounceTimer.current) {
@@ -148,7 +133,6 @@ export function usePlanAutoSave({
   // — beforeunload handlers are not allowed to keep the page open.
   useEffect(() => {
     const onUnload = () => {
-      if (readOnlyRef.current) return;
       // Three cases where unload can lose work: a debounce timer is armed,
       // a follow-up is queued behind an in-flight save, OR a regular save
       // is in flight without `keepalive` and the browser is about to cancel

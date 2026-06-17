@@ -4,7 +4,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
-import { Check, GripVertical } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api-client';
@@ -100,7 +100,7 @@ export function ThreadRow({
           <GripVertical className="h-3.5 w-3.5" />
         </button>
 
-        <StatusGlyph status={thread.status} />
+        <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-ink-tertiary" />
 
         {renaming ? (
           <span className="pointer-events-auto flex-1 min-w-0">
@@ -142,15 +142,4 @@ export function ThreadRow({
       </div>
     </div>
   );
-}
-
-function StatusGlyph({ status }: { status: SpaceThreadLite['status'] }) {
-  if (status === 'approved') {
-    return (
-      <span className="inline-flex size-icon-sm shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent-deep">
-        <Check className="h-2.5 w-2.5" strokeWidth={3} />
-      </span>
-    );
-  }
-  return <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-ink-tertiary" />;
 }

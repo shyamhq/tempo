@@ -116,7 +116,6 @@ export const McpTool = z.enum([
 export type McpTool = z.infer<typeof McpTool>;
 
 export const McpErrorCode = z.enum([
-  'thread_approved',
   'comment_not_found',
   'session_not_found',
   'invalid_cursor',

@@ -17,11 +17,10 @@ export function HandoffBanner({ getPlanMarkdown }: { getPlanMarkdown: () => Prom
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <div className="rounded-md border border-success/40 bg-success/10 px-4 py-3 mb-4 flex items-center gap-3">
+    <div className="rounded-md border border-hairline bg-surface-1 px-4 py-3 mb-4 flex items-center gap-3">
       <div className="flex-1">
-        <p className="text-sm font-medium text-ink">Plan approved.</p>
         <p className="text-xs text-ink-subtle">
-          Copy it into a fresh Claude Code session to execute.
+          Copy the Plan into a fresh Claude Code session to execute.
         </p>
       </div>
       <Button variant="secondary" onClick={copy}>

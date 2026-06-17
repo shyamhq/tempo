@@ -1,7 +1,7 @@
 import type { AttachmentRef, Comment, Reply } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
-import { comments, replies, threads } from '@tempo/db/schema';
-import { ConflictError, NotFoundError } from '@tempo/errors';
+import { comments, replies } from '@tempo/db/schema';
+import { NotFoundError } from '@tempo/errors';
 import { asc, eq, inArray } from 'drizzle-orm';
 import {
   insertAttachmentRows,
@@ -90,13 +90,11 @@ export const unresolveComment = (commentId: string) =>
 
 export async function deleteComment(commentId: string): Promise<void> {
   const [row] = await db
-    .select({ thread_id: comments.thread_id, thread_status: threads.status })
+    .select({ thread_id: comments.thread_id })
     .from(comments)
-    .innerJoin(threads, eq(threads.id, comments.thread_id))
     .where(eq(comments.id, commentId))
     .limit(1);
   if (!row) throw new NotFoundError(`comment_not_found: ${commentId}`);
-  if (row.thread_status === 'approved') throw new ConflictError('thread_approved');
 
   await db.transaction(async (tx) => {
     await tx.delete(replies).where(eq(replies.comment_id, commentId));

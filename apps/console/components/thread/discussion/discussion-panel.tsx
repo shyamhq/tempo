@@ -10,11 +10,9 @@ import { MessageList } from './message-list';
 export function DiscussionPanel({
   threadId,
   messages,
-  approved,
 }: {
   threadId: string;
   messages: DiscussionMessage[];
-  approved: boolean;
 }) {
   // Stamp "seen" whenever the panel renders open. Parent guarantees this
   // component only mounts while `discussionOpen` — so a mount equals an open
@@ -23,23 +21,10 @@ export function DiscussionPanel({
     useThreadUi.getState().markDiscussionSeen(threadId);
   }, [threadId]);
 
-  // Composer disabled only when the Thread is frozen (approved). When a live
-  // question card sits at the bottom of the timeline the Dev can still post
-  // free-form pushback — sending any message supersedes the card.
-  const composerDisabled = approved;
-  const composerReason = approved
-    ? 'Thread is approved — reopen to continue the Discussion.'
-    : null;
-
   return (
     <aside aria-label="Discussion" className="relative flex flex-col h-full min-h-0 bg-canvas">
       <MessageList messages={messages} threadId={threadId} emptyState={<EmptyState />} />
-      <MessageComposer
-        threadId={threadId}
-        disabled={composerDisabled}
-        disabledReason={composerReason}
-        autoFocus={!composerDisabled}
-      />
+      <MessageComposer threadId={threadId} autoFocus />
       <p className="px-5 pb-3 -mt-1 text-micro font-normal text-ink-tertiary">
         <kbd className="font-sans">⌘Enter</kbd> to send
         <span aria-hidden> · </span>

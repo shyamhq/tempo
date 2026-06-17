@@ -238,9 +238,7 @@ async function runTurn(
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: HOSTED_SYSTEM_PROMPT,
     messages: history,
-    // Per-step decision point. No-op today (every tool allowed); Slice 3
-    // narrows `activeTools` here based on the Thread's approval state to
-    // enforce the approve-gate.
+    // Per-step decision point. No-op today (every tool allowed).
     prepareStep: async () => ({}),
     // Anthropic ephemeral prompt cache: 5-min TTL on system prompt + tool
     // defs (the static, big chunk). First step of a Turn writes the cache

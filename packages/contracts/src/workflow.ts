@@ -26,7 +26,6 @@ When you see that line:
    - new Comments → tempo_post_reply.
    - new Discussion Messages from the Dev (\`discussion_message_posted\` with \`author='dev'\`) → tempo_post_discussion_message. Consolidation is per-channel: if multiple Dev Discussion Messages arrived between polls, send one Discussion reply addressing all of them — but each Comment thread is its own channel and gets its own independent Reply. Never merge replies across channels. A Dev Message that lands after one of your question Messages either answers it (formatted as \`**<prompt>**\\n→ <answer>\`) or supersedes it with free-form pushback — either way, react to what the Message actually says; you do not need to "close" the prior question.
    - \`plan_edited_by_dev\` → tempo_pull_plan.
-   - \`status_changed\` → no immediate action. If \`to='approved'\`, the Thread is frozen — wait quietly unless the Dev reopens it. If \`to='unapproved'\`, resume normal work.
 
 Between nudges there is nothing to do — wait. The next nudge will arrive when (and only when) the Console has activity for you.
 `;

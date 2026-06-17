@@ -198,12 +198,6 @@ function apply(
           : next.plan.body;
         return { ...next, plan: { ...next.plan, body } };
       }
-      case 'status_changed':
-        return {
-          ...next,
-          status: ev.to,
-          plan: { ...next.plan, status: ev.to },
-        };
       case 'comment_resolved':
         return {
           ...next,

@@ -5,7 +5,7 @@ import {
   ResolveCommentResponse,
   UnresolveCommentResponse,
 } from '@tempo/contracts/http';
-import { ConflictError, NotFoundError } from '@tempo/errors';
+import { NotFoundError } from '@tempo/errors';
 import { createComment, deleteComment, resolveComment, unresolveComment } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
@@ -39,10 +39,6 @@ export const deleteCommentHandler: RequestHandler<{ id: string }> = async (req, 
   } catch (err) {
     if (err instanceof NotFoundError) {
       res.status(404).json({ error: 'comment_not_found' });
-      return;
-    }
-    if (err instanceof ConflictError) {
-      res.status(409).json({ error: 'thread_approved' });
       return;
     }
     logger.error({ err }, 'deleteComment failed');

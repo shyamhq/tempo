@@ -112,7 +112,6 @@ export async function listSpaceThreadsLite(
     .select({
       id: threads.id,
       title: threads.title,
-      status: threads.status,
       sort_order: threads.sort_order,
     })
     .from(threads)

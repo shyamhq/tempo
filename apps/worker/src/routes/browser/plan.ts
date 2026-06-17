@@ -1,6 +1,6 @@
-import { RecheckPlanResponse, WritePlanRequest, WritePlanResponse } from '@tempo/contracts/http';
-import { NotFoundError, ValidationError } from '@tempo/errors';
-import { requestPlanRecheck, writePlan } from '@tempo/server';
+import { WritePlanRequest, WritePlanResponse } from '@tempo/contracts/http';
+import { ValidationError } from '@tempo/errors';
+import { writePlan } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
@@ -22,21 +22,6 @@ export const writePlanHandler: RequestHandler<{ id: string }> = async (req, res)
       return;
     }
     logger.error({ err }, 'writePlan failed');
-    res.status(500).json({ error: 'internal_error' });
-  }
-};
-
-// POST /api/threads/:id/plan/recheck — browser Dev triggers agent re-read.
-export const recheckPlanHandler: RequestHandler<{ id: string }> = async (req, res) => {
-  try {
-    const result = await requestPlanRecheck(req.params.id);
-    send(res, RecheckPlanResponse)({ ok: true, updated_at: result.updated_at });
-  } catch (err) {
-    if (err instanceof NotFoundError) {
-      res.status(404).json({ error: 'thread_not_found' });
-      return;
-    }
-    logger.error({ err }, 'recheckPlan failed');
     res.status(500).json({ error: 'internal_error' });
   }
 };

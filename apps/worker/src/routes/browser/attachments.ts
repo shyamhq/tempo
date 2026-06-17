@@ -20,10 +20,6 @@ export const initAttachmentHandler: RequestHandler<{ id: string }> = async (req,
       res.status(404).json({ error: 'thread_not_found' });
       return;
     }
-    if (msg === 'thread_approved') {
-      res.status(409).json({ error: 'thread_approved' });
-      return;
-    }
     logger.error({ err }, 'initAttachment failed');
     res.status(500).json({ error: 'internal_error' });
   }

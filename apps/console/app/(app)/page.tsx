@@ -5,7 +5,6 @@ import { DeleteThreadButton } from '@/components/dashboard/delete-thread-button'
 import { EmptyHome } from '@/components/home/empty-home';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api-client';
-import { cn } from '@/lib/utils';
 import { currentWorkspaceId } from '@/server/actor';
 import { listSpaces } from '@/server/spaces';
 
@@ -83,10 +82,7 @@ export default async function HomePage({
               <div className="relative flex items-center gap-3 px-3 py-3 pointer-events-none">
                 <span
                   aria-hidden
-                  className={cn(
-                    'inline-block h-1.5 w-1.5 rounded-full shrink-0',
-                    t.status === 'approved' ? 'bg-accent' : 'bg-ink-tertiary',
-                  )}
+                  className="inline-block h-1.5 w-1.5 rounded-full shrink-0 bg-ink-tertiary"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-ink font-medium truncate">{t.title}</div>
@@ -98,9 +94,6 @@ export default async function HomePage({
                 </div>
                 <div className="w-24 text-right shrink-0">
                   <Badge tone={sessionTone(t.session_status)}>{t.session_status}</Badge>
-                </div>
-                <div className="w-20 text-right shrink-0">
-                  <Badge tone={t.status === 'approved' ? 'success' : 'accent'}>{t.status}</Badge>
                 </div>
                 <span className="w-28 text-right shrink-0 text-micro font-normal text-ink-tertiary tabular-nums">
                   {formatUpdated(t.updated_at)}

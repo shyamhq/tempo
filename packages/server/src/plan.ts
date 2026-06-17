@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Actor, AgentPlanBlocks, AgentPlanState, Plan } from '@tempo/contracts';
+import type { Actor, AgentPlanBlocks, Plan } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { readPlanRow } from '@tempo/db/queries/plans';
 import { plans, threads } from '@tempo/db/schema';
@@ -18,16 +18,15 @@ import { appendEvent } from './event-log';
 export async function getPlan(threadId: string): Promise<Plan> {
   const row = await readPlanRow(threadId);
   if (row.body_pm_json == null || row.updated_at == null || row.updated_by == null) {
-    return { status: row.status, body: null };
+    return { body: null };
   }
   let pmJson: unknown = null;
   try {
     pmJson = JSON.parse(row.body_pm_json);
   } catch {
-    return { status: row.status, body: null };
+    return { body: null };
   }
   return {
-    status: row.status,
     body: {
       pm_json: pmJson,
       updated_at: row.updated_at.toISOString(),
@@ -51,31 +50,11 @@ export async function writePlan(
     .set({ body_pm_json: JSON.stringify(pmJson), updated_by: by, updated_at })
     .where(eq(plans.thread_id, threadId));
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
-  if (by === 'agent') {
-    await appendEvent(threadId, { kind: 'plan_edited_by_agent', updated_at: updated_at_iso });
-  }
+  await appendEvent(threadId, {
+    kind: by === 'agent' ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
+    updated_at: updated_at_iso,
+  });
   return { updated_at: updated_at_iso };
-}
-
-export async function requestPlanRecheck(threadId: string): Promise<{ updated_at: string }> {
-  const [t] = await db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(eq(threads.id, threadId))
-    .limit(1);
-  if (!t) throw new NotFoundError(`thread_not_found: ${threadId}`);
-  const updated_at = new Date().toISOString();
-  await appendEvent(threadId, { kind: 'plan_edited_by_dev', updated_at });
-  return { updated_at };
-}
-
-export async function getPlanState(threadId: string): Promise<AgentPlanState> {
-  const row = await readPlanRow(threadId);
-  return {
-    status: row.status,
-    updated_at: row.updated_at?.toISOString() ?? null,
-    updated_by: row.updated_by,
-  };
 }
 
 export async function getPlanBlocks(threadId: string): Promise<AgentPlanBlocks> {
@@ -196,9 +175,10 @@ export async function updatePlan(
   }
 
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
-  if (actor === 'agent') {
-    await appendEvent(threadId, { kind: 'plan_edited_by_agent', updated_at: updated_at_iso });
-  }
+  await appendEvent(threadId, {
+    kind: actor === 'agent' ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
+    updated_at: updated_at_iso,
+  });
   return { ids };
 }
 
