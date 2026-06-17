@@ -2,27 +2,26 @@
 
 import { useAuth } from '@clerk/nextjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { SessionStatus } from '@tempo/contracts';
-import { Check, ExternalLink, Loader2, Play, RotateCcw } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import type { AgentType, SessionStatus } from '@tempo/contracts';
+import { Loader2, RotateCcw } from 'lucide-react';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { api, workerApi } from '@/lib/api-client';
 
-// Hosted-runtime control next to the Connect button. Three roles:
-//   1. "Run Hosted Agent" button when no Sandbox is alive (wake + backfill).
-//   2. State badge during Provisioning / Connected / Failed.
-//   3. Tier 1 VM card with sandbox_id + relative age + Inspect-in-E2B link
-//      when a Sandbox is live.
-// Hides entirely when Hosted is off for the workspace or a Local CLI is
-// connected (presence wins; supervisor short-circuits on isFresh anyway).
+// Hosted-runtime status surface next to the Connect button. Renders only for
+// Hosted Threads. Auto-wake fires server-side on Dev wake events; this
+// component only shows state and offers a Try again escape hatch on failure.
+//   1. Provisioning badge during initiating.
+//   2. Try again button on failed (recovery when auto-wake didn't fire).
+//   3. Tier 1 VM card with sandbox_id + relative age when a Sandbox is live.
 export function HostedAgentControl({
   threadId,
+  agentType,
   sessionStatus,
-  cliConnected,
 }: {
   threadId: string;
+  agentType: AgentType;
   sessionStatus: SessionStatus;
-  cliConnected: boolean;
 }) {
   const { getToken } = useAuth();
   const wApi = useMemo(() => workerApi(getToken), [getToken]);
@@ -37,35 +36,21 @@ export function HostedAgentControl({
     queryKey: ['hosted-state', threadId],
     queryFn: () => api.getHostedState(threadId),
     refetchInterval,
+    enabled: agentType === 'hosted',
   });
 
-  const [hostedOff, setHostedOff] = useState(false);
   const wake = useMutation({
     mutationFn: () => wApi.wakeHosted(threadId),
-    onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ['hosted-state', threadId] });
-      if (res.status === 'hosted_off') {
-        setHostedOff(true);
-        setTimeout(() => setHostedOff(false), 2500);
-      }
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hosted-state', threadId] }),
   });
 
-  if (!state.data?.hosted_enabled || cliConnected) return null;
+  if (agentType !== 'hosted') return null;
 
-  if (state.data.vm && sessionStatus === 'connected') {
+  if (state.data?.vm && sessionStatus === 'connected') {
     return (
       <div className="flex items-center gap-2 text-caption text-ink-subtle">
         <span className="font-mono">sandbox {state.data.vm.sandbox_id.slice(0, 12)}…</span>
         <span>· {relativeTime(state.data.vm.started_at)}</span>
-        <a
-          href={`https://e2b.dev/dashboard/sandbox/${state.data.vm.sandbox_id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-ink hover:underline inline-flex items-center gap-1"
-        >
-          Inspect <ExternalLink className="h-3 w-3" />
-        </a>
       </div>
     );
   }
@@ -88,21 +73,7 @@ export function HostedAgentControl({
     );
   }
 
-  if (hostedOff) {
-    return (
-      <Button variant="secondary" size="sm" disabled>
-        <Check className="h-3.5 w-3.5" />
-        Hosted disabled
-      </Button>
-    );
-  }
-
-  return (
-    <Button variant="secondary" size="sm" onClick={() => wake.mutate()} disabled={wake.isPending}>
-      <Play className="h-3.5 w-3.5" />
-      {wake.isPending ? 'Waking…' : 'Run Hosted Agent'}
-    </Button>
-  );
+  return null;
 }
 
 function relativeTime(iso: string): string {

@@ -61,15 +61,11 @@ app.post('/api/agent-events', bearerAuth, express.json({ limit: '1mb' }), agentE
 // Hosted runner's outer-loop poll. sk_hosted_* only; threadId is JWT-bound.
 app.post('/api/hosted/drain', bearerAuth, drainHostedHandler);
 
-// User-triggered Hosted Agent spawn. Browser bearer only; thread scope
-// resolved inside the handler from the URL param.
-app.post(
-  '/api/threads/:id/hosted/wake',
-  bearerAuth,
-  rejectAgent,
-  ensureThreadAccess,
-  wakeHostedHandler,
-);
+// Hosted Agent spawn — browser button OR internal Console server-to-server
+// auto-wake. Handler enforces the per-kind allowlist; `rejectAgent` is omitted
+// here so the `internal` caller can reach this route while still being
+// blocked on SSE and other user-facing paths.
+app.post('/api/threads/:id/hosted/wake', bearerAuth, ensureThreadAccess, wakeHostedHandler);
 
 // SSE is a browser activity feed — agent keys (workspace-scoped, no user)
 // have no business subscribing.
@@ -129,19 +125,18 @@ const server = app.listen(env.PORT, () => {
   );
 });
 
-// Graceful shutdown — let in-flight MCP streams drain before the process exits.
+// Graceful shutdown — drain HTTP first, then end the pg pool. Reverse order
+// crashes in-flight queries (e.g. auth identify) with "Cannot use a pool after end".
 const shutdown = async (signal: string) => {
   logger.info({ signal }, 'worker shutting down');
-  // Force-exit after 10 s if anything hangs (supervisor teardown or socket drain).
   setTimeout(() => process.exit(1), 10_000).unref();
   await stopSupervisor().catch((err) =>
     logger.warn({ err }, 'supervisor: shutdown error (continuing)'),
   );
+  await new Promise<void>((resolve) => server.close(() => resolve()));
   await pool.end().catch((err) => logger.warn({ err }, 'pg pool: shutdown error (continuing)'));
-  server.close(() => {
-    logger.info('worker stopped');
-    process.exit(0);
-  });
+  logger.info('worker stopped');
+  process.exit(0);
 };
 process.once('SIGTERM', () => void shutdown('SIGTERM'));
 process.once('SIGINT', () => void shutdown('SIGINT'));

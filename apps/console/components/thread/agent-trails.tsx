@@ -14,9 +14,9 @@ type Presence = 'connected' | 'starting' | 'failed' | 'idle';
 
 function presenceFromSession(status: SessionStatus): Presence {
   // `pending` means no Agent has ever attached for this Thread — distinct from
-  // `initiating`, which fires only after the Dev clicks Run Hosted Agent (or
-  // the CLI starts handshaking). Don't pulse the chip until something is
-  // actually coming up.
+  // `initiating`, which fires when the Hosted runner auto-wakes or the CLI
+  // starts handshaking. Don't pulse the chip until something is actually
+  // coming up.
   if (status === 'connected') return 'connected';
   if (status === 'initiating') return 'starting';
   if (status === 'failed') return 'failed';
