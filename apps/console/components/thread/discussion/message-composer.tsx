@@ -11,8 +11,8 @@ import {
 import { useAttachmentUploader } from '@/hooks/use-attachment-uploader';
 import { useWorkerApi } from '@/hooks/use-worker-api';
 
-const MIN_ROWS = 1;
-const MAX_ROWS = 6;
+const MIN_ROWS = 3;
+const MAX_ROWS = 12;
 const SENT_DWELL_MS = 1200;
 
 type Phase = 'idle' | 'sending' | 'sent';
@@ -30,6 +30,16 @@ export function MessageComposer({ threadId, autoFocus }: { threadId: string; aut
   useEffect(() => {
     if (autoFocus) ref.current?.focus();
   }, [autoFocus]);
+
+  // Auto-grow to scrollHeight on every draft change. `max-height` (set via
+  // inline style below) caps growth at MAX_ROWS, after which the textarea
+  // scrolls internally.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   useEffect(() => {
     return () => {
