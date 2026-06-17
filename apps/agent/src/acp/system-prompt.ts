@@ -1,37 +1,12 @@
-import { spawn } from 'node:child_process';
-import type { Event, ThreadId } from '@tempo/contracts';
-import type { TurnHydration } from '@tempo/contracts/http';
-import { env } from './env';
-import { logger } from './logger';
-import { startStreamPump } from './stream-pump';
-
-// One spawned `claude` run inside a Session — see CONTEXT.md §Turn.
-// Two flavours: `attach` (Turn 1, no --resume) and `resume` (Turn 2+,
-// `--resume <claude-session-id> --print "<nudge>"`). The shape returned
-// by both is uniform so connect.ts's loop doesn't branch.
-//
-// Failure differentiation (per judge note on slice-1d):
-// - `spawn-error`  : binary missing / login required → CLI exits immediately.
-// - `nonzero-exit` : Claude ran but exited non-zero (transient Worker 5xx,
-//                    Claude crash) → counts toward the 3-strike limit.
-// - `clean`        : exit code 0; reset the strike counter.
-export type TurnResult =
-  | { outcome: 'clean'; claudeSessionId: string | null }
-  | { outcome: 'nonzero-exit'; claudeSessionId: string | null; exitCode: number }
-  | { outcome: 'spawn-error'; message: string };
-
-// Restored verbatim from the pre-slice-1c-2a system prompt (origin/main
-// apps/agent/src/prompts/system-prompt.ts) so Claude has the same behavior
-// guidance the original CLI shipped with: hard skill triggers, reply tone
-// (with good/bad examples), Plan structure default, block-type rubric,
-// Tempo-vocabulary discipline, and "when you cannot decide" escape. Only
-// loaded on Turn 1 (kind='attach'); preserved across --resume in Claude's
-// conversation memory for every subsequent Turn.
-const ATTACH_SYSTEM_PROMPT = `# Tempo planning Agent — appended instructions
+// Appended to Claude Code's default system prompt via newSession `_meta.systemPrompt.append`.
+// Restored from the pre-slice-1c-2a CLI (origin/main apps/agent/src/prompts/system-prompt.ts):
+// hard skill triggers, reply tone with good/bad examples, Plan structure default,
+// block-type rubric, Tempo-vocabulary discipline, and the "when you cannot decide" escape.
+export const TEMPO_SYSTEM_PROMPT_APPEND = `# Tempo planning Agent — appended instructions
 
 ## Bootstrap
 
-Your \`--print\` argument is always a JSON string: \`{ thread_id, events, context? }\`.
+Your prompt content is a JSON string: \`{ thread_id, events, context? }\`.
 
 **Turn 1** (\`context\` present) — \`context\` contains the full Thread state: thread metadata, plan blocks (full HTML), comments with replies, and discussion messages. Read it directly and start work immediately. Your session is already registered — no \`tempo_attach\` call needed.
 
@@ -192,84 +167,3 @@ Skills are mandatory guides for specific tasks — not optional references. Call
 - Unsure whether the ask is well-scoped → \`tempo_load_skill("grill-the-ask")\`
 
 The \`tempo_load_skill\` tool description carries the full up-to-date list with one-line descriptions. Do not pre-load every skill — a loaded skill's body stays in context for the session; loading skills you don't need wastes context.`;
-
-export type TurnSpec =
-  | {
-      kind: 'attach';
-      threadId: ThreadId;
-      mcpConfigPath: string;
-      workerUrl: string;
-      token: string;
-      context: TurnHydration;
-    }
-  | {
-      kind: 'resume';
-      threadId: ThreadId;
-      mcpConfigPath: string;
-      workerUrl: string;
-      token: string;
-      claudeSessionId: string;
-      events: Event[];
-    };
-
-export async function runTurn(
-  spec: TurnSpec,
-  onCancel: (kill: () => void) => void,
-): Promise<TurnResult> {
-  const baseArgs = [
-    '--output-format',
-    'stream-json',
-    '--verbose',
-    '--model',
-    env.TEMPO_AGENT_MODEL,
-    '--mcp-config',
-    spec.mcpConfigPath,
-  ];
-  const printPayload =
-    spec.kind === 'attach'
-      ? JSON.stringify({ thread_id: spec.threadId, events: [], context: spec.context })
-      : JSON.stringify({ thread_id: spec.threadId, events: spec.events });
-  const args =
-    spec.kind === 'attach'
-      ? [...baseArgs, '--append-system-prompt', ATTACH_SYSTEM_PROMPT, '--print', printPayload]
-      : [...baseArgs, '--resume', spec.claudeSessionId, '--print', printPayload];
-
-  logger.debug({ kind: spec.kind, args }, 'turn: spawning claude');
-
-  const child = spawn('claude', args, {
-    stdio: ['inherit', 'pipe', 'inherit'],
-    env: { ...process.env, CLAUDE_CODE_ENABLE_TASKS: '0' },
-  });
-
-  let capturedSessionId: string | null = null;
-  startStreamPump({
-    stdout: child.stdout,
-    threadId: spec.threadId,
-    token: spec.token,
-    workerUrl: spec.workerUrl,
-    onSessionId: (id) => {
-      capturedSessionId = id;
-      logger.debug({ id }, 'turn: captured claude session_id');
-    },
-  });
-
-  onCancel(() => {
-    child.kill('SIGINT');
-    setTimeout(() => child.kill('SIGKILL'), 5000).unref();
-  });
-
-  return new Promise<TurnResult>((resolve) => {
-    child.on('error', (err) => {
-      resolve({ outcome: 'spawn-error', message: err.message });
-    });
-    child.on('exit', (code) => {
-      const claudeSessionId =
-        capturedSessionId ?? (spec.kind === 'resume' ? spec.claudeSessionId : null);
-      if (code === 0) {
-        resolve({ outcome: 'clean', claudeSessionId });
-      } else {
-        resolve({ outcome: 'nonzero-exit', claudeSessionId, exitCode: code ?? 1 });
-      }
-    });
-  });
-}

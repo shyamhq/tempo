@@ -11,9 +11,11 @@ const Env = z.object({
   // `verbose` bumps LOG_LEVEL to debug and surfaces every tempo MCP tool call
   // and every event POSTed to Worker. Useful when `connect` appears stuck.
   TEMPO_LOG_MODE: z.enum(['normal', 'verbose']).default('normal'),
-  // Passed as `--model` to `claude`. Accepts an alias (`haiku`, `sonnet`,
-  // `opus`) or a full model ID.
-  TEMPO_AGENT_MODEL: z.string().default('sonnet'),
+  // Optional: explicit ACP adapter command. Defaults to the bundled
+  // @zed-industries/claude-code-acp under the running node binary.
+  TEMPO_AGENT_ADAPTER_CMD: z.string().optional(),
+  // Optional space-separated args appended to the adapter spawn.
+  TEMPO_AGENT_ADAPTER_ARGS: z.string().optional(),
 });
 
 const parsed = Env.safeParse(process.env);

@@ -14,7 +14,9 @@ type ThreadView = z.infer<typeof GetThreadResponse>;
 
 export type ActivityEntry =
   | { kind: 'tool'; id: string; tool: string; summary: string }
-  | { kind: 'narration'; id: string; text: string };
+  | { kind: 'tool_failed'; id: string; tool: string }
+  | { kind: 'narration'; id: string; text: string }
+  | { kind: 'thought'; id: string; text: string };
 
 export type LiveActivity = {
   todos: AgentTodo[] | null;
@@ -268,6 +270,25 @@ function apply(
   }
 }
 
+// Append one activity entry and mark the turn active. Used by every
+// agent_* event that adds a row — narration, thought, tool_failed.
+// agent_tool_use stays inline because it ALSO flips turnActive distinctly
+// (the initial tool call marks turn-start), kept separate for clarity.
+function pushEntry(
+  qc: ReturnType<typeof useQueryClient>,
+  threadId: string,
+  entry: ActivityEntry,
+): void {
+  qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
+    const base = prev ?? EMPTY_ACTIVITY;
+    return {
+      ...base,
+      entries: [entry, ...base.entries].slice(0, ACTIVITY_ENTRIES_MAX),
+      turnActive: true,
+    };
+  });
+}
+
 function applyLiveActivity(
   qc: ReturnType<typeof useQueryClient>,
   threadId: string,
@@ -291,17 +312,13 @@ function applyLiveActivity(
       });
       return;
     case 'agent_narration':
-      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
-        const base = prev ?? EMPTY_ACTIVITY;
-        const entry: ActivityEntry = { kind: 'narration', id: ev.id, text: ev.text };
-        return {
-          ...base,
-          entries: [entry, ...base.entries].slice(0, ACTIVITY_ENTRIES_MAX),
-          // Narration can arrive before any tool call (stream-json driver);
-          // flipping turnActive ensures the widget mounts.
-          turnActive: true,
-        };
-      });
+      pushEntry(qc, threadId, { kind: 'narration', id: ev.id, text: ev.text });
+      return;
+    case 'agent_thought':
+      pushEntry(qc, threadId, { kind: 'thought', id: ev.id, text: ev.text });
+      return;
+    case 'agent_tool_failed':
+      pushEntry(qc, threadId, { kind: 'tool_failed', id: ev.id, tool: ev.tool });
       return;
     case 'agent_todos_updated':
       // Empty array means Claude cleared its list — normalize to `null` so the

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentTodo, Event } from './events';
+import { AgentTodo, type Event } from './events';
 import { CommentId, EventId, IsoTimestamp, MessageId } from './primitives';
 
 // A Trail is everything the Agent did to produce one output (a Comment reply,
@@ -21,6 +21,18 @@ export const TrailStep = z.discriminatedUnion('kind', [
     id: EventId,
     ts: IsoTimestamp,
     text: z.string(),
+  }),
+  z.object({
+    kind: z.literal('thought'),
+    id: EventId,
+    ts: IsoTimestamp,
+    text: z.string(),
+  }),
+  z.object({
+    kind: z.literal('tool_failed'),
+    id: EventId,
+    ts: IsoTimestamp,
+    tool: z.string(),
   }),
   z.object({
     kind: z.literal('todos'),
@@ -67,6 +79,10 @@ export function deriveTrails(events: Event[]): Trail[] {
         cur ??= startTrail(ev);
         cur.steps.push({ kind: 'narration', id: ev.id, ts: ev.created_at, text: ev.text });
         break;
+      case 'agent_thought':
+        cur ??= startTrail(ev);
+        cur.steps.push({ kind: 'thought', id: ev.id, ts: ev.created_at, text: ev.text });
+        break;
       case 'agent_tool_use':
         cur ??= startTrail(ev);
         cur.steps.push({
@@ -76,6 +92,10 @@ export function deriveTrails(events: Event[]): Trail[] {
           tool: ev.tool,
           summary: ev.summary,
         });
+        break;
+      case 'agent_tool_failed':
+        cur ??= startTrail(ev);
+        cur.steps.push({ kind: 'tool_failed', id: ev.id, ts: ev.created_at, tool: ev.tool });
         break;
       case 'agent_todos_updated':
         cur ??= startTrail(ev);

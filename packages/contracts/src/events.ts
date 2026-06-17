@@ -84,6 +84,21 @@ export const AgentTurnEndedEvent = eventBase.extend({
   kind: z.literal('agent_turn_ended'),
 });
 
+export const AgentThoughtEvent = eventBase.extend({
+  kind: z.literal('agent_thought'),
+  text: z.string().min(1).max(8000),
+});
+
+export const AgentToolFailedEvent = eventBase.extend({
+  kind: z.literal('agent_tool_failed'),
+  tool: z.string().max(64),
+});
+
+export const AgentModeChangedEvent = eventBase.extend({
+  kind: z.literal('agent_mode_changed'),
+  mode_id: z.string().max(64),
+});
+
 export const SessionConnectedEvent = eventBase.extend({
   kind: z.literal('session_connected'),
 });
@@ -132,8 +147,11 @@ export const Event = z.discriminatedUnion('kind', [
   CommentUnresolvedEvent,
   CommentDeletedEvent,
   AgentToolUseEvent,
+  AgentToolFailedEvent,
   AgentNarrationEvent,
+  AgentThoughtEvent,
   AgentTodosUpdatedEvent,
+  AgentModeChangedEvent,
   AgentTurnEndedEvent,
   SessionConnectedEvent,
   SessionDisconnectedEvent,
@@ -155,8 +173,11 @@ export const EventKind = z.enum([
   'comment_unresolved',
   'comment_deleted',
   'agent_tool_use',
+  'agent_tool_failed',
   'agent_narration',
+  'agent_thought',
   'agent_todos_updated',
+  'agent_mode_changed',
   'agent_turn_ended',
   'session_connected',
   'session_disconnected',

@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { SessionStatus, Trail, TrailStep } from '@tempo/contracts';
-import { ChevronDown, ChevronUp, Maximize2, Minus, Wrench, X } from 'lucide-react';
+import { Brain, ChevronDown, ChevronUp, Maximize2, Minus, Wrench, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLiveActivityGroup } from '@/hooks/use-thread-events';
 import { api } from '@/lib/api-client';
@@ -298,26 +298,42 @@ function TrailRow({ trail, defaultOpen }: { trail: Trail; defaultOpen: boolean }
 }
 
 function StepRow({ step }: { step: TrailStep }) {
-  if (step.kind === 'narration') {
-    return <div className="text-caption text-ink-subtle italic leading-snug">{step.text}</div>;
+  switch (step.kind) {
+    case 'narration':
+      return <div className="text-caption text-ink-subtle italic leading-snug">{step.text}</div>;
+    case 'thought':
+      return (
+        <div className="flex items-start gap-1.5 text-caption text-ink-tertiary italic leading-snug">
+          <Brain className="h-3 w-3 mt-0.5 shrink-0" />
+          <span>{step.text}</span>
+        </div>
+      );
+    case 'tool':
+      return (
+        <div className="flex items-center gap-1.5 text-micro font-mono">
+          <Wrench className="h-3 w-3 shrink-0 text-ink-tertiary" />
+          <span className="font-semibold text-ink">{TOOL_LABELS[step.tool] ?? step.tool}</span>
+          <span className="truncate text-ink-subtle">{compactArgs(step.summary)}</span>
+        </div>
+      );
+    case 'tool_failed':
+      return (
+        <div className="flex items-center gap-1.5 text-micro font-mono">
+          <X className="h-3 w-3 shrink-0 text-brand-warn" />
+          <span className="text-brand-warn">{TOOL_LABELS[step.tool] ?? step.tool} failed</span>
+        </div>
+      );
+    case 'todos': {
+      const active = step.todos.find((t) => t.status === 'in_progress');
+      const done = step.todos.filter((t) => t.status === 'completed').length;
+      return (
+        <div className="text-micro text-ink-subtle">
+          Todos: {done}/{step.todos.length} done
+          {active ? ` · ${active.activeForm ?? active.content}` : ''}
+        </div>
+      );
+    }
   }
-  if (step.kind === 'tool') {
-    return (
-      <div className="flex items-center gap-1.5 text-micro font-mono">
-        <Wrench className="h-3 w-3 shrink-0 text-ink-tertiary" />
-        <span className="font-semibold text-ink">{TOOL_LABELS[step.tool] ?? step.tool}</span>
-        <span className="truncate text-ink-subtle">{compactArgs(step.summary)}</span>
-      </div>
-    );
-  }
-  const active = step.todos.find((t) => t.status === 'in_progress');
-  const done = step.todos.filter((t) => t.status === 'completed').length;
-  return (
-    <div className="text-micro text-ink-subtle">
-      Todos: {done}/{step.todos.length} done
-      {active ? ` · ${active.activeForm ?? active.content}` : ''}
-    </div>
-  );
 }
 
 function ringForSurface(surface: Trail['surface']): string {
@@ -353,17 +369,33 @@ function formatDuration(trail: Trail): string {
 function summariseSteps(steps: TrailStep[]): React.ReactNode[] {
   if (steps.length === 0) return [<span key="-">no steps</span>];
   const tools = steps.filter((s) => s.kind === 'tool').length;
-  const narrations = steps.filter((s) => s.kind === 'narration').length;
-  const out: React.ReactNode[] = [];
-  if (narrations) out.push(<span key="n">{narrations} thinking</span>);
+  const failed = steps.filter((s) => s.kind === 'tool_failed').length;
+  const thinking = steps.filter((s) => s.kind === 'narration' || s.kind === 'thought').length;
+  const parts: React.ReactNode[] = [];
+  if (thinking) parts.push(<span key="n">{thinking} thinking</span>);
   if (tools)
-    out.push(
+    parts.push(
       <span key="t">
-        {out.length ? <span className="text-ink-tertiary">·</span> : null} {tools} tool
-        {tools === 1 ? '' : 's'}
+        {tools} tool{tools === 1 ? '' : 's'}
       </span>,
     );
-  return out;
+  if (failed)
+    parts.push(
+      <span key="f" className="text-brand-warn">
+        {failed} failed
+      </span>,
+    );
+  return parts.flatMap((p, i) =>
+    i === 0
+      ? [p]
+      : [
+          <span key={`s${i}`} className="text-ink-tertiary">
+            {' '}
+            ·{' '}
+          </span>,
+          p,
+        ],
+  );
 }
 
 function compactArgs(summary: string): string {
@@ -393,22 +425,21 @@ function synthesizeLiveTrail(live: ReturnType<typeof useLiveActivityGroup>): Tra
   const steps: TrailStep[] = [];
   // entries are newest-first in the live cache; emit oldest-first so the
   // trail reads chronologically like the persisted ones.
+  const ts = new Date().toISOString();
   for (const e of [...live.entries].reverse()) {
-    if (e.kind === 'tool') {
-      steps.push({
-        kind: 'tool',
-        id: e.id,
-        ts: new Date().toISOString(),
-        tool: e.tool,
-        summary: e.summary,
-      });
-    } else if (e.kind === 'narration') {
-      steps.push({
-        kind: 'narration',
-        id: e.id,
-        ts: new Date().toISOString(),
-        text: e.text,
-      });
+    switch (e.kind) {
+      case 'tool':
+        steps.push({ kind: 'tool', id: e.id, ts, tool: e.tool, summary: e.summary });
+        break;
+      case 'tool_failed':
+        steps.push({ kind: 'tool_failed', id: e.id, ts, tool: e.tool });
+        break;
+      case 'narration':
+        steps.push({ kind: 'narration', id: e.id, ts, text: e.text });
+        break;
+      case 'thought':
+        steps.push({ kind: 'thought', id: e.id, ts, text: e.text });
+        break;
     }
   }
   if (steps.length === 0 && !live.todos) return null;
@@ -436,7 +467,12 @@ function chipStatusText(
       const arg = compactArgs(step.summary);
       return arg ? `${label} · ${arg}` : label;
     }
-    if (step?.kind === 'narration') return step.text.slice(0, 80);
+    if (step?.kind === 'tool_failed') {
+      return `${TOOL_LABELS[step.tool] ?? step.tool} failed`;
+    }
+    if (step?.kind === 'narration' || step?.kind === 'thought') {
+      return step.text.slice(0, 80);
+    }
     return 'Working…';
   }
   if (presence === 'failed' && failedReason) return failedReason;

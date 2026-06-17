@@ -433,6 +433,21 @@ export const AgentTurnEndedEvent = z.object({
   kind: z.literal('agent_turn_ended'),
 });
 
+export const AgentThoughtEvent = z.object({
+  kind: z.literal('agent_thought'),
+  text: z.string().min(1).max(8000),
+});
+
+export const AgentToolFailedEvent = z.object({
+  kind: z.literal('agent_tool_failed'),
+  tool: z.string().max(64),
+});
+
+export const AgentModeChangedEvent = z.object({
+  kind: z.literal('agent_mode_changed'),
+  mode_id: z.string().max(64),
+});
+
 export const AgentSessionInitiatingEvent = z.object({
   kind: z.literal('session_initiating'),
 });
@@ -454,8 +469,11 @@ export const AgentEventRequest = z.object({
   thread_id: ThreadId,
   event: z.discriminatedUnion('kind', [
     AgentToolUseEvent,
+    AgentToolFailedEvent,
     AgentNarrationEvent,
+    AgentThoughtEvent,
     AgentTodosUpdatedEvent,
+    AgentModeChangedEvent,
     AgentTurnEndedEvent,
     AgentSessionInitiatingEvent,
     AgentSessionConnectedEvent,
