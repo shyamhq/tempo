@@ -25,6 +25,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tempo/contracts": "workspace:*",
     "@tempo/db": "workspace:*",
+    "@tempo/errors": "workspace:*",
     "@tempo/server": "workspace:*",
     "ai": "^6.0.206",
     "cors": "^2.8.6",

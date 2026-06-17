@@ -13,6 +13,7 @@ import {
   threads,
   vm_runs,
 } from '@tempo/db/schema';
+import { NotFoundError, ValidationError } from '@tempo/errors';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { appendEvent } from './event-log';
 import { newPlanId, newThreadId } from './ids';
@@ -98,10 +99,15 @@ export async function getThread(threadId: string) {
 }
 
 export async function approveThread(threadId: string) {
+  const prior = await getThread(threadId);
+  if (!prior) throw new NotFoundError('thread_not_found');
   await db
     .update(threads)
     .set({ status: 'approved', updated_at: new Date() })
     .where(eq(threads.id, threadId));
+  if (prior.status !== 'approved') {
+    await appendEvent(threadId, { kind: 'status_changed', from: prior.status, to: 'approved' });
+  }
 }
 
 export async function deleteThread(threadId: string): Promise<void> {
@@ -111,7 +117,7 @@ export async function deleteThread(threadId: string): Promise<void> {
       .from(threads)
       .where(eq(threads.id, threadId))
       .limit(1);
-    if (!t) throw new Error('thread_not_found');
+    if (!t) throw new NotFoundError('thread_not_found');
 
     const commentRows = await tx
       .select({ id: comments.id })
@@ -136,14 +142,7 @@ export async function deleteThread(threadId: string): Promise<void> {
   // R2 prefix-delete runs after the DB commit so a failed delete leaves an
   // orphan object that the 7-day lifecycle rule will sweep, not a dangling
   // DB row.
-  try {
-    await deletePrefix(threadId);
-  } catch (e) {
-    console.warn('attachment prefix-delete failed; lifecycle rule will sweep', {
-      threadId,
-      err: e,
-    });
-  }
+  await deletePrefix(threadId).catch(() => {});
 }
 
 // Single mutation for title and/or space_id so the route handler doesn't have
@@ -167,7 +166,7 @@ export async function updateThread(
       .from(threads)
       .where(eq(threads.id, threadId))
       .limit(1);
-    if (!t) throw new Error('thread_not_found');
+    if (!t) throw new NotFoundError('thread_not_found');
 
     if (patch.space_id) {
       const [sp] = await tx
@@ -175,7 +174,7 @@ export async function updateThread(
         .from(spaces)
         .where(and(eq(spaces.id, patch.space_id), eq(spaces.workspace_id, t.workspace_id)))
         .limit(1);
-      if (!sp) throw new Error('space_workspace_mismatch');
+      if (!sp) throw new ValidationError('space_workspace_mismatch');
     }
 
     const set: Record<string, string | number | Date> = { updated_at: new Date() };
@@ -208,10 +207,15 @@ export async function updateThread(
 }
 
 export async function reopenThread(threadId: string) {
+  const prior = await getThread(threadId);
+  if (!prior) throw new NotFoundError('thread_not_found');
   await db
     .update(threads)
     .set({ status: 'unapproved', updated_at: new Date() })
     .where(eq(threads.id, threadId));
+  if (prior.status !== 'unapproved') {
+    await appendEvent(threadId, { kind: 'status_changed', from: prior.status, to: 'unapproved' });
+  }
 }
 
 // Source of truth is the event log — both CLI and hosted runtimes append

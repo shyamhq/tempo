@@ -1,12 +1,13 @@
-import { appendEvent, approveThread, getThread } from '@tempo/server';
-import { ok } from '../../../../../server/http';
+import { approveThread, threadBelongsToWorkspace } from '@tempo/server';
+import type { NextRequest } from 'next/server';
+import { authFromRequest } from '../../../../../server/actor';
+import { err, ok } from '../../../../../server/http';
 
-export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await authFromRequest(req);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await ctx.params;
-  const prior = await getThread(id);
+  if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   await approveThread(id);
-  if (prior && prior.status !== 'approved') {
-    await appendEvent(id, { kind: 'status_changed', from: prior.status, to: 'approved' });
-  }
   return ok({ ok: true });
 }

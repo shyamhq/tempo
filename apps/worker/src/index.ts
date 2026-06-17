@@ -1,9 +1,11 @@
 import { pool } from '@tempo/db/client';
+import { TempoError } from '@tempo/errors';
 import cors from 'cors';
+import type { ErrorRequestHandler } from 'express';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
 import { env } from './env';
-import { stopSupervisor } from './hosted/supervisor';
+import { startSupervisor, stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
 import { agentEventsHandler } from './routes/agent-events/index';
@@ -103,8 +105,29 @@ app.all('/mcp', bearerAuth, async (req, res) => {
   await handleMcpRequest(req.caller, req, res);
 });
 
+// Last-resort error handler. Per-handler catches still own their domain-
+// specific 4xx mapping; anything that escapes lands here, gets logged with
+// Pino, and surfaces as the TempoError's status (or a generic 500).
+const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
+  if (res.headersSent) return;
+  if (err instanceof TempoError) {
+    logger.error({ err, path: req.path, code: err.code }, 'unhandled request error');
+    res.status(err.statusCode).json({ error: err.code, message: err.message });
+    return;
+  }
+  logger.error({ err, path: req.path }, 'unhandled request error');
+  res.status(500).json({ error: 'internal_error' });
+};
+app.use(errorHandler);
+
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'worker started');
+  // Fire-and-forget — orphans from a prior crash close out so the Console
+  // chip and vm_runs table line up with reality. Failure logs but doesn't
+  // block readiness; a stuck connected row is a UI nuisance, not a crash.
+  void startSupervisor().catch((err) =>
+    logger.warn({ err }, 'supervisor: boot sweep failed (continuing)'),
+  );
 });
 
 // Graceful shutdown — let in-flight MCP streams drain before the process exits.

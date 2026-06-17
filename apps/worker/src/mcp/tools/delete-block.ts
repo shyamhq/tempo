@@ -1,5 +1,6 @@
 import { DeleteBlockInput } from '@tempo/contracts/mcp';
-import { BlockNotFoundError, deleteBlock } from '@tempo/server';
+import { NotFoundError } from '@tempo/errors';
+import { deleteBlock } from '@tempo/server';
 
 import { sessionNotFound } from './_shared';
 
@@ -18,7 +19,7 @@ export function registerDeleteBlock(
         await deleteBlock(threadId, args.block_id, 'agent');
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
       } catch (err) {
-        if (err instanceof BlockNotFoundError) {
+        if (err instanceof NotFoundError) {
           return {
             content: [
               {

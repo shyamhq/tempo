@@ -15,9 +15,15 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { TurnHydration } from '@tempo/contracts/http';
 import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
+import pino from 'pino';
 import { z } from 'zod';
 import { buildAnthropicProvider, turnPath } from './helicone';
 import { HOSTED_SYSTEM_PROMPT } from './prompt-hosted';
+
+// Sandbox-local logger. Worker captures stdout/stderr per line via E2B's
+// onStdout/onStderr hooks (see vm/provision.ts) — pino's JSON lines flow
+// through that pipe and get re-wrapped as Worker INFO/WARN.
+const logger = pino({ level: process.env.HOSTED_LOG_LEVEL ?? 'info' });
 
 const exec = promisify(execFile);
 
@@ -80,13 +86,13 @@ async function pollMailbox(first: boolean): Promise<DrainResponse> {
       body: JSON.stringify({ first }),
     });
     if (!res.ok) {
-      console.error('runner: pollMailbox', res.status, await res.text());
+      logger.error({ status: res.status, body: await res.text() }, 'runner: pollMailbox');
       return { events: [] };
     }
     const json = (await res.json()) as DrainResponse;
     return { events: json.events ?? [], context: json.context };
   } catch (err) {
-    console.error('runner: pollMailbox failed', err);
+    logger.error({ err }, 'runner: pollMailbox failed');
     return { events: [] };
   }
 }
@@ -232,6 +238,10 @@ async function runTurn(
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: HOSTED_SYSTEM_PROMPT,
     messages: history,
+    // Per-step decision point. No-op today (every tool allowed); Slice 3
+    // narrows `activeTools` here based on the Thread's approval state to
+    // enforce the approve-gate.
+    prepareStep: async () => ({}),
     // Anthropic ephemeral prompt cache: 5-min TTL on system prompt + tool
     // defs (the static, big chunk). First step of a Turn writes the cache
     // (~25% premium), every subsequent step inside the Turn AND any Turn
@@ -280,10 +290,17 @@ async function runTurn(
   const u = await result.totalUsage;
   const ms = Date.now() - startedAt;
   const cost = ((u.inputTokens ?? 0) * 1 + (u.outputTokens ?? 0) * 5) / 1_000_000;
-  console.log(
-    `[usage] model=${env.modelId} in=${u.inputTokens ?? 0} out=${u.outputTokens ?? 0}` +
-      ` cacheR=${u.inputTokenDetails.cacheReadTokens ?? 0} cacheW=${u.inputTokenDetails.cacheWriteTokens ?? 0}` +
-      ` cost~=$${cost.toFixed(4)} elapsedMs=${ms}`,
+  logger.info(
+    {
+      model: env.modelId,
+      inputTokens: u.inputTokens ?? 0,
+      outputTokens: u.outputTokens ?? 0,
+      cacheReadTokens: u.inputTokenDetails.cacheReadTokens ?? 0,
+      cacheWriteTokens: u.inputTokenDetails.cacheWriteTokens ?? 0,
+      cost: Number(cost.toFixed(4)),
+      elapsedMs: ms,
+    },
+    'runner: usage',
   );
 
   await postAgentEvent({ kind: 'agent_turn_ended' });
@@ -305,7 +322,7 @@ async function main(): Promise<void> {
   // tool definitions and doesn't actually make a request. Every Turn rebuilds
   // its own provider with a fresh `/turn/<n>` path so Helicone groups the
   // Turn's requests into their own sub-trace.
-  if (env.heliconeKey) console.log('runner: routing Anthropic via Helicone');
+  if (env.heliconeKey) logger.info('runner: routing Anthropic via Helicone');
   const initialAnthropic = buildAnthropicProvider({
     anthropicKey: env.anthropicKey,
     heliconeKey: env.heliconeKey,
@@ -342,6 +359,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('runner: fatal', err);
+  logger.error({ err }, 'runner: fatal');
   process.exit(1);
 });

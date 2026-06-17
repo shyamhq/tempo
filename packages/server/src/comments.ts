@@ -1,6 +1,7 @@
 import type { AttachmentRef, Comment, Reply } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { comments, replies, threads } from '@tempo/db/schema';
+import { ConflictError, NotFoundError } from '@tempo/errors';
 import { asc, eq, inArray } from 'drizzle-orm';
 import {
   insertAttachmentRows,
@@ -94,21 +95,14 @@ export async function deleteComment(commentId: string): Promise<void> {
     .innerJoin(threads, eq(threads.id, comments.thread_id))
     .where(eq(comments.id, commentId))
     .limit(1);
-  if (!row) throw new CommentNotFoundError(commentId);
-  if (row.thread_status === 'approved') throw new Error('thread_approved');
+  if (!row) throw new NotFoundError(`comment_not_found: ${commentId}`);
+  if (row.thread_status === 'approved') throw new ConflictError('thread_approved');
 
   await db.transaction(async (tx) => {
     await tx.delete(replies).where(eq(replies.comment_id, commentId));
     await tx.delete(comments).where(eq(comments.id, commentId));
   });
   await appendEvent(row.thread_id, { kind: 'comment_deleted', comment_id: commentId });
-}
-
-export class CommentNotFoundError extends Error {
-  constructor(public readonly commentId: string) {
-    super(`comment_not_found: ${commentId}`);
-    this.name = 'CommentNotFoundError';
-  }
 }
 
 async function setResolvedBy(
@@ -121,7 +115,7 @@ async function setResolvedBy(
     .from(comments)
     .where(eq(comments.id, commentId))
     .limit(1);
-  if (!row) throw new Error('comment_not_found');
+  if (!row) throw new NotFoundError(`comment_not_found: ${commentId}`);
   await db.update(comments).set({ resolved_by }).where(eq(comments.id, commentId));
   await appendEvent(row.thread_id, { kind: eventKind, comment_id: commentId });
 }

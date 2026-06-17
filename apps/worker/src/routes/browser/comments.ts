@@ -5,13 +5,8 @@ import {
   ResolveCommentResponse,
   UnresolveCommentResponse,
 } from '@tempo/contracts/http';
-import {
-  CommentNotFoundError,
-  createComment,
-  deleteComment,
-  resolveComment,
-  unresolveComment,
-} from '@tempo/server';
+import { ConflictError, NotFoundError } from '@tempo/errors';
+import { createComment, deleteComment, resolveComment, unresolveComment } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
@@ -42,11 +37,11 @@ export const deleteCommentHandler: RequestHandler<{ id: string }> = async (req, 
     await deleteComment(req.params.id);
     send(res, DeleteCommentResponse)({ ok: true });
   } catch (err) {
-    if (err instanceof CommentNotFoundError) {
+    if (err instanceof NotFoundError) {
       res.status(404).json({ error: 'comment_not_found' });
       return;
     }
-    if ((err as Error).message === 'thread_approved') {
+    if (err instanceof ConflictError) {
       res.status(409).json({ error: 'thread_approved' });
       return;
     }
@@ -61,7 +56,7 @@ export const resolveCommentHandler: RequestHandler<{ id: string }> = async (req,
     await resolveComment(req.params.id);
     send(res, ResolveCommentResponse)({ ok: true });
   } catch (err) {
-    if ((err as Error).message === 'comment_not_found') {
+    if (err instanceof NotFoundError) {
       res.status(404).json({ error: 'comment_not_found' });
       return;
     }
@@ -76,7 +71,7 @@ export const unresolveCommentHandler: RequestHandler<{ id: string }> = async (re
     await unresolveComment(req.params.id);
     send(res, UnresolveCommentResponse)({ ok: true });
   } catch (err) {
-    if ((err as Error).message === 'comment_not_found') {
+    if (err instanceof NotFoundError) {
       res.status(404).json({ error: 'comment_not_found' });
       return;
     }

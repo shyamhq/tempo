@@ -56,6 +56,7 @@
         "@tanstack/react-query": "^5.100.14",
         "@tempo/contracts": "workspace:*",
         "@tempo/db": "workspace:*",
+        "@tempo/errors": "workspace:*",
         "@tempo/server": "workspace:*",
         "@uiw/react-codemirror": "^4.25.10",
         "class-variance-authority": "^0.7.1",
@@ -101,6 +102,7 @@
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@tempo/contracts": "workspace:*",
         "@tempo/db": "workspace:*",
+        "@tempo/errors": "workspace:*",
         "@tempo/server": "workspace:*",
         "ai": "^6.0.206",
         "cors": "^2.8.6",
@@ -137,6 +139,9 @@
         "drizzle-kit": "^0.31.10",
       },
     },
+    "packages/errors": {
+      "name": "@tempo/errors",
+    },
     "packages/server": {
       "name": "@tempo/server",
       "dependencies": {
@@ -146,6 +151,7 @@
         "@blocknote/server-util": "^0.51.4",
         "@tempo/contracts": "workspace:*",
         "@tempo/db": "workspace:*",
+        "@tempo/errors": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "ulid": "^3.0.2",
         "zod": "^4.4.3",
@@ -747,6 +753,8 @@
     "@tempo/contracts": ["@tempo/contracts@workspace:packages/contracts"],
 
     "@tempo/db": ["@tempo/db@workspace:packages/db"],
+
+    "@tempo/errors": ["@tempo/errors@workspace:packages/errors"],
 
     "@tempo/server": ["@tempo/server@workspace:packages/server"],
 

@@ -28,7 +28,7 @@ export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, r
     await authorizeThread(req.caller, threadId);
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      if (err.reason === 'thread_not_found') {
+      if (err.message === 'thread_not_found') {
         res.status(404).json({ error: 'thread_not_found' });
         return;
       }

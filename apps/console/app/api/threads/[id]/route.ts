@@ -13,17 +13,17 @@ import {
 } from '@tempo/server';
 import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../../server/actor';
-import { err, ok, parseBody } from '../../../../server/http';
+import { err, ok, parseBody, toResponse } from '../../../../server/http';
 
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
   if (auth?.actor !== 'user') return err('unauthorized', 401);
   const { id } = await ctx.params;
+  if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   try {
     await deleteThread(id);
   } catch (e) {
-    if ((e as Error).message === 'thread_not_found') return err('thread_not_found', 404);
-    throw e;
+    return toResponse(e);
   }
   return ok({ ok: true });
 }
@@ -32,8 +32,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
   const { id } = await ctx.params;
-  if (auth.actor === 'agent' && !(await threadBelongsToWorkspace(id, auth.workspace_id)))
-    return err('forbidden', 403);
+  if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const parsed = await parseBody(req, UpdateThreadRequest);
   if (!parsed.ok) return parsed.response;
   // Agents may only edit Thread metadata (title, description). space_id and
@@ -46,15 +45,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     const thread = await updateThread(id, parsed.data);
     return ok({ thread });
   } catch (e) {
-    const msg = (e as Error).message;
-    if (msg === 'thread_not_found') return err('thread_not_found', 404);
-    if (msg === 'space_workspace_mismatch') return err('space_workspace_mismatch', 400);
-    throw e;
+    return toResponse(e);
   }
 }
 
-export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await authFromRequest(req);
+  if (!auth) return err('unauthorized', 401);
   const { id } = await ctx.params;
+  if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const thread = await getThread(id);
   if (!thread) return err('thread_not_found', 404);
   const [plan, comments, messages, session_status, repo, last_event_id] = await Promise.all([

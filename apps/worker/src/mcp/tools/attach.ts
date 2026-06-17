@@ -12,8 +12,8 @@ export async function runAttach(
     await authorizeThread(caller, threadId);
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      if (err.reason === 'thread_not_found') return { error: 'thread_not_found' };
-      if (err.reason === 'not_member') return { error: 'not_a_member' };
+      if (err.message === 'thread_not_found') return { error: 'thread_not_found' };
+      if (err.message === 'not_member') return { error: 'not_a_member' };
       return { error: 'unauthorized' };
     }
     throw err;

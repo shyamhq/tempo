@@ -1,5 +1,6 @@
 import { UpdateBlockInput } from '@tempo/contracts/mcp';
-import { BlockNotFoundError, InvalidPlanBodyError, updateBlock } from '@tempo/server';
+import { NotFoundError, ValidationError } from '@tempo/errors';
+import { updateBlock } from '@tempo/server';
 
 import { sessionNotFound } from './_shared';
 
@@ -18,7 +19,7 @@ export function registerUpdateBlock(
         await updateBlock(threadId, args.block_id, args.html, 'agent');
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] };
       } catch (err) {
-        if (err instanceof BlockNotFoundError) {
+        if (err instanceof NotFoundError) {
           return {
             content: [
               {
@@ -31,7 +32,7 @@ export function registerUpdateBlock(
             ],
           };
         }
-        if (err instanceof InvalidPlanBodyError) {
+        if (err instanceof ValidationError) {
           return {
             content: [
               {

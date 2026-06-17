@@ -1,5 +1,6 @@
 import { AddBlocksInput } from '@tempo/contracts/mcp';
-import { addBlocks, BlockNotFoundError, InvalidPlanBodyError } from '@tempo/server';
+import { NotFoundError, ValidationError } from '@tempo/errors';
+import { addBlocks } from '@tempo/server';
 
 import { sessionNotFound } from './_shared';
 
@@ -24,7 +25,7 @@ export function registerAddBlocks(
         );
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ids: result.ids }) }] };
       } catch (err) {
-        if (err instanceof BlockNotFoundError) {
+        if (err instanceof NotFoundError) {
           return {
             content: [
               {
@@ -37,7 +38,7 @@ export function registerAddBlocks(
             ],
           };
         }
-        if (err instanceof InvalidPlanBodyError) {
+        if (err instanceof ValidationError) {
           return {
             content: [
               {

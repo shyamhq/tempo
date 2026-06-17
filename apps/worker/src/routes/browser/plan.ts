@@ -1,5 +1,6 @@
 import { RecheckPlanResponse, WritePlanRequest, WritePlanResponse } from '@tempo/contracts/http';
-import { InvalidPlanBodyError, requestPlanRecheck, writePlan } from '@tempo/server';
+import { NotFoundError, ValidationError } from '@tempo/errors';
+import { requestPlanRecheck, writePlan } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { send } from '../../lib/typed-response';
 import { logger } from '../../logger';
@@ -16,7 +17,7 @@ export const writePlanHandler: RequestHandler<{ id: string }> = async (req, res)
     const result = await writePlan(req.params.id, parsed.data.pm_json, 'dev');
     send(res, WritePlanResponse)({ ok: true, updated_at: result.updated_at });
   } catch (err) {
-    if (err instanceof InvalidPlanBodyError) {
+    if (err instanceof ValidationError) {
       res.status(400).json({ error: 'invalid_input', message: err.message });
       return;
     }
@@ -31,7 +32,7 @@ export const recheckPlanHandler: RequestHandler<{ id: string }> = async (req, re
     const result = await requestPlanRecheck(req.params.id);
     send(res, RecheckPlanResponse)({ ok: true, updated_at: result.updated_at });
   } catch (err) {
-    if ((err as Error).message?.includes('thread_not_found')) {
+    if (err instanceof NotFoundError) {
       res.status(404).json({ error: 'thread_not_found' });
       return;
     }

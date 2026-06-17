@@ -1,3 +1,4 @@
+import { TempoError } from '@tempo/errors';
 import { NextResponse } from 'next/server';
 import type { ZodType } from 'zod';
 
@@ -7,6 +8,14 @@ export function ok<T>(body: T, status = 200): NextResponse {
 
 export function err(error: string, status: number, message?: string): NextResponse {
   return NextResponse.json({ error, ...(message ? { message } : {}) }, { status });
+}
+
+// Maps any thrown value to an HTTP response. TempoError carries its own code +
+// status; anything else collapses to a generic 500 (the upstream error log is
+// the trace — the wire body intentionally hides server internals).
+export function toResponse(e: unknown): NextResponse {
+  if (e instanceof TempoError) return err(e.code, e.statusCode, e.message);
+  return err('internal_error', 500);
 }
 
 export async function parseBody<T>(

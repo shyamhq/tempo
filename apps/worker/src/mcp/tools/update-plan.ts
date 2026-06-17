@@ -1,5 +1,6 @@
 import { UpdatePlanInput } from '@tempo/contracts/mcp';
-import { InvalidPlanBodyError, PlanNotEmptyError, updatePlan } from '@tempo/server';
+import { ConflictError, ValidationError } from '@tempo/errors';
+import { updatePlan } from '@tempo/server';
 
 import { sessionNotFound } from './_shared';
 
@@ -18,7 +19,7 @@ export function registerUpdatePlan(
         const result = await updatePlan(threadId, args.html, 'agent');
         return { content: [{ type: 'text', text: JSON.stringify({ ok: true, ids: result.ids }) }] };
       } catch (err) {
-        if (err instanceof PlanNotEmptyError) {
+        if (err instanceof ConflictError) {
           return {
             content: [
               {
@@ -28,7 +29,7 @@ export function registerUpdatePlan(
             ],
           };
         }
-        if (err instanceof InvalidPlanBodyError) {
+        if (err instanceof ValidationError) {
           return {
             content: [
               {

@@ -3,6 +3,7 @@ import type { Actor, AgentPlanBlocks, AgentPlanState, Plan } from '@tempo/contra
 import { db } from '@tempo/db/client';
 import { readPlanRow } from '@tempo/db/queries/plans';
 import { plans, threads } from '@tempo/db/schema';
+import { ConflictError, NotFoundError, ValidationError } from '@tempo/errors';
 import { and, eq, isNull } from 'drizzle-orm';
 import {
   blocksToPmDoc,
@@ -41,7 +42,7 @@ export async function writePlan(
   by: Actor,
 ): Promise<{ updated_at: string }> {
   if (pmJson === null || typeof pmJson !== 'object') {
-    throw new InvalidPlanBodyError('plan body must be a document object');
+    throw new ValidationError('plan body must be a document object');
   }
   const updated_at = new Date();
   const updated_at_iso = updated_at.toISOString();
@@ -62,7 +63,7 @@ export async function requestPlanRecheck(threadId: string): Promise<{ updated_at
     .from(threads)
     .where(eq(threads.id, threadId))
     .limit(1);
-  if (!t) throw new ThreadNotFoundError(threadId);
+  if (!t) throw new NotFoundError(`thread_not_found: ${threadId}`);
   const updated_at = new Date().toISOString();
   await appendEvent(threadId, { kind: 'plan_edited_by_dev', updated_at });
   return { updated_at };
@@ -91,10 +92,7 @@ export async function getPlanBlocks(threadId: string): Promise<AgentPlanBlocks> 
   const allBlocks = pmDocToBlocks(pmJson);
   const result: { id: string; html: string }[] = [];
   for (const block of allBlocks) {
-    if (!block.id) {
-      console.warn('getPlanBlocks: block missing id, skipping', { threadId });
-      continue;
-    }
+    if (!block.id) continue;
     const html = await blockToHtml(block);
     result.push({ id: `${block.id}$`, html });
   }
@@ -112,9 +110,9 @@ export async function updateBlock(
   const pmJson = parsePmJsonOrThrow(row.body_pm_json);
   const group = getRootBlockGroup(pmJson);
   const idx = group.content.findIndex((bc) => bc.attrs?.id === rawId);
-  if (idx === -1) throw new BlockNotFoundError(blockId);
+  if (idx === -1) throw new NotFoundError(`block_not_found: ${blockId}`);
   const [first, ...rest] = await htmlToPmBlockContainers(html);
-  if (!first) throw new InvalidPlanBodyError('html produced no plan blocks');
+  if (!first) throw new ValidationError('html produced no plan blocks');
   first.attrs = { ...first.attrs, id: rawId };
   for (const bc of rest) {
     bc.attrs = { ...bc.attrs, id: randomUUID() };
@@ -131,7 +129,7 @@ export async function addBlocks(
   actor: Actor,
 ): Promise<{ ids: string[] }> {
   if (position === 'end' && referenceId !== null) {
-    throw new InvalidPlanBodyError(
+    throw new ValidationError(
       "position 'end' requires reference_id to be null; use 'after' with a reference_id instead",
     );
   }
@@ -144,7 +142,7 @@ export async function addBlocks(
   const newContainers: PmBlockContainer[] = [];
   for (const [i, entry] of perEntry.entries()) {
     if (entry.length === 0) {
-      throw new InvalidPlanBodyError(`blocks[${i}]: html produced no plan blocks`);
+      throw new ValidationError(`blocks[${i}]: html produced no plan blocks`);
     }
     for (const bc of entry) {
       bc.attrs = { ...bc.attrs, id: randomUUID() };
@@ -159,7 +157,7 @@ export async function addBlocks(
   } else {
     const rawRef = stripDollar(referenceId);
     const refIdx = group.content.findIndex((bc) => bc.attrs?.id === rawRef);
-    if (refIdx === -1) throw new BlockNotFoundError(referenceId);
+    if (refIdx === -1) throw new NotFoundError(`block_not_found: ${referenceId}`);
     insertAt = position === 'before' ? refIdx : refIdx + 1;
   }
   group.content.splice(insertAt, 0, ...newContainers);
@@ -175,7 +173,7 @@ export async function updatePlan(
 ): Promise<{ ids: string[] }> {
   const partials = await parseHtmlDocToBlocks(html);
   if (partials.length === 0) {
-    throw new InvalidPlanBodyError('html parsed to zero blocks');
+    throw new ValidationError('html parsed to zero blocks');
   }
   const pmJson = blocksToPmDoc(partials);
   const group = getRootBlockGroup(pmJson);
@@ -191,7 +189,11 @@ export async function updatePlan(
     .set({ body_pm_json: JSON.stringify(pmJson), updated_by: actor, updated_at })
     .where(and(eq(plans.thread_id, threadId), isNull(plans.body_pm_json)))
     .returning({ id: plans.id });
-  if (written.length === 0) throw new PlanNotEmptyError();
+  if (written.length === 0) {
+    throw new ConflictError(
+      'plan already has content; use block-level tools for incremental edits',
+    );
+  }
 
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
   if (actor === 'agent') {
@@ -206,7 +208,7 @@ export async function deleteBlock(threadId: string, blockId: string, actor: Acto
   const pmJson = parsePmJsonOrThrow(row.body_pm_json);
   const group = getRootBlockGroup(pmJson);
   const idx = group.content.findIndex((bc) => bc.attrs?.id === rawId);
-  if (idx === -1) throw new BlockNotFoundError(blockId);
+  if (idx === -1) throw new NotFoundError(`block_not_found: ${blockId}`);
   group.content.splice(idx, 1);
   if (group.content.length === 0) {
     const [empty] = await htmlToPmBlockContainers('<p></p>');
@@ -218,11 +220,11 @@ export async function deleteBlock(threadId: string, blockId: string, actor: Acto
 }
 
 function parsePmJsonOrThrow(body_pm_json: string | null): unknown {
-  if (body_pm_json == null) throw new InvalidPlanBodyError('plan has no body');
+  if (body_pm_json == null) throw new ValidationError('plan has no body');
   try {
     return JSON.parse(body_pm_json);
   } catch {
-    throw new InvalidPlanBodyError('plan body is not valid JSON');
+    throw new ValidationError('plan body is not valid JSON');
   }
 }
 
@@ -234,35 +236,7 @@ function getRootBlockGroup(pmJson: unknown): { content: PmBlockContainer[] } {
   const doc = pmJson as { type?: string; content?: Array<{ type?: string; content?: unknown[] }> };
   const group = doc?.content?.[0];
   if (doc?.type !== 'doc' || group?.type !== 'blockGroup' || !Array.isArray(group.content)) {
-    throw new InvalidPlanBodyError('plan body is malformed');
+    throw new ValidationError('plan body is malformed');
   }
   return group as { content: PmBlockContainer[] };
-}
-
-export class ThreadNotFoundError extends Error {
-  constructor(public readonly threadId: string) {
-    super(`thread_not_found: ${threadId}`);
-    this.name = 'ThreadNotFoundError';
-  }
-}
-
-export class InvalidPlanBodyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'InvalidPlanBodyError';
-  }
-}
-
-export class BlockNotFoundError extends Error {
-  constructor(public readonly blockId: string) {
-    super('block not found');
-    this.name = 'BlockNotFoundError';
-  }
-}
-
-export class PlanNotEmptyError extends Error {
-  constructor() {
-    super('plan already has content; use block-level tools for incremental edits');
-    this.name = 'PlanNotEmptyError';
-  }
 }

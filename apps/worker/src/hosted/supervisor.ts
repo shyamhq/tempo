@@ -1,4 +1,7 @@
+import { db } from '@tempo/db/client';
+import { vm_runs } from '@tempo/db/schema';
 import { appendEvent } from '@tempo/server';
+import { isNull, sql } from 'drizzle-orm';
 import { logger } from '../logger';
 import { provision, type VmRun } from '../vm/provision';
 import { teardown } from '../vm/teardown';
@@ -110,4 +113,28 @@ async function reap(threadId: string, reason: string): Promise<void> {
 export async function stopSupervisor(): Promise<void> {
   stopped = true;
   await Promise.all(Array.from(live.keys()).map((tid) => reap(tid, 'worker_shutdown')));
+}
+
+// Boot-time sweep. The `live` Map only knows about Sandboxes this process
+// spawned, so a hard-killed previous Worker leaves `vm_runs` rows with
+// `ended_at IS NULL` plus DB session state stuck at `connected`. We can't
+// touch the actual E2B Sandbox — its handle died with the previous process
+// — but E2B's own wallclock will reap it within a few minutes. Closing the
+// DB row + emitting `session_disconnected` keeps the Console in sync.
+export async function startSupervisor(): Promise<void> {
+  const orphans = await db
+    .select({ id: vm_runs.id, thread_id: vm_runs.thread_id })
+    .from(vm_runs)
+    .where(isNull(vm_runs.ended_at));
+  if (orphans.length === 0) return;
+  log.info({ count: orphans.length }, 'sweeping orphaned vm_runs at boot');
+  for (const row of orphans) {
+    await db
+      .update(vm_runs)
+      .set({ ended_at: sql`now()`, exit_reason: 'orphaned_by_restart' })
+      .where(sql`${vm_runs.id} = ${row.id}`);
+    await appendEvent(row.thread_id, { kind: 'session_disconnected' }).catch((e) =>
+      log.warn({ err: e, threadId: row.thread_id }, 'orphan sweep: append failed'),
+    );
+  }
 }

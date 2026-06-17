@@ -1,6 +1,7 @@
 import { verifyToken as clerkVerifyToken } from '@clerk/backend';
 import { db } from '@tempo/db/client';
 import { comments, threads } from '@tempo/db/schema';
+import { ForbiddenError } from '@tempo/errors';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import * as jose from 'jose';
@@ -14,6 +15,8 @@ import {
   ThreadNotFoundError,
 } from './server/auth-lookup';
 
+export { ForbiddenError };
+
 // The four Bearer flavors Worker accepts, after middleware identification.
 // Routes never branch on `kind` — they call authorizeThread / authorizeComment
 // which folds the dispatch into one place.
@@ -22,13 +25,6 @@ export type Caller =
   | { kind: 'cli'; userId: string }
   | { kind: 'browser'; userId: string }
   | { kind: 'hosted'; threadId: string; workspaceId: string; sessionId: string };
-
-export class ForbiddenError extends Error {
-  constructor(public readonly reason: string) {
-    super(reason);
-    this.name = 'ForbiddenError';
-  }
-}
 
 declare global {
   namespace Express {
@@ -149,7 +145,7 @@ export const bearerAuth: RequestHandler = async (req, res, next) => {
     next();
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      logger.debug({ reason: err.reason }, 'auth: identify rejected');
+      logger.debug({ reason: err.message }, 'auth: identify rejected');
       res.status(401).json({ error: 'unauthorized' });
       return;
     }
@@ -166,7 +162,7 @@ export const ensureThreadAccess: RequestHandler<{ id: string }> = async (req, re
     next();
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      logger.debug({ reason: err.reason, threadId: req.params.id }, 'auth: thread forbidden');
+      logger.debug({ reason: err.message, threadId: req.params.id }, 'auth: thread forbidden');
       res.status(403).json({ error: 'forbidden' });
       return;
     }
@@ -188,7 +184,7 @@ export const ensureCommentAccess: RequestHandler<{ id: string }> = async (req, r
     next();
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      logger.debug({ reason: err.reason, commentId: req.params.id }, 'auth: comment forbidden');
+      logger.debug({ reason: err.message, commentId: req.params.id }, 'auth: comment forbidden');
       res.status(403).json({ error: 'forbidden' });
       return;
     }
