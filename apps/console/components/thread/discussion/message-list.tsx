@@ -5,7 +5,7 @@ import type { DiscussionMessage } from '@tempo/contracts';
 import { Sparkles } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { AttachmentStrip } from '../attachments/attachment-strip';
-import { MentionedText } from '../mention/mentioned-text';
+import { MarkdownText } from '../markdown-text';
 import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function MessageList({
@@ -62,7 +62,7 @@ export function MessageList({
   }
 
   let lastDayKey: string | null = null;
-  let lastAuthorUserId: string | null | undefined = undefined;
+  let lastAuthorUserId: string | null | undefined;
   const lastIdx = messages.length - 1;
 
   return (
@@ -73,7 +73,10 @@ export function MessageList({
           const showDay = dayKey !== lastDayKey;
           const isQuestion = m.questions !== null;
           const sameAuthor =
-            !showDay && !isQuestion && lastAuthorUserId !== undefined && lastAuthorUserId === m.author_user_id;
+            !showDay &&
+            !isQuestion &&
+            lastAuthorUserId !== undefined &&
+            lastAuthorUserId === m.author_user_id;
           lastDayKey = dayKey;
           lastAuthorUserId = isQuestion ? undefined : m.author_user_id;
           const isLive = isQuestion && i === lastIdx;
@@ -126,8 +129,9 @@ function resolveAuthor(
 ): { name: string; initials: string } {
   if (authorUserId === null) return { name: 'Agent', initials: '' };
   if (authorUserId === currentUserId) return { name: 'You', initials: 'Y' };
-  const pub = membershipItems?.find((m) => m.publicUserData?.userId === authorUserId)
-    ?.publicUserData;
+  const pub = membershipItems?.find(
+    (m) => m.publicUserData?.userId === authorUserId,
+  )?.publicUserData;
   if (!pub) return { name: 'Member', initials: 'M' };
   const { firstName, lastName, identifier } = pub;
   const f = firstName?.[0] ?? '';
@@ -187,7 +191,7 @@ function MessageRow({
         }`}
       >
         {text.length > 0 ? (
-          <MentionedText text={text} mentions={message.mentions} className="text-body-sm" />
+          <MarkdownText text={text} mentions={message.mentions} className="text-body-sm" />
         ) : null}
         <AttachmentStrip attachments={message.attachments} />
       </div>

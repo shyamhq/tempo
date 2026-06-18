@@ -5,22 +5,22 @@
 // thread" here refers to BlockNote's annotation entity — Tempo's Comment +
 // Replies. Distinct from Tempo's planning `Thread`.
 
-import { useOrganization } from '@clerk/nextjs';
 import type { CommentData } from '@blocknote/core/comments';
 import { CommentsExtension } from '@blocknote/core/comments';
 import type { ThreadProps } from '@blocknote/react';
 import { useBlockNoteEditor } from '@blocknote/react';
+import { useOrganization } from '@clerk/nextjs';
 import type { Mention } from '@tempo/contracts';
 import { Check, CornerDownLeft, Loader2, Maximize2, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { MarkdownText } from '@/components/thread/markdown-text';
 import type { MentionableInputRef } from '@/components/thread/mention/mentionable-input';
 import { MentionableInput } from '@/components/thread/mention/mentionable-input';
-import { MentionedText } from '@/components/thread/mention/mentioned-text';
 import { useMentionCandidates } from '@/components/thread/mention/use-mention-candidates';
-import { extractBlockNoteText } from './comment-thread-bridge';
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useThreadUi } from '@/store/thread-ui';
+import { extractBlockNoteText } from './comment-thread-bridge';
 
 export type PlanCommentCardVariant = 'card' | 'panel';
 
@@ -279,7 +279,7 @@ function PlanCommentRow({ comment, username }: { comment: CommentData; username:
         </span>
       </div>
       {text.length > 0 ? (
-        <MentionedText text={text} mentions={mentions} className="text-body-sm" />
+        <MarkdownText text={text} mentions={mentions} className="text-body-sm" />
       ) : (
         <span className="text-body-sm text-ink-tertiary italic">(deleted)</span>
       )}
