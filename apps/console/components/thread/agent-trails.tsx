@@ -57,10 +57,16 @@ const SURFACE_LABEL: Record<Trail['surface'], string> = {
 export function AgentTrails({
   threadId,
   agentPresent,
+  hasPlan,
 }: {
   threadId: string;
   agentPresent: boolean;
+  hasPlan: boolean;
 }) {
+  // Pre-Plan the conversation fills the page and its composer sits at the
+  // bottom-right, so the chip yields to the top. Once a Plan exists the
+  // discussion moves into the left rail and bottom-right is clear again.
+  const anchor = hasPlan ? 'bottom-5' : 'top-16';
   const [mode, setMode] = useState<Mode>('chip');
   const { data } = useQuery({
     queryKey: ['trails', threadId],
@@ -123,7 +129,10 @@ export function AgentTrails({
     return (
       <div
         ref={containerRef}
-        className="fixed bottom-5 right-5 w-[360px] max-h-[60vh] z-30 flex flex-col rounded-md border border-hairline bg-canvas shadow-card-elevated overflow-hidden"
+        className={cn(
+          'fixed right-5 w-[360px] max-h-[60vh] z-30 flex flex-col rounded-md border border-hairline bg-canvas shadow-card-elevated overflow-hidden',
+          anchor,
+        )}
       >
         <TrailsHeader
           presence={presence}
@@ -168,7 +177,10 @@ export function AgentTrails({
       type="button"
       onClick={() => setMode('card')}
       aria-label="Open agent activity"
-      className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2.5 rounded-md border border-hairline bg-canvas px-3 py-2 shadow-card-elevated hover:border-hairline-strong transition-colors text-left min-w-[230px]"
+      className={cn(
+        'fixed right-5 z-30 inline-flex items-center gap-2.5 rounded-md border border-hairline bg-canvas px-3 py-2 shadow-card-elevated hover:border-hairline-strong transition-colors text-left min-w-[230px]',
+        anchor,
+      )}
     >
       <span
         aria-hidden
@@ -182,7 +194,11 @@ export function AgentTrails({
           {chipStatusText(presence, chipStep, liveTrail !== null)}
         </span>
       </span>
-      <ChevronUp className="h-3.5 w-3.5 text-ink-tertiary" />
+      {hasPlan ? (
+        <ChevronUp className="h-3.5 w-3.5 text-ink-tertiary" />
+      ) : (
+        <ChevronDown className="h-3.5 w-3.5 text-ink-tertiary" />
+      )}
     </button>
   );
 }

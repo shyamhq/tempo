@@ -8,12 +8,12 @@ import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { Tooltip } from '@/components/ui/tooltip';
 
-// Chat-style surface — no headings/images/tables. Anything outside this set
-// unwraps to its plain text via `unwrapDisallowed`, matching the old DOMPurify
-// KEEP_CONTENT default (a stray `# X` shows as the literal X). `tempo-mention`
-// is the synthetic element the remark plugin below emits for @mentions.
-// react-markdown escapes raw HTML by default (no rehype-raw), so it is the
-// sanitization gate — no DOMPurify needed here.
+// Chat-style surface — no headings/images. GFM tables are kept (the Agent
+// writes decision matrices). Anything outside this set unwraps to its plain
+// text via `unwrapDisallowed`, matching the old DOMPurify KEEP_CONTENT default
+// (a stray `# X` shows as the literal X). `tempo-mention` is the synthetic
+// element the remark plugin below emits for @mentions. react-markdown escapes
+// raw HTML by default (no rehype-raw), so it is the sanitization gate.
 const ALLOWED_ELEMENTS = [
   'p',
   'strong',
@@ -28,6 +28,12 @@ const ALLOWED_ELEMENTS = [
   'a',
   'br',
   'hr',
+  'table',
+  'thead',
+  'tbody',
+  'tr',
+  'th',
+  'td',
   'tempo-mention',
 ];
 
@@ -42,6 +48,7 @@ const PROSE_CLASS = [
   'prose-strong:text-ink prose-strong:font-semibold',
   'prose-code:before:content-none prose-code:after:content-none',
   'prose-a:text-accent prose-a:no-underline hover:prose-a:underline',
+  'prose-table:text-micro prose-table:my-2 prose-th:text-ink prose-th:font-semibold prose-td:align-top',
 ].join(' ');
 
 export function MarkdownText({
@@ -78,6 +85,12 @@ const COMPONENTS = {
     <a href={href} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
+  ),
+  // Wrap so a wide decision table scrolls instead of overflowing the panel.
+  table: ({ children }) => (
+    <div className="overflow-x-auto">
+      <table>{children}</table>
+    </div>
   ),
   'tempo-mention': MentionToken,
 } as Components;

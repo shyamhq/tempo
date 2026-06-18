@@ -393,7 +393,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
       {/* AgentTrails is position:fixed and lives outside the layout branches
           so it stays visible in both Pre-Plan and Plan phases. */}
-      <AgentTrails threadId={threadId} agentPresent={agentPresent} />
+      <AgentTrails
+        threadId={threadId}
+        agentPresent={agentPresent}
+        hasPlan={view.plan.body !== null}
+      />
 
       {planUpdatedAt ? (
         <div
