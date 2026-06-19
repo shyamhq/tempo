@@ -1,4 +1,6 @@
 import {
+  ConnectorOkResponse,
+  ConnectorStatusResponse,
   type CreateCommentRequest,
   CreateCommentResponse,
   type CreateDiscussionMessageRequest,
@@ -21,6 +23,8 @@ import {
   ListSpaceThreadsResponse,
   ListThreadsResponse,
   ResolveCommentResponse,
+  type SetConnectorEnabledRequest,
+  StartConnectResponse,
   UnresolveCommentResponse,
   type UpdateSpaceRequest,
   UpdateSpaceResponse,
@@ -227,6 +231,32 @@ export const api = {
 
   revokeInvitation: (id: string) =>
     request('DELETE', `/api/workspace/invitations/${id}`, undefined, OkResponse),
+
+  // --- Connectors (Settings → Integrations) --------------------------------
+
+  listConnectors: () => request('GET', '/api/connectors', undefined, ConnectorStatusResponse),
+
+  startConnect: (id: string) =>
+    request(
+      'POST',
+      `/api/connectors/${encodeURIComponent(id)}/connect`,
+      undefined,
+      StartConnectResponse,
+    ),
+
+  setConnectorEnabled: (
+    id: string,
+    enabled: z.infer<typeof SetConnectorEnabledRequest>['enabled'],
+  ) =>
+    request(
+      'PATCH',
+      `/api/connectors/${encodeURIComponent(id)}`,
+      { enabled } satisfies z.infer<typeof SetConnectorEnabledRequest>,
+      ConnectorOkResponse,
+    ),
+
+  disconnectConnector: (id: string) =>
+    request('DELETE', `/api/connectors/${encodeURIComponent(id)}`, undefined, ConnectorOkResponse),
 };
 
 // ---------------------------------------------------------------------------

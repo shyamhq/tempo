@@ -6,6 +6,7 @@
     ".": "./src/index.ts",
     "./mcp": "./src/mcp.ts",
     "./http": "./src/http.ts",
+    "./connectors": "./src/connectors.ts",
     "./events": "./src/events.ts",
     "./workflow": "./src/workflow.ts"
   },

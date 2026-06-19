@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigserial,
+  boolean,
   check,
   doublePrecision,
   index,
@@ -215,4 +216,54 @@ export const userTokens = pgTable(
     // Partial index: active (non-revoked) tokens only — keeps the lookup set small.
     index('user_tokens_lookup').on(t.token_hash).where(sql`revoked_at IS NULL`),
   ],
+);
+
+// Per-workspace connector enablement (Connectors slice). One row per
+// (workspace, connector). `enabled` gates every gateway call — a disabled or
+// missing row means the connector is off for that workspace. `tier` mirrors
+// the static registry (tier1 = GitHub App, tier2 = Pipedream). `config` holds
+// the tier-specific binding: GitHub stores {installation_id}; Pipedream stores
+// {pipedream_account_id}. `connected_by` is the Clerk user id who flipped it on.
+export const workspaceConnectors = pgTable(
+  'workspace_connectors',
+  {
+    id: text('id').primaryKey(), // wsc_<ulid>
+    workspace_id: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    connector_id: text('connector_id').notNull(),
+    enabled: boolean('enabled').notNull().default(false),
+    tier: text('tier').notNull(),
+    config: jsonb('config'),
+    connected_at: timestampDate('connected_at'),
+    connected_by: text('connected_by'),
+  },
+  // One enablement row per connector per workspace — the gateway allowlist
+  // check and the Console toggle both key off this pair.
+  (t) => [uniqueIndex('uq_workspace_connectors').on(t.workspace_id, t.connector_id)],
+);
+
+// Connector call audit log (Connectors slice). One row per gateway tool call —
+// written after the underlying client returns. Summaries are truncated JSON
+// (caller slices to ~500 chars) so the table never holds full payloads. Sole
+// reader today is the Console per-workspace audit view.
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: text('id').primaryKey(), // aud_<ulid>
+    workspace_id: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    thread_id: text('thread_id')
+      .notNull()
+      .references(() => threads.id, { onDelete: 'cascade' }),
+    connector_id: text('connector_id').notNull(),
+    tool_name: text('tool_name').notNull(),
+    request_summary: text('request_summary'),
+    response_summary: text('response_summary'),
+    duration_ms: integer('duration_ms'),
+    created_at: timestampDate('created_at'),
+  },
+  // Audit view scrolls a single workspace newest-first — index the access path.
+  (t) => [index('idx_audit_log_workspace_created').on(t.workspace_id, t.created_at)],
 );

@@ -1,0 +1,5 @@
+# Server test config. `bun test` discovers *.test.ts under test/.
+# The preload seeds DATABASE_URL so importing a query module (which constructs
+# the pg pool at import time) doesn't throw in a unit test that never queries.
+[test]
+preload = ["./test/_setup.ts"]

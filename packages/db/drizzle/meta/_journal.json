@@ -85,6 +85,20 @@
       "when": 1782070000000,
       "tag": "0011_multi_user_authors",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782070000001,
+      "tag": "0012_aberrant_thanos",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782070000002,
+      "tag": "0013_colossal_amphibian",
+      "breakpoints": true
     }
   ]
 }

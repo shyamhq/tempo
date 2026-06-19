@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ConnectorId, ConnectorTier } from './connectors';
 import { AgentTodo, Event } from './events';
 import {
   AgentBlock,
@@ -398,3 +399,39 @@ export const AgentEventRequest = z.object({
   ]),
 });
 export type AgentEventRequest = z.infer<typeof AgentEventRequest>;
+
+// --- Connectors (Settings → Integrations) ---------------------------------
+// Console-side management API. The Worker never serves these — admin connect /
+// disconnect / enable flows run through the Console (Clerk org-admin gated),
+// the same place workspace members + invitations are managed. The Worker only
+// reads `enabled` (the allowlist gate) on the Agent's tool-call path.
+
+// GET /api/connectors — connection + enablement state for every connector in
+// the catalog, scoped to the active workspace.
+export const ConnectorState = z.object({
+  connector_id: ConnectorId,
+  tier: ConnectorTier,
+  // A workspace_connectors row exists (admin linked an account / install).
+  connected: z.boolean(),
+  // The allowlist gate — the Agent can reach this connector iff enabled.
+  enabled: z.boolean(),
+  connected_at: IsoTimestamp.nullable(),
+});
+export type ConnectorState = z.infer<typeof ConnectorState>;
+
+export const ConnectorStatusResponse = z.object({ connectors: z.array(ConnectorState) });
+export type ConnectorStatusResponse = z.infer<typeof ConnectorStatusResponse>;
+
+// POST /api/connectors/:id/connect — start the connect flow. The browser
+// redirects to connect_url (GitHub App install page, or a Pipedream Connect
+// Link); the callback finishes by writing the workspace_connectors row.
+export const StartConnectResponse = z.object({ connect_url: z.url() });
+export type StartConnectResponse = z.infer<typeof StartConnectResponse>;
+
+// PATCH /api/connectors/:id — flip the workspace allowlist toggle.
+export const SetConnectorEnabledRequest = z.object({ enabled: z.boolean() });
+export type SetConnectorEnabledRequest = z.infer<typeof SetConnectorEnabledRequest>;
+
+// Shared OK response for disconnect / enable mutations.
+export const ConnectorOkResponse = z.object({ ok: z.literal(true) });
+export type ConnectorOkResponse = z.infer<typeof ConnectorOkResponse>;
