@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Tier2ConnectorId } from './connectors';
 import { Event } from './events';
 import {
   AgentPlanBlocks,
@@ -95,6 +96,62 @@ export const SetThreadMetaInput = z.object({
 });
 export const SetThreadMetaOutput = z.object({ thread: ThreadSummary });
 
+// Connector tools (Connectors slice). GitHub is tier-1 (native App install);
+// the generic tempo_use_integration fronts every tier-2 Pipedream connector.
+// Output schemas are permissive on purpose — server.tool only consumes the
+// Input `.shape`, so these document the wire shape without constraining the
+// pass-through JSON the connector clients return.
+export const GithubSearchIssuesInput = z.object({
+  query: z.string().min(1),
+  repo: z.string().optional(),
+});
+export const GithubSearchIssuesOutput = z.unknown();
+
+export const GithubGetIssueInput = z.object({
+  owner: z.string(),
+  repo: z.string(),
+  number: z.number().int().positive(),
+});
+export const GithubGetIssueOutput = z.unknown();
+
+export const GithubGetPullRequestInput = z.object({
+  owner: z.string(),
+  repo: z.string(),
+  number: z.number().int().positive(),
+});
+export const GithubGetPullRequestOutput = z.unknown();
+
+export const GithubListPullRequestsInput = z.object({
+  owner: z.string(),
+  repo: z.string(),
+  state: z.enum(['open', 'closed', 'all']).default('open'),
+});
+export const GithubListPullRequestsOutput = z.unknown();
+
+export const GithubListReposInput = z.object({});
+export const GithubListReposOutput = z.unknown();
+
+// Discovery for the tier-2 dispatcher. Returns the app's read-only actions —
+// their exact Pipedream keys and the props the Agent fills — so the Agent picks
+// from the real catalog instead of guessing slugs. `app` is constrained to the
+// tier-2 connector ids (GitHub has dedicated tier-1 tools).
+export const ListIntegrationActionsInput = z.object({
+  app: Tier2ConnectorId,
+});
+export const ListIntegrationActionsOutput = z.unknown();
+
+// Generic tier-2 escape hatch. `app` is constrained to the tier-2 connector ids
+// (GitHub has dedicated tier-1 tools, so it is rejected here) — this blocks the
+// Agent from routing a tier-1 or unknown app through Pipedream. `action` is an
+// exact Pipedream component key from tempo_list_integration_actions; the gateway
+// rejects any key that isn't a known read action before dispatch.
+export const UseIntegrationInput = z.object({
+  app: Tier2ConnectorId,
+  action: z.string().min(1).max(128),
+  params: z.record(z.string(), z.unknown()).default({}),
+});
+export const UseIntegrationOutput = z.unknown();
+
 export const McpTool = z.enum([
   'tempo_pull_plan',
   'tempo_update_block',
@@ -105,6 +162,13 @@ export const McpTool = z.enum([
   'tempo_post_discussion_message',
   'tempo_set_thread_meta',
   'tempo_update_plan',
+  'tempo_github_search_issues',
+  'tempo_github_get_issue',
+  'tempo_github_get_pull_request',
+  'tempo_github_list_pull_requests',
+  'tempo_github_list_repos',
+  'tempo_list_integration_actions',
+  'tempo_use_integration',
 ]);
 export type McpTool = z.infer<typeof McpTool>;
 

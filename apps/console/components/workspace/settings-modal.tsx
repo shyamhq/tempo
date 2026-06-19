@@ -2,7 +2,7 @@
 
 import * as Dialog from '@radix-ui/react-dialog';
 import { AlertTriangle, CreditCard, Settings, Sparkles, Users, X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { type SettingsSection, useWorkspaceSettings } from '@/store/workspace-settings';
 import { BillingSection } from './sections/billing';
@@ -32,6 +32,21 @@ export function SettingsModal() {
   const section = useWorkspaceSettings((s) => s.section);
   const setSection = useWorkspaceSettings((s) => s.setSection);
   const closeModal = useWorkspaceSettings((s) => s.closeModal);
+  const openModal = useWorkspaceSettings((s) => s.openModal);
+
+  // Deep link: a `?settings=<section>` query param (e.g. the connector OAuth
+  // callback redirects back to /?settings=integrations) opens the modal to that
+  // section, then strips the param so a refresh doesn't reopen it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get('settings');
+    if (target && NAV.some((n) => n.key === target)) {
+      openModal(target as SettingsSection);
+      params.delete('settings');
+      const qs = params.toString();
+      window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+    }
+  }, [openModal]);
 
   return (
     <Dialog.Root open={open} onOpenChange={(o) => (o ? null : closeModal())}>

@@ -1,0 +1,5 @@
+# Worker test config. `bun test` discovers *.test.ts under test/.
+# The preload seeds a valid env so any worker module that transitively imports
+# src/env.ts can be required in a test without tripping env validation.
+[test]
+preload = ["./test/_setup.ts"]

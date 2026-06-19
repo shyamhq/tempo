@@ -43,6 +43,22 @@ const schema = z.object({
   // Anthropic calls through anthropic.helicone.ai so every request shows
   // up in the Helicone dashboard with usage / cost / tool-call traces.
   HELICONE_API_KEY: z.string().min(1).optional(),
+
+  // --- Connectors (slice 3) ---------------------------------------------
+  // All optional: connectors are additive. The connector clients (in
+  // @tempo/server) read these straight from process.env and assert presence at
+  // call time, so a workspace that never connects a service runs unaffected.
+  //
+  // Pipedream — OAuth vault + action dispatch for every tier-2 connector.
+  PIPEDREAM_CLIENT_ID: z.string().min(1).optional(),
+  PIPEDREAM_CLIENT_SECRET: z.string().min(1).optional(),
+  PIPEDREAM_PROJECT_ID: z.string().min(1).optional(),
+  PIPEDREAM_ENVIRONMENT: z.enum(['development', 'production']).default('development'),
+  // GitHub App — the one tier-1 connector. Private key is the PEM contents
+  // (newlines may be \n-escaped in the env value). Slug builds the install URL.
+  GITHUB_APP_ID: z.string().min(1).optional(),
+  GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
+  GITHUB_APP_SLUG: z.string().min(1).optional(),
 });
 
 const parsed = schema.safeParse(process.env);
