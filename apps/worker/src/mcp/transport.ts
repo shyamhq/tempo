@@ -9,10 +9,6 @@ import { createMcpServer } from './server';
 // every request runs full Bearer auth on the way in. Tempo's MCP tools are
 // single-shot RPC; we don't use the streaming/capability-negotiation features
 // that need a stateful session.
-//
-// Presence bumping (`agent_last_seen_at`) happens inside `resolveThreadIdForCaller`
-// — after the per-tool threadId is authorized — so a forged X-Tempo-Thread-Id
-// can't spoof presence on a thread the caller can't access.
 export async function handleMcpRequest(
   caller: Caller,
   req: IncomingMessage & { body?: unknown },

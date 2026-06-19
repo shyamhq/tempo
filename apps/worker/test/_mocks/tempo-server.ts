@@ -17,7 +17,6 @@ const insertAuditRow = mock(async (row: Record<string, unknown>) => {
   if (auditFails) throw new Error('audit write failed');
   auditRows.push(row);
 });
-const bumpAgentLastSeen = mock(async () => {});
 const getActionPolicy = mock(async (): Promise<'read' | 'write' | 'unknown'> => 'unknown');
 
 let registered = false;
@@ -45,7 +44,6 @@ const handle: ServerMock = {
     auditRows.length = 0;
     isConnectorEnabled.mockClear();
     insertAuditRow.mockClear();
-    bumpAgentLastSeen.mockClear();
     getActionPolicy.mockReset();
   },
   auditRows,
@@ -60,7 +58,6 @@ export function installTempoServerMock(): ServerMock {
     mock.module('@tempo/server', () => ({
       isConnectorEnabled,
       insertAuditRow,
-      bumpAgentLastSeen,
       getActionPolicy,
     }));
   }

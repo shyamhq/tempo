@@ -1,5 +1,4 @@
 import { ForbiddenError } from '@tempo/errors';
-import { bumpAgentLastSeen } from '@tempo/server';
 import { authorizeThread, type Caller } from '../auth';
 import type { ConnectorCallContext } from './connector-call';
 
@@ -24,8 +23,6 @@ export async function resolveThreadWorkspace(
   if (!threadId) return null;
   try {
     const workspaceId = await authorizeThread(caller, threadId);
-    // Same presence bump the other tool entry points fire — the Agent touched us.
-    void bumpAgentLastSeen(threadId).catch(() => {});
     return { threadId, workspaceId };
   } catch (err) {
     // Only an authorization denial means "no access" → the tool surfaces

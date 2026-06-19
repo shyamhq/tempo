@@ -10,8 +10,6 @@ import { runWakeSubscriber } from '../events/subscriber';
 import { logger } from '../logger';
 
 const REFRESH_BEFORE_EXPIRY_S = 60;
-// Bump presence well inside the Console's 60s `agent_last_seen_at` window.
-const HEARTBEAT_INTERVAL_MS = 20_000;
 
 // One persistent ACP session per `tempo-agent connect` lifetime. Failures
 // counted here are prompt-level (a single Turn errored out), not spawn-level —
@@ -112,19 +110,6 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
     },
   });
 
-  // Keep Console presence fresh while idle. During turns, MCP + gateway calls
-  // already bump `agent_last_seen_at`; this covers the gap between turns now
-  // that the CLI tails SSE instead of re-hitting an endpoint each cycle.
-  const heartbeat = setInterval(() => {
-    void postHeartbeat(threadId, creds.worker_url, token).then((authOk) => {
-      if (!authOk) {
-        needsRefresh = true;
-        notify();
-      }
-    });
-  }, HEARTBEAT_INTERVAL_MS);
-  heartbeat.unref();
-
   try {
     session = makeSession(token);
 
@@ -136,11 +121,12 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       return;
     }
 
-    // Turn 1 — full Thread context. Cancellable: a Dev comment while the agent
+    // Turn 1 — full Thread context + any wake events that arrived since the last
+    // turn (catch-up from /access). Cancellable: a Dev comment while the agent
     // is still exploring should interrupt and fold in.
     const firstPayload = JSON.stringify({
       thread_id: threadId,
-      events: [],
+      events: access.events,
       context: access.context,
     });
     turnInFlight = true;
@@ -250,55 +236,15 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
-    clearInterval(heartbeat);
     subAbort.abort();
     if (terminalFailReason) {
       process.stderr.write(`tempo connect: ${terminalFailReason}\n`);
     }
-    await postAgentDisconnected(threadId, creds.worker_url, token);
     await session?.close();
     await subscriber.catch(() => null);
   }
 
   process.exit(exitCode);
-}
-
-// Best-effort presence ping. Returns false only on a 401 (token expired) so the
-// caller can refresh; transient network errors return true (don't churn the
-// session over a blip).
-async function postHeartbeat(threadId: string, workerUrl: string, token: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${workerUrl}/api/threads/${threadId}/heartbeat`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5000),
-    });
-    return res.status !== 401;
-  } catch (err) {
-    logger.debug({ err }, 'connect: heartbeat failed (continuing)');
-    return true;
-  }
-}
-
-// Best-effort goodbye on clean shutdown. Worker handler nulls
-// `threads.agent_last_seen_at` and emits `agent_disconnected` so the Console
-// flips presence to idle without waiting for the 60s window. Hard kills don't
-// reach this path; they age out via the column window.
-async function postAgentDisconnected(
-  threadId: ThreadId,
-  workerUrl: string,
-  token: string,
-): Promise<void> {
-  try {
-    await fetch(`${workerUrl}/api/agent-events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ thread_id: threadId, event: { kind: 'agent_disconnected' } }),
-      signal: AbortSignal.timeout(2000),
-    });
-  } catch (err) {
-    logger.debug({ err }, 'connect: agent_disconnected post failed (continuing exit)');
-  }
 }
 
 type PromptOutcome = 'ok' | 'failed';

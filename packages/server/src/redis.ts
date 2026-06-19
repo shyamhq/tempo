@@ -1,13 +1,19 @@
 // Redis is the real-time delivery channel; Postgres stays the source of truth.
 // Every event is XADD'd to a per-thread stream that consumers tail with
-// XREAD BLOCK. Old events live in Postgres and load on page open — the stream
-// only needs enough recent entries to bridge a reconnect, so it's capped.
+// XREAD BLOCK. The same stream also carries ephemeral `presence` frames, and a
+// per-thread presence key (with TTL) is the truth for "is the agent's SSE
+// connection live." Old events live in Postgres and load on page open — the
+// stream only needs enough recent entries to bridge a reconnect, so it's capped.
 
-import type { Event } from '@tempo/contracts';
+import type { Event, PresenceSignal } from '@tempo/contracts';
 import Redis from 'ioredis';
 
 const STREAM_PREFIX = 'tempo:t:';
 const STREAM_MAXLEN = 1000;
+const PRESENCE_PREFIX = 'tempo:presence:';
+// TTL > the SSE refresh interval (15s) so a live connection never lets it lapse;
+// an abrupt drop / Worker death expires it within this window.
+const PRESENCE_TTL_SEC = 45;
 
 function redisUrl(): string {
   const url = process.env.REDIS_URL;
@@ -41,12 +47,20 @@ export function createReader(): Redis {
   return reader;
 }
 
-// Fan an event out to its thread's stream. MAXLEN ~ trims to approximately
-// STREAM_MAXLEN in the same round-trip (lazy, macro-node granularity — the
-// stream may run slightly over, never under). Auto-id (*) never rejects on
-// concurrent writes; consumers order by the event's own evt_<seq> id, so stream
-// order isn't authoritative.
+// Fan a persisted event out to its thread's stream.
 export async function appendToStream(threadId: string, event: Event): Promise<void> {
+  await pushFrame(threadId, event);
+}
+
+// Ephemeral presence frame — same stream, never persisted to Postgres.
+export async function publishPresence(threadId: string, online: boolean): Promise<void> {
+  await pushFrame(threadId, { kind: 'presence', online });
+}
+
+// MAXLEN ~ caps the stream in the same round-trip (lazy, macro-node granularity).
+// Auto-id (*) never rejects on concurrent writes; consumers order by the event's
+// own evt_<seq> id, so stream order isn't authoritative.
+async function pushFrame(threadId: string, frame: Event | PresenceSignal): Promise<void> {
   await redis().xadd(
     streamKey(threadId),
     'MAXLEN',
@@ -54,22 +68,54 @@ export async function appendToStream(threadId: string, event: Event): Promise<vo
     STREAM_MAXLEN,
     '*',
     'payload',
-    JSON.stringify(event),
+    JSON.stringify(frame),
   );
 }
 
-// Pull the JSON event back out of a stream entry's flat [field, value, ...]
-// fields array. Returns null on a missing or unparseable payload. Pure —
-// unit-tested without Redis.
-export function parseStreamEvent(fields: string[]): Event | null {
+// Pull the JSON frame back out of a stream entry's flat [field, value, ...]
+// array. Returns null on a missing or unparseable payload. Pure.
+export function parseStreamEvent(fields: string[]): Event | PresenceSignal | null {
   for (let i = 0; i + 1 < fields.length; i += 2) {
     if (fields[i] === 'payload') {
       try {
-        return JSON.parse(fields[i + 1] as string) as Event;
+        return JSON.parse(fields[i + 1] as string) as Event | PresenceSignal;
       } catch {
         return null;
       }
     }
   }
   return null;
+}
+
+// --- Presence: "is the agent's SSE connection live" -----------------------
+// The Worker setPresent()s on an agent SSE connect, refreshPresent()s on the
+// ping, and clearPresent()s on close. The TTL is the abrupt-disconnect safety
+// net — no goodbye is ever trusted.
+function presenceKey(threadId: string): string {
+  return `${PRESENCE_PREFIX}${threadId}`;
+}
+
+export async function setPresent(threadId: string): Promise<void> {
+  await redis().set(presenceKey(threadId), '1', 'EX', PRESENCE_TTL_SEC);
+}
+
+export async function refreshPresent(threadId: string): Promise<void> {
+  // SET (not EXPIRE) so it self-heals if the key lapsed between connect and the
+  // first refresh (e.g. a brief Worker restart) — EXPIRE no-ops on a missing key.
+  await redis().set(presenceKey(threadId), '1', 'EX', PRESENCE_TTL_SEC);
+}
+
+export async function clearPresent(threadId: string): Promise<void> {
+  await redis().del(presenceKey(threadId));
+}
+
+export async function isPresent(threadId: string): Promise<boolean> {
+  return (await redis().exists(presenceKey(threadId))) === 1;
+}
+
+// Batch presence read for the threads list — one MGET, present iff non-null.
+export async function arePresent(threadIds: string[]): Promise<Map<string, boolean>> {
+  if (threadIds.length === 0) return new Map();
+  const values = await redis().mget(threadIds.map(presenceKey));
+  return new Map(threadIds.map((id, i) => [id, values[i] != null]));
 }

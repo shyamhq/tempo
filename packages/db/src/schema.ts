@@ -56,11 +56,6 @@ export const threads = pgTable('threads', {
   description: text('description').notNull().default(''),
   connect_token: text('connect_token').notNull(),
   agent_type: text('agent_type', { enum: ['local', 'hosted'] }).notNull(),
-  // Bumped whenever the Agent (CLI or Hosted runner) hits a Worker route.
-  // Console derives "is the Agent reachable" as (now() - agent_last_seen_at) < 60s.
-  // Single source of truth for presence — no separate sessions table, no
-  // in-memory map. Nullable until the first contact.
-  agent_last_seen_at: nullableTimestamp('agent_last_seen_at'),
   sort_order: doublePrecision('sort_order').notNull().default(0),
   created_at: timestampDate('created_at'),
   updated_at: timestampDate('updated_at'),

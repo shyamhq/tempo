@@ -7,8 +7,8 @@ import { api } from '@/lib/api-client';
 
 // Hosted-runtime status surface next to the Connect button. Renders only for
 // Hosted Threads. Auto-wake fires server-side on Dev wake events; this
-// component shows the VM lifecycle state derived from `vm_runs` +
-// `agent_last_seen_at`.
+// component shows the VM lifecycle state — `vm_runs` for the Sandbox, the Redis
+// presence key (`agentPresent`) for whether the runner is connected.
 //   - vm null            → render nothing (no live Sandbox; auto-wake will fire)
 //   - vm live, !present  → "Provisioning sandbox…"
 //   - vm live, present   → sandbox id + age

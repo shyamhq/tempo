@@ -1,6 +1,6 @@
 /// <reference types="node" />
 // Hosted runner — bundled to /app/runner.js and executed inside the E2B
-// Sandbox at provision time. Hydrates Turn 1 via POST /api/hosted/drain,
+// Sandbox at provision time. Hydrates Turn 1 via GET /api/threads/:id/access,
 // then subscribes to the Worker's Redis-backed SSE stream for subsequent
 // wake events. Each turn runs streamText with an AbortController; a wake
 // event arriving mid-turn aborts the current call, pushes completed-step
@@ -69,34 +69,23 @@ async function postAgentEvent(event: unknown): Promise<void> {
   }
 }
 
-type DrainResponse = {
-  events: unknown[];
-  // Present only when the runner asked for it (`first: true` in the request)
-  // AND the thread still exists. The server gates the hydration; the runner
-  // never receives it on Turn 2+ and so doesn't need its own gate.
-  context?: TurnHydration | null;
-};
-
-// Turn-1 hydration only — subsequent turns wait on SSE wake events instead.
-async function drainFirst(): Promise<DrainResponse> {
+// Turn-1 bootstrap — the SAME /access endpoint the local CLI uses. Returns the
+// full snapshot (`context`) + wake events since the last turn (catch-up for a
+// freshly-spawned runner). Subsequent turns arrive via the SSE stream.
+async function hydrate(): Promise<{ events: unknown[]; context: TurnHydration } | null> {
   try {
-    const res = await fetch(`${env.workerMcpUrl}/api/hosted/drain`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.hostedToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ first: true }),
+    const res = await fetch(`${env.workerMcpUrl}/api/threads/${env.threadId}/access`, {
+      headers: { Authorization: `Bearer ${env.hostedToken}` },
     });
     if (!res.ok) {
-      logger.error({ status: res.status, body: await res.text() }, 'runner: drainFirst');
-      return { events: [] };
+      logger.error({ status: res.status, body: await res.text() }, 'runner: hydrate');
+      return null;
     }
-    const json = (await res.json()) as DrainResponse;
+    const json = (await res.json()) as { events: unknown[]; context: TurnHydration };
     return { events: json.events ?? [], context: json.context };
   } catch (err) {
-    logger.error({ err }, 'runner: drainFirst failed');
-    return { events: [] };
+    logger.error({ err }, 'runner: hydrate failed');
+    return null;
   }
 }
 
@@ -345,9 +334,6 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  // Presence is derived from `threads.agent_last_seen_at`, which gets bumped on
-  // every MCP tool call. No need for a "connected" lifecycle event.
-
   // Initial provider (path: /init) — only used for buildToolset, which reads
   // tool definitions and doesn't actually make a request. Every Turn rebuilds
   // its own provider with a fresh `/turn/<n>` path so Helicone groups the
@@ -418,15 +404,13 @@ async function main(): Promise<void> {
   };
 
   try {
-    // Turn 1: hydrate from drain (Plan, Comments, Discussion state + initial events).
-    const firstDrain = await drainFirst();
-    if (firstDrain.events.length === 0) {
-      // Nothing to do yet — shouldn't normally happen (the runner is
-      // provisioned in response to an event), but handle it gracefully.
-      logger.warn('runner: turn-1 drain returned no events; exiting');
+    // Turn 1: hydrate via /access (full snapshot + catch-up wake events).
+    const first = await hydrate();
+    if (!first) {
+      logger.warn('runner: turn-1 hydrate failed; exiting');
       return;
     }
-    await runTurnOnce(firstDrain);
+    await runTurnOnce(first);
 
     // Subsequent turns: process buffered wakes; self-exit after MAX_IDLE_MS idle.
     while (true) {

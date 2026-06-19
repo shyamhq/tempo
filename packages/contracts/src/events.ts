@@ -101,13 +101,14 @@ export const AgentCancelRequestedEvent = eventBase.extend({
   kind: z.literal('agent_cancel_requested'),
 });
 
-// CLI explicit goodbye on SIGINT/SIGTERM. The Worker handler that receives
-// this also nulls `threads.agent_last_seen_at`, so the Console flips presence
-// to idle without waiting for the 60s window. Hard kills (SIGKILL, laptop
-// sleep) never run the signal handler, so they still age out naturally.
-export const AgentDisconnectedEvent = eventBase.extend({
-  kind: z.literal('agent_disconnected'),
+// Ephemeral SSE-only frame (NOT a persisted Event): the Worker XADDs it to the
+// thread stream when an agent's SSE connection opens/closes so browsers flip the
+// presence chip instantly. Never written to Postgres or the trail.
+export const PresenceSignal = z.object({
+  kind: z.literal('presence'),
+  online: z.boolean(),
 });
+export type PresenceSignal = z.infer<typeof PresenceSignal>;
 
 export const Event = z.discriminatedUnion('kind', [
   CommentAddedEvent,
@@ -127,7 +128,6 @@ export const Event = z.discriminatedUnion('kind', [
   DiscussionMessagePostedEvent,
   ThreadRenamedEvent,
   AgentCancelRequestedEvent,
-  AgentDisconnectedEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -149,7 +149,6 @@ export const EventKind = z.enum([
   'discussion_message_posted',
   'thread_renamed',
   'agent_cancel_requested',
-  'agent_disconnected',
 ]);
 export type EventKind = z.infer<typeof EventKind>;
 

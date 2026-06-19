@@ -4,7 +4,7 @@ import { useAuth, useUser } from '@clerk/nextjs';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTodo } from '@tempo/contracts';
-import { Event, EventKind } from '@tempo/contracts/events';
+import { Event, EventKind, PresenceSignal } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { useEffect, useRef } from 'react';
 import type { z } from 'zod';
@@ -114,9 +114,19 @@ export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => vo
           hasOpenedRef.current = true;
         },
         onmessage: (msg) => {
-          if (!msg.event || !EventKind.options.includes(msg.event as z.infer<typeof EventKind>))
-            return;
+          if (!msg.event) return;
           try {
+            // presence is an SSE-only signal (not in Event union) — handle it
+            // before the EventKind guard so it isn't silently dropped.
+            if (msg.event === 'presence') {
+              const parsed = PresenceSignal.safeParse(JSON.parse(msg.data));
+              if (!parsed.success) return;
+              qc.setQueryData<ThreadView>(['thread', threadId], (prev) =>
+                prev ? { ...prev, agent_present: parsed.data.online } : prev,
+              );
+              return;
+            }
+            if (!EventKind.options.includes(msg.event as z.infer<typeof EventKind>)) return;
             const parsed = Event.safeParse(JSON.parse(msg.data));
             if (!parsed.success) return;
             const ev = parsed.data;
@@ -159,28 +169,7 @@ function apply(
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;
-    // Any agent-authored event is proof of life — refresh the cached presence
-    // timestamp so the chip doesn't say "idle" while a tool call is mid-flight.
-    // The 30s refetch backstop covers quiet-but-connected periods; this covers
-    // active-but-not-yet-refetched windows. `agent_cancel_requested` is
-    // dev-authored (Stop button) and `agent_disconnected` is the goodbye —
-    // both excluded here; the latter is handled explicitly below.
-    const agentAlive =
-      ev.kind === 'agent_tool_use' ||
-      ev.kind === 'agent_tool_failed' ||
-      ev.kind === 'agent_narration' ||
-      ev.kind === 'agent_thought' ||
-      ev.kind === 'agent_todos_updated' ||
-      ev.kind === 'agent_mode_changed' ||
-      ev.kind === 'agent_turn_ended' ||
-      ev.kind === 'plan_edited_by_agent' ||
-      (ev.kind === 'reply_added' && ev.reply.author_user_id === null) ||
-      (ev.kind === 'discussion_message_posted' && ev.message.author_user_id === null);
-    const next: ThreadView = {
-      ...prev,
-      last_event_id: ev.id,
-      agent_last_seen_at: agentAlive ? new Date().toISOString() : prev.agent_last_seen_at,
-    };
+    const next: ThreadView = { ...prev };
     switch (ev.kind) {
       case 'comment_added':
         if (next.comments.some((c) => c.id === ev.comment.id)) return next;
@@ -231,10 +220,6 @@ function apply(
           ...next,
           comments: next.comments.filter((c) => c.id !== ev.comment_id),
         };
-      case 'agent_disconnected':
-        // CLI clean shutdown — null the presence so the UI flips to idle
-        // immediately instead of waiting for the 60s window to age out.
-        return { ...next, agent_last_seen_at: null };
       case 'discussion_message_posted': {
         if (next.discussion.messages.some((m) => m.id === ev.message.id)) return next;
         return {

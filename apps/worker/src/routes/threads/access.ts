@@ -1,25 +1,26 @@
 import { db } from '@tempo/db/client';
 import { threads, workspaces } from '@tempo/db/schema';
-import { getTurnHydration, latestEventId } from '@tempo/server';
+import { getEventsSinceLastTurn, getTurnHydration } from '@tempo/server';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
+import { touch } from '../../hosted/supervisor';
 import { logger } from '../../logger';
 
-// GET /api/threads/:id/access — CLI + browser preflight.
-// Returns thread + workspace metadata so the CLI can display
-// "Connecting to <workspace>'s Thread <title>" on connect.
+// GET /api/threads/:id/access — unified turn-1 bootstrap for BOTH agent styles
+// (local CLI + hosted runner) and the browser. Returns thread/workspace display
+// fields plus `context` (the full turn-1 snapshot) and `events` (wake events
+// since the last turn, so a freshly-(re)started agent catches up on what it
+// missed). The hosted runner replaced its old POST /hosted/drain with this.
 //
-// Doesn't use ensureThreadAccess middleware so it can return discriminated
-// 404 (thread_not_found) responses; the standard middleware returns a
-// uniform 403 forbidden body.
+// Doesn't use ensureThreadAccess middleware so it can return a discriminated
+// 404 (thread_not_found); the standard middleware returns a uniform 403.
 export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, res) => {
   const threadId = req.params.id;
 
-  // Agent + Hosted tokens don't represent a User; this preflight is meant
-  // for CLI + browser users only. Hosted Sandboxes get their thread/workspace
-  // identity straight from their own JWT claims — no need for this route.
-  if (req.caller.kind === 'agent' || req.caller.kind === 'hosted') {
+  // Workspace-scoped agent keys (no single thread) and the internal token have
+  // no business here. cli, browser, and the thread-bound hosted runner do.
+  if (req.caller.kind === 'agent' || req.caller.kind === 'internal') {
     res.status(403).json({ error: 'forbidden' });
     return;
   }
@@ -59,13 +60,16 @@ export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, r
     return;
   }
 
-  const [latest_event_id, context] = await Promise.all([
-    latestEventId(threadId),
+  const [events, context] = await Promise.all([
+    getEventsSinceLastTurn(threadId),
     getTurnHydration(threadId),
   ]);
   if (!context) {
     res.status(404).json({ error: 'thread_not_found' });
     return;
   }
-  res.json({ ...row, latest_event_id, context });
+  // A freshly-spawned hosted runner hydrates here before its first MCP call —
+  // reset the supervisor's inactivity timer so it isn't reaped mid-turn-1.
+  if (req.caller.kind === 'hosted') touch(threadId);
+  res.json({ ...row, context, events });
 };

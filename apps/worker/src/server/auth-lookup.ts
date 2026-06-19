@@ -103,10 +103,7 @@ export async function assertMembership(
 // Caller-aware threadId resolution + authorization. Hosted callers carry the
 // threadId in their JWT; CLI / browser callers pass it on `X-Tempo-Thread-Id`.
 // Runs `authorizeThread` so a forged header can't unlock cross-workspace access.
-// On success, fires the presence bump (`agent_last_seen_at`) since this is the
-// single per-tool entry point that has both the authorized threadId and the
-// signal that the Agent just touched us. Returns null on missing/forbidden,
-// which tools surface as `thread_id_required`.
+// Returns null on missing/forbidden, which tools surface as `thread_id_required`.
 export async function resolveThreadIdForCaller(
   caller: import('../auth').Caller,
   headerThreadId: string | undefined,
@@ -119,7 +116,5 @@ export async function resolveThreadIdForCaller(
   } catch {
     return null;
   }
-  const { bumpAgentLastSeen } = await import('@tempo/server');
-  void bumpAgentLastSeen(candidate).catch(() => {});
   return candidate;
 }

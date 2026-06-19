@@ -1,0 +1,1 @@
+ALTER TABLE "threads" DROP COLUMN "agent_last_seen_at";

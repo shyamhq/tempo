@@ -1,18 +1,39 @@
-import { sseStream } from '@tempo/server';
+import {
+  clearPresent,
+  publishPresence,
+  refreshPresent,
+  setPresent,
+  sseStream,
+} from '@tempo/server';
 import type { RequestHandler } from 'express';
 
-// GET /api/threads/:id/events — Redis-backed SSE stream of new events for the
-// Console activity feed. Full Thread state loads via GET /api/threads/:id; this
-// only delivers what arrives after subscribe. Idle connections issue zero DB
-// queries (they block on Redis). The CLI no longer uses this route — it tails
-// the Redis stream directly.
+// Keep the presence key comfortably inside its TTL (45s) so a live connection
+// never lets it lapse.
+const PRESENCE_REFRESH_MS = 15_000;
+
+// GET /api/threads/:id/events — Redis-backed SSE stream of new events. Browsers,
+// the local CLI, and the hosted runner all tail it. The agent's connection here
+// IS its presence: while a cli/hosted connection is open we keep the Redis
+// presence key fresh and push a `presence` frame so viewers flip instantly; the
+// TTL is the abrupt-disconnect safety net. Browser viewers don't count.
 export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
   const threadId = req.params.id;
+  const isAgent = req.caller.kind === 'cli' || req.caller.kind === 'hosted';
+
+  let presenceTimer: ReturnType<typeof setInterval> | null = null;
+  if (isAgent) {
+    void setPresent(threadId).catch(() => {});
+    void publishPresence(threadId, true).catch(() => {});
+    presenceTimer = setInterval(() => {
+      void refreshPresent(threadId).catch(() => {});
+    }, PRESENCE_REFRESH_MS);
+  }
 
   // sseStream returns a Web API Response; pipe its body to the Express response.
   const webResponse = sseStream(threadId);
   const body = webResponse.body;
   if (!body) {
+    if (presenceTimer) clearInterval(presenceTimer);
     res.status(500).json({ error: 'internal_error' });
     return;
   }
@@ -38,6 +59,13 @@ export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
     }
   };
 
-  req.on('close', () => reader.cancel());
+  req.on('close', () => {
+    reader.cancel();
+    if (isAgent) {
+      if (presenceTimer) clearInterval(presenceTimer);
+      void clearPresent(threadId).catch(() => {});
+      void publishPresence(threadId, false).catch(() => {});
+    }
+  });
   pump();
 };

@@ -67,9 +67,8 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
     queryFn: () => api.getThread(threadId),
     initialData: initial,
     staleTime: 30_000,
-    // Refresh agent_last_seen_at so the presence chip reflects ongoing CLI
-    // long-poll bumps. SSE pushes plan/comment/discussion updates surgically,
-    // but the column ages out without a refetch. 30s matches staleTime.
+    // Backstop for the rare Worker-death case where the `presence` SSE frame
+    // is never sent. 30s matches staleTime.
     refetchInterval: 30_000,
   });
 
@@ -135,10 +134,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   }, [planUpdatedAt]);
 
   const view = data ?? initial;
-  // Single source of truth for "is the Agent reachable" — bumped server-side
-  // on every MCP call / long-poll. 60s window matches the Worker's heartbeat
-  // budget (CLI long-polls cycle every ~25s; 60s gives 2× safety).
-  const agentPresent = useAgentPresence(view.agent_last_seen_at);
+  const agentPresent = view.agent_present;
 
   // Connect dialog state is lifted so the LocalDisconnectedBanner's "Connect"
   // CTA can open the same dialog the header button does, and so the
@@ -542,19 +538,4 @@ function EmptyPlanState() {
       </div>
     </div>
   );
-}
-
-// 60s window — see threads.agent_last_seen_at comment in db schema. The hook
-// also ticks every second so the boolean flips automatically without a fresh
-// query, matching how the user expects a stale value to age out.
-const PRESENCE_WINDOW_MS = 60_000;
-const PRESENCE_TICK_MS = 5_000;
-function useAgentPresence(iso: string | null): boolean {
-  const present = iso !== null && Date.now() - new Date(iso).getTime() < PRESENCE_WINDOW_MS;
-  const [, force] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => force((n) => n + 1), PRESENCE_TICK_MS);
-    return () => clearInterval(t);
-  }, []);
-  return present;
 }

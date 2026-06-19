@@ -207,6 +207,18 @@ Each task: implement → `bun run typecheck && bun run lint` → relevant `bun t
 * **ACP v1 no mid-turn push:** cancel + re-prompt is the supported workaround (history preserved, in-progress turn work discarded).
 * **ACP packages deprecated:** migration included; symbol surface 1:1; adapter entry point may differ — verify after install.
 
-## Follow-ups (out of this PR — contract changes)
+## Presence v2 — connection-bound, Redis-backed, push-propagated (this pass)
 
-* **Vestigial event-id cursor fields.** `last_event_id` in `GetThreadResponse` and `latest_event_id` in `ThreadAccessResponse` are now dead: SSE starts from the live tail (`$`), so no consumer reads them as cursors. The Console (`use-thread-events.ts`) still writes `last_event_id` into its cache on every event but nothing reads it; the CLI receives `latest_event_id` from `/access` and ignores it. Removing them is a contract change touching `packages/contracts` + the Console cache write + CLI + tests — left for a follow-up PR to keep this one focused.
+Replaces the heartbeat+`agent_last_seen_at`(60s window) presence with the industry-standard model: connection = liveness, Redis TTL = truth (abrupt-safe), push = propagation. Reuses both SSE ends (CLI's SSE = liveness source; browsers' SSE = propagation via the thread stream).
+
+- **Truth (Redis):** key `tempo:presence:<threadId>` — `SET … EX 45` when the CLI's SSE connects (Worker `sse.ts`, `caller.kind === 'cli'`), `EXPIRE`-refreshed every 15s while the connection is open, `DEL` on detected close. TTL is the only safety net (Worker death / undetected partition) — no goodbye trusted.
+- **Detection:** the SSE connection close. Clean exit / `kill -9` → socket close → ~instant. Partition → ping-write-fail → ≤~25s. Worker death → TTL ≤45s.
+- **Propagation:** Worker `XADD`s a `presence` frame (`{kind:'presence', online}`) to `tempo:t:<threadId>` on connect/close → browsers flip instantly via their SSE. Stream-only (NOT `appendEvent` — ephemeral, never persisted to Postgres/trails). `PresenceSignal` is a separate contract type, NOT a member of the persisted `Event` union.
+- **Read on load:** thread GET / list read the Redis key(s) (`EXISTS` / batch) → `agent_present: boolean`. The existing ~30s refetch is the only backstop (covers Worker-death for live viewers).
+- **Frontend:** `agent_present` boolean from the cache, flipped by the `presence` SSE frame; no timestamp/window/5s-tick.
+
+**Deletes (the-algorithm):** `threads.agent_last_seen_at` column (DROP COLUMN migration — mind the `_journal.json` timestamp trap) + `bumpAgentLastSeen` + `markAgentDisconnected` + all bump call sites (auth-lookup, gateway/resolve); the `agent_disconnected` event kind (now dead); the heartbeat endpoint + route + CLI heartbeat timer/`postHeartbeat` + the CLI clean-exit goodbye POST + the heartbeat-401 refresh path.
+
+## Cursor cleanup (this pass)
+
+Vestigial since SSE went live-tail. Remove: `GetThreadResponse.last_event_id` + `ThreadAccessResponse.latest_event_id` (contracts/http.ts + fix the lying comment); stop computing/returning them in `access.ts` + console `route.ts` (kills 2 wasted `latestEventId` DB queries); drop the dead `last_event_id` cache write in `use-thread-events.ts`.

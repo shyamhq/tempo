@@ -3,7 +3,7 @@ import {
   deleteThread,
   getPlan,
   getThread,
-  latestEventId,
+  isPresent,
   listCommentsForThread,
   listMessagesForThread,
   threadBelongsToWorkspace,
@@ -54,11 +54,11 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const thread = await getThread(id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, comments, messages, last_event_id] = await Promise.all([
+  const [plan, comments, messages, agent_present] = await Promise.all([
     getPlan(id),
     listCommentsForThread(id),
     listMessagesForThread(id),
-    latestEventId(id),
+    isPresent(id),
   ]);
   return ok({
     thread: {
@@ -71,7 +71,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     plan,
     comments,
     discussion: { messages },
-    agent_last_seen_at: thread.agent_last_seen_at?.toISOString() ?? null,
-    last_event_id,
+    agent_present,
   });
 }
