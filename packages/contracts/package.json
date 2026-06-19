@@ -8,7 +8,7 @@
     "./http": "./src/http.ts",
     "./connectors": "./src/connectors.ts",
     "./events": "./src/events.ts",
-    "./workflow": "./src/workflow.ts"
+    "./agent-prompt": "./src/agent-prompt.ts"
   },
   "scripts": {
     "lint": "biome check src",
