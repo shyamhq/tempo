@@ -16,6 +16,19 @@ services:
       timeout: 3s
       retries: 20
 
+  # Redis — real-time event delivery (streams) + shared cache. No volume: the
+  # stream is an ephemeral delivery channel; Postgres is the source of truth.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   minio:
     image: minio/minio:latest
     restart: unless-stopped

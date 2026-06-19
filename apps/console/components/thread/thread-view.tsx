@@ -116,7 +116,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
   // from "pm_json reference changed in the cache" is the load-bearing fix
   // — Dev auto-saves and bridge invalidates no longer reach the live editor,
   // so they can't wipe selection mid-`setMark` from a comment-create.
-  useThreadEvents(threadId, data?.last_event_id ?? initial.last_event_id, async () => {
+  useThreadEvents(threadId, async () => {
     setPlanUpdatedAt(Date.now());
     await qc.refetchQueries({ queryKey: ['thread', threadId] });
     const fresh = qc.getQueryData<View>(['thread', threadId]);

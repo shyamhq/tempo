@@ -55,22 +55,20 @@ export function useLiveActivityGroup(threadId: string): LiveActivity {
 
 // SSE consumer for a single Thread. Mutates the cached Thread view via
 // setQueryData so a single network stream feeds every Plan/Comment/Modal
-// subscriber. Reconnects automatically (the browser's EventSource handles
-// reconnects; we restart from the last applied event id).
+// subscriber. Reconnects automatically via fetchEventSource's built-in retry.
+//
+// The Worker's SSE endpoint starts from the live tail ($) on every connect —
+// it ignores any cursor. Events that arrived during a disconnect gap are
+// recovered by invalidating the ['thread', threadId] query on reconnect,
+// triggering a full-state refetch from DB.
 //
 // `onPlanEditedByAgent` is the direct trigger for the "Plan updated by Agent"
 // UI (toast + editor ring pulse) — fired at the SSE boundary so it can't be
 // lost in a cache-diff race between updated_at and updated_by.
-export function useThreadEvents(
-  threadId: string,
-  initialCursor: string,
-  onPlanEditedByAgent?: () => void,
-) {
+export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => void) {
   const qc = useQueryClient();
   const { getToken } = useAuth();
   const { user } = useUser();
-  const cursorRef = useRef(initialCursor);
-  cursorRef.current = initialCursor;
   // Latest-ref so a new callback identity on every parent render doesn't
   // re-subscribe (the effect deps are [threadId, qc] only).
   const planEditedByAgentRef = useRef(onPlanEditedByAgent);
@@ -84,9 +82,12 @@ export function useThreadEvents(
     if (!threadId) return;
     // AbortController lets us cancel the fetchEventSource stream on cleanup.
     const controller = new AbortController();
+    // Distinguishes the first SSE open (page already loaded full state — no
+    // refetch needed) from subsequent reconnects (disconnect gap — must refetch).
+    const hasOpenedRef = { current: false };
 
     const run = async () => {
-      await fetchEventSource(workerEventsUrl(threadId, cursorRef.current), {
+      await fetchEventSource(workerEventsUrl(threadId), {
         signal: controller.signal,
         // Override the underlying fetch so the library calls this on every
         // (re)connect. We fetch a fresh Clerk JWT each attempt — without this,
@@ -104,6 +105,13 @@ export function useThreadEvents(
         },
         onopen: async (res) => {
           if (!res.ok) throw new Error(`SSE open failed: ${res.status}`);
+          if (hasOpenedRef.current) {
+            // Reconnect after a disconnect gap — the server streams from $ so
+            // events we missed are not replayed. Invalidate to pull full state
+            // from DB and close the gap before new live events arrive.
+            qc.invalidateQueries({ queryKey: ['thread', threadId] });
+          }
+          hasOpenedRef.current = true;
         },
         onmessage: (msg) => {
           if (!msg.event || !EventKind.options.includes(msg.event as z.infer<typeof EventKind>))
@@ -112,7 +120,6 @@ export function useThreadEvents(
             const parsed = Event.safeParse(JSON.parse(msg.data));
             if (!parsed.success) return;
             const ev = parsed.data;
-            cursorRef.current = ev.id;
             apply(qc, threadId, ev, userIdRef.current);
             if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
           } catch {

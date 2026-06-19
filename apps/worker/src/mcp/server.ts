@@ -10,7 +10,6 @@ import { registerGithubListRepos } from './tools/github-list-repos';
 import { registerGithubSearchIssues } from './tools/github-search-issues';
 import { registerListIntegrationActions } from './tools/list-integration-actions';
 import { registerLoadSkill } from './tools/load-skill';
-import { registerPoll } from './tools/poll';
 import { registerPostDiscussionMessage } from './tools/post-discussion-message';
 import { registerPostReply } from './tools/post-reply';
 import { registerPullPlan } from './tools/pull-plan';
@@ -34,7 +33,6 @@ export function createMcpServer(caller: Caller, headerThreadId: string | undefin
   registerUpdateBlock(server, resolveThreadId);
   registerAddBlocks(server, resolveThreadId);
   registerDeleteBlock(server, resolveThreadId);
-  registerPoll(server, resolveThreadId);
   registerPostReply(server, resolveThreadId);
   registerPostDiscussionMessage(server, resolveThreadId);
   registerSetThreadMeta(server, resolveThreadId);

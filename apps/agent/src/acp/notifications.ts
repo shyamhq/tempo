@@ -1,5 +1,5 @@
+import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { AgentEventRequest } from '@tempo/contracts/http';
-import type { SessionNotification } from '@zed-industries/agent-client-protocol';
 
 type Event = AgentEventRequest['event'];
 

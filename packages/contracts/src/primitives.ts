@@ -21,8 +21,8 @@ export type EventId = z.infer<typeof EventId>;
 export type ConnectToken = z.infer<typeof ConnectToken>;
 
 // Sentinel matching newEventId(0) on the Console. Lexicographically less than
-// every real event ID, so passing it as a cursor to longPoll/readEventsAfter
-// returns all events since thread creation.
+// every real event ID, so passing it as a cursor to readEventsAfter returns
+// all events since thread creation.
 export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 
 // A @mention extracted from a Discussion message or Comment reply body. `id`

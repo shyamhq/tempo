@@ -3,7 +3,13 @@ import { TempoError } from '@tempo/errors';
 import cors from 'cors';
 import type { ErrorRequestHandler } from 'express';
 import express from 'express';
-import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
+import {
+  bearerAuth,
+  ensureCommentAccess,
+  ensureThreadAccess,
+  rejectAgent,
+  rejectWorkspaceAgent,
+} from './auth';
 import { env } from './env';
 import { startSupervisor, stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
@@ -26,6 +32,7 @@ import { healthHandler } from './routes/health';
 import { drainHostedHandler } from './routes/hosted/drain';
 import { wakeHostedHandler } from './routes/hosted/wake';
 import { threadAccessHandler } from './routes/threads/access';
+import { heartbeatHandler } from './routes/threads/heartbeat';
 
 const app = express();
 
@@ -67,9 +74,25 @@ app.post('/api/hosted/drain', bearerAuth, drainHostedHandler);
 // blocked on SSE and other user-facing paths.
 app.post('/api/threads/:id/hosted/wake', bearerAuth, ensureThreadAccess, wakeHostedHandler);
 
-// SSE is a browser activity feed — agent keys (workspace-scoped, no user)
-// have no business subscribing.
-app.get('/api/threads/:id/events', bearerAuth, rejectAgent, ensureThreadAccess, sseHandler);
+// SSE activity feed — browsers, the local CLI, and the hosted runner all tail
+// it for new events. Workspace-scoped agent keys (no single thread) stay out.
+app.get(
+  '/api/threads/:id/events',
+  bearerAuth,
+  rejectWorkspaceAgent,
+  ensureThreadAccess,
+  sseHandler,
+);
+
+// CLI presence heartbeat — keeps `agent_last_seen_at` fresh while the agent
+// idles between turns (it now tails Redis directly instead of long-polling).
+app.post(
+  '/api/threads/:id/heartbeat',
+  bearerAuth,
+  rejectAgent,
+  ensureThreadAccess,
+  heartbeatHandler,
+);
 
 // Thread-scoped routes — bearerAuth → ensureThreadAccess sets req.workspaceId.
 app.post('/api/threads/:id/plan', bearerAuth, ensureThreadAccess, writePlanHandler);

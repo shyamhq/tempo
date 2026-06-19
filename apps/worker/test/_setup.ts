@@ -5,6 +5,7 @@
 // mock the connector clients rather than calling out.
 const defaults: Record<string, string> = {
   DATABASE_URL: 'postgres://test:test@localhost:5432/tempo_test',
+  REDIS_URL: 'redis://localhost:6379',
   CLI_AUTH_SECRET: 'test-cli-secret-0000000000000000000000',
   HOSTED_AUTH_SECRET: 'test-hosted-secret-0000000000000000000',
   WORKER_INTERNAL_TOKEN: 'test-internal-token-000000000000000000',

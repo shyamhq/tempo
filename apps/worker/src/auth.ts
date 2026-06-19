@@ -218,3 +218,15 @@ export const rejectAgent: RequestHandler = (req, res, next) => {
   }
   next();
 };
+
+// Like rejectAgent, but lets the hosted runner through: it subscribes to its
+// OWN thread's SSE feed for wake events, and ensureThreadAccess pins it to that
+// thread. Only the workspace-scoped agent key and the internal token — neither
+// of which carries a single-thread context — are rejected.
+export const rejectWorkspaceAgent: RequestHandler = (req, res, next) => {
+  if (req.caller.kind === 'agent' || req.caller.kind === 'internal') {
+    res.status(403).json({ error: 'forbidden' });
+    return;
+  }
+  next();
+};

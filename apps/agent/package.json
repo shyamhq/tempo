@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "dev": "bun run build && node dist/cli.js",
-    "build": "bun build --target=node --bundle src/cli.ts --outfile dist/cli.js --loader=.md:text --external @zed-industries/claude-code-acp --external @zed-industries/agent-client-protocol",
+    "build": "bun build --target=node --bundle src/cli.ts --outfile dist/cli.js --loader=.md:text --external @agentclientprotocol/claude-agent-acp --external @agentclientprotocol/sdk",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
@@ -37,8 +37,9 @@
     "zod": "^4.4.3"
   },
   "dependencies": {
-    "@zed-industries/agent-client-protocol": "^0.4.5",
-    "@zed-industries/claude-code-acp": "^0.16.2",
+    "@agentclientprotocol/claude-agent-acp": "^0.48.0",
+    "@agentclientprotocol/sdk": "^0.28.1",
+    "eventsource-parser": "^3.1.0",
     "open": "^11.0.0",
     "proper-lockfile": "^4.1.2"
   }

@@ -1,42 +1,16 @@
-import { EventsQuery } from '@tempo/contracts/http';
-import { bumpAgentLastSeen, emptyCursor, longPoll, sseStream } from '@tempo/server';
+import { sseStream } from '@tempo/server';
 import type { RequestHandler } from 'express';
-import { logger } from '../../logger';
 
-// GET /api/threads/:id/events
-//
-// Two modes, same route + auth chain:
-// - SSE stream (no `wait` param): Console activity feed.
-// - Long-poll (?cursor=X&wait=N): CLI event delivery. Returns EventsLongPollResponse
-//   JSON immediately with current events, or waits up to N seconds for new ones.
-// Each CLI hit bumps `threads.agent_last_seen_at`; Console derives presence as
-// `now() - agent_last_seen_at < 60s`. No registry, no Map.
-export const sseHandler: RequestHandler<{ id: string }> = async (req, res) => {
+// GET /api/threads/:id/events — Redis-backed SSE stream of new events for the
+// Console activity feed. Full Thread state loads via GET /api/threads/:id; this
+// only delivers what arrives after subscribe. Idle connections issue zero DB
+// queries (they block on Redis). The CLI no longer uses this route — it tails
+// the Redis stream directly.
+export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
   const threadId = req.params.id;
 
-  if (typeof req.query.wait === 'string') {
-    const query = EventsQuery.safeParse(req.query);
-    if (!query.success) {
-      res.status(400).json({ error: 'bad_request', message: 'cursor required for long-poll' });
-      return;
-    }
-    if (req.caller.kind === 'cli') {
-      void bumpAgentLastSeen(threadId).catch((err) =>
-        logger.error({ err, threadId }, 'sse: bumpAgentLastSeen failed'),
-      );
-    }
-    const result = await longPoll(threadId, query.data.cursor, query.data.wait ?? 25);
-    res.json(result);
-    return;
-  }
-
-  const cursorParam = typeof req.query.cursor === 'string' ? req.query.cursor : null;
-  const cursor = cursorParam ?? (await emptyCursor(threadId));
-
-  logger.debug({ threadId, cursor, caller: req.caller.kind }, 'sse: starting stream');
-
   // sseStream returns a Web API Response; pipe its body to the Express response.
-  const webResponse = sseStream(threadId, cursor);
+  const webResponse = sseStream(threadId);
   const body = webResponse.body;
   if (!body) {
     res.status(500).json({ error: 'internal_error' });

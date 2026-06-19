@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 const Env = z.object({
   DATABASE_URL: z.string().regex(/^postgres(ql)?:\/\//),
+  // Redis — shared with Worker for real-time event delivery + cache. Required.
+  REDIS_URL: z.string().regex(/^rediss?:\/\//),
   CONSOLE_URL: z.string().url().default('http://localhost:3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
@@ -29,6 +31,7 @@ export const env = parsed.success
   ? parsed.data
   : {
       DATABASE_URL: 'postgresql://localhost/placeholder',
+      REDIS_URL: 'redis://localhost:6379',
       CONSOLE_URL: 'http://localhost:3000',
       NODE_ENV: 'production' as const,
       LOG_LEVEL: 'info' as const,

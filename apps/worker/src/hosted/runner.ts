@@ -1,10 +1,11 @@
 /// <reference types="node" />
 // Hosted runner — bundled to /app/runner.js and executed inside the E2B
-// Sandbox at provision time. Drains Mailbox via REST, runs a streamText
-// Turn per batch with Vercel AI SDK + native + MCP tools, forwards SDK
-// step events to Worker's /api/agent-events. Exits after MAX_IDLE_MS of
-// no activity; E2B's wallclock timeout is the safety net if this loop
-// misbehaves.
+// Sandbox at provision time. Hydrates Turn 1 via POST /api/hosted/drain,
+// then subscribes to the Worker's Redis-backed SSE stream for subsequent
+// wake events. Each turn runs streamText with an AbortController; a wake
+// event arriving mid-turn aborts the current call, pushes completed-step
+// messages to history, then immediately starts a new turn with the buffered
+// wake events. Exits after MAX_IDLE_MS of no activity.
 
 import { execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -12,11 +13,13 @@ import type { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { Event as TempoEvent } from '@tempo/contracts/events';
 import type { TurnHydration } from '@tempo/contracts/http';
 import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
+import { wakeEvents } from './event-source';
 import { buildAnthropicProvider, turnPath } from './helicone';
 import { HOSTED_SYSTEM_PROMPT } from './prompt-hosted';
 
@@ -46,7 +49,6 @@ const env = {
   ghToken: process.env.GITHUB_APP_TOKEN,
 };
 
-const POLL_IDLE_MS = 2_000;
 // Match the supervisor's inactivity budget (apps/worker/src/hosted/supervisor.ts).
 // Runner self-exits at this gap; supervisor reaps slightly later as backstop.
 const MAX_IDLE_MS = 10 * 60 * 1000;
@@ -75,7 +77,8 @@ type DrainResponse = {
   context?: TurnHydration | null;
 };
 
-async function pollMailbox(first: boolean): Promise<DrainResponse> {
+// Turn-1 hydration only — subsequent turns wait on SSE wake events instead.
+async function drainFirst(): Promise<DrainResponse> {
   try {
     const res = await fetch(`${env.workerMcpUrl}/api/hosted/drain`, {
       method: 'POST',
@@ -83,16 +86,16 @@ async function pollMailbox(first: boolean): Promise<DrainResponse> {
         Authorization: `Bearer ${env.hostedToken}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ first }),
+      body: JSON.stringify({ first: true }),
     });
     if (!res.ok) {
-      logger.error({ status: res.status, body: await res.text() }, 'runner: pollMailbox');
+      logger.error({ status: res.status, body: await res.text() }, 'runner: drainFirst');
       return { events: [] };
     }
     const json = (await res.json()) as DrainResponse;
     return { events: json.events ?? [], context: json.context };
   } catch (err) {
-    logger.error({ err }, 'runner: pollMailbox failed');
+    logger.error({ err }, 'runner: drainFirst failed');
     return { events: [] };
   }
 }
@@ -217,20 +220,32 @@ async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Prom
 
 const history: ModelMessage[] = [];
 
+type TurnInput = {
+  events: unknown[];
+  context?: TurnHydration | null;
+};
+
+// Runs one streamText turn. A wake event mid-turn aborts it; onAbort preserves
+// completed-step history either way.
 async function runTurn(
-  drain: DrainResponse,
+  input: TurnInput,
   tools: Record<string, unknown>,
   anthropic: ReturnType<typeof createAnthropic>,
+  // abortController is created per turn by the main loop and shared with the
+  // SSE listener — the listener calls controller.abort() on a wake event.
+  abortController: AbortController,
 ): Promise<void> {
   const startedAt = Date.now();
   // context is set by the server on Turn 1 only; absent on Turn 2+ so the
   // agent reads state from its own message history + events deltas instead.
   const userMessage = JSON.stringify({
     thread_id: env.threadId,
-    events: drain.events,
-    context: drain.context ?? undefined,
+    events: input.events,
+    context: input.context ?? undefined,
   });
   history.push({ role: 'user', content: userMessage });
+
+  const signal = abortController.signal;
 
   const result = streamText({
     model: anthropic(env.modelId),
@@ -247,6 +262,14 @@ async function runTurn(
     // multi-step Turns and back-and-forth sessions.
     providerOptions: {
       anthropic: { cacheControl: { type: 'ephemeral' } },
+    },
+    abortSignal: signal,
+    onAbort: ({ steps }) => {
+      // Only fully-completed steps are available here; the in-progress step's
+      // messages are lost (the SDK doesn't surface them on abort). The next
+      // turn continues from the completed steps + the new wake event — fine for
+      // read-only tools, which are safe to re-issue.
+      history.push(...steps.flatMap((s) => s.response.messages as ModelMessage[]));
     },
     onStepFinish: async ({ text, toolCalls, reasoning }) => {
       // Reasoning (Anthropic extended-thinking) is captured here too —
@@ -275,9 +298,19 @@ async function runTurn(
     },
   });
 
-  // Drain the stream; result.response resolves with assistant + tool
-  // messages we append to history for the next Turn.
+  // consumeStream() resolves cleanly whether the turn completes normally or
+  // is aborted — the stream just closes. Do not await result.response or
+  // result.steps after an abort: they reject when zero steps completed.
   await result.consumeStream();
+
+  if (signal.aborted) {
+    // onAbort already pushed completed-step messages. Still emit turn-ended so
+    // the Console closes the activity indicator — a new turn starts right after.
+    await postAgentEvent({ kind: 'agent_turn_ended' });
+    return;
+  }
+
+  // Normal completion — push the full response messages to history.
   const response = await result.response;
   history.push(...response.messages);
 
@@ -329,27 +362,96 @@ async function main(): Promise<void> {
   });
   const toolset = await buildToolset(initialAnthropic);
 
-  let lastActivity = Date.now();
+  // One AbortController for the whole SSE connection lifetime. Aborted when the
+  // runner exits so the open fetch is cleaned up.
+  const sseController = new AbortController();
+
+  // A wake that interrupts a turn (or arrives while idle) is buffered here and
+  // becomes the next turn's user message.
+  const bufferedWakeEvents: TempoEvent[] = [];
+
+  // The current turn's abort controller, replaced each turn. A wake aborts it
+  // to interrupt the turn; aborting a settled one (between turns) is a no-op, so
+  // there's no null to handle. Plus a resolver to wake the idle loop.
+  let turnController = new AbortController();
+  let wakeNotify: (() => void) | null = null;
+  const notify = (): void => {
+    const resolve = wakeNotify;
+    wakeNotify = null;
+    resolve?.();
+  };
+
+  // ONE consumer of the SSE feed for the runner's lifetime. A single for-await
+  // is never two concurrent reads — and it IS the interrupt mechanism: a wake
+  // aborts the running turn (the loop re-prompts with it) or wakes the idle
+  // loop. Same shape as the local CLI's connect loop.
+  const consume = (async () => {
+    for await (const ev of wakeEvents(
+      env.workerMcpUrl,
+      env.threadId,
+      env.hostedToken,
+      sseController.signal,
+    )) {
+      bufferedWakeEvents.push(ev);
+      // Both no-ops in the off case: abort() does nothing on a settled
+      // controller (between turns); notify() does nothing mid-turn (no waiter).
+      turnController.abort();
+      notify();
+    }
+  })();
+
   let turnCounter = 0;
+  let lastActivity = Date.now();
+
+  const runTurnOnce = async (input: TurnInput): Promise<void> => {
+    turnCounter += 1;
+    turnController = new AbortController();
+    const turnAnthropic = buildAnthropicProvider({
+      anthropicKey: env.anthropicKey,
+      heliconeKey: env.heliconeKey,
+      threadId: env.threadId,
+      workspaceId: env.workspaceId,
+      sessionPath: turnPath(turnCounter),
+    });
+    await runTurn(input, toolset.tools, turnAnthropic, turnController);
+    lastActivity = Date.now();
+  };
+
   try {
-    while (Date.now() - lastActivity < MAX_IDLE_MS) {
-      const drain = await pollMailbox(turnCounter === 0);
-      if (drain.events.length > 0) {
-        turnCounter += 1;
-        const turnAnthropic = buildAnthropicProvider({
-          anthropicKey: env.anthropicKey,
-          heliconeKey: env.heliconeKey,
-          threadId: env.threadId,
-          workspaceId: env.workspaceId,
-          sessionPath: turnPath(turnCounter),
+    // Turn 1: hydrate from drain (Plan, Comments, Discussion state + initial events).
+    const firstDrain = await drainFirst();
+    if (firstDrain.events.length === 0) {
+      // Nothing to do yet — shouldn't normally happen (the runner is
+      // provisioned in response to an event), but handle it gracefully.
+      logger.warn('runner: turn-1 drain returned no events; exiting');
+      return;
+    }
+    await runTurnOnce(firstDrain);
+
+    // Subsequent turns: process buffered wakes; self-exit after MAX_IDLE_MS idle.
+    while (true) {
+      if (bufferedWakeEvents.length === 0) {
+        const idleRemaining = MAX_IDLE_MS - (Date.now() - lastActivity);
+        if (idleRemaining <= 0) break;
+        await new Promise<void>((resolve) => {
+          if (bufferedWakeEvents.length > 0) {
+            resolve();
+            return;
+          }
+          const timer = setTimeout(resolve, idleRemaining);
+          wakeNotify = () => {
+            clearTimeout(timer);
+            resolve();
+          };
         });
-        await runTurn(drain, toolset.tools, turnAnthropic);
-        lastActivity = Date.now();
-        continue;
+        wakeNotify = null;
+        if (bufferedWakeEvents.length === 0) continue; // idle timeout — re-check deadline
       }
-      await new Promise((r) => setTimeout(r, POLL_IDLE_MS));
+      await runTurnOnce({ events: bufferedWakeEvents.splice(0) });
     }
   } finally {
+    sseController.abort();
+    await consume.catch(() => {}); // let the SSE consumer unwind cleanly
     await toolset.close();
   }
   process.exit(0);

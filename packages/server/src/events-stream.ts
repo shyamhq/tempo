@@ -1,33 +1,21 @@
-import type { Event } from '@tempo/contracts';
-import { latestEventId, readEventsAfter } from './event-log';
+import { createReader, parseStreamEvent, streamKey } from './redis';
 
-const POLL_INTERVAL_MS = 500;
-const SSE_HEARTBEAT_MS = 25_000;
+const BLOCK_MS = 25_000;
 
-export async function longPoll(
-  threadId: string,
-  cursor: string,
-  waitSeconds: number,
-): Promise<{ events: Event[]; cursor: string }> {
-  const deadline = Date.now() + waitSeconds * 1000;
-  let current = cursor;
-  while (true) {
-    const evs = await readEventsAfter(threadId, current);
-    if (evs.length > 0) {
-      current = evs[evs.length - 1]?.id ?? current;
-      return { events: evs, cursor: current };
-    }
-    if (Date.now() >= deadline) {
-      return { events: [], cursor: current };
-    }
-    await sleep(POLL_INTERVAL_MS);
-  }
-}
+// Shape of an ioredis XREAD reply: one entry per requested stream key, each with
+// its [id, [field, value, ...]] entries. null when the BLOCK times out.
+type StreamReadReply = [key: string, entries: [id: string, fields: string[]][]][];
 
-export function sseStream(threadId: string, cursor: string): Response {
+// SSE stream of new events for a Thread, tailing the Redis stream with
+// XREAD BLOCK. Full Thread state loads separately (GET /api/threads/:id); this
+// only delivers what arrives after subscribe. An idle stream issues zero DB
+// queries — it blocks on Redis.
+export function sseStream(threadId: string): Response {
   const encoder = new TextEncoder();
+  const reader = createReader();
+  const key = streamKey(threadId);
   let closed = false;
-  let current = cursor;
+  let lastId = '$';
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -40,20 +28,31 @@ export function sseStream(threadId: string, cursor: string): Response {
         }
       };
 
-      const heartbeat = setInterval(() => enqueue(`: ping\n\n`), SSE_HEARTBEAT_MS);
-
       try {
         while (!closed) {
-          const evs = await readEventsAfter(threadId, current);
-          for (const e of evs) {
-            enqueue(`event: ${e.kind}\ndata: ${JSON.stringify(e)}\n\n`);
-            current = e.id;
-          }
+          const reply = (await reader.xread(
+            'BLOCK',
+            BLOCK_MS,
+            'STREAMS',
+            key,
+            lastId,
+          )) as StreamReadReply | null;
           if (closed) break;
-          await sleep(POLL_INTERVAL_MS);
+          if (reply === null) {
+            enqueue(`: ping\n\n`);
+            continue;
+          }
+          const entries = reply[0]?.[1] ?? [];
+          for (const [id, fields] of entries) {
+            lastId = id;
+            const event = parseStreamEvent(fields);
+            if (event) enqueue(`event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`);
+          }
         }
+      } catch {
+        // reader.disconnect() rejects the pending xread — expected on cancel.
       } finally {
-        clearInterval(heartbeat);
+        reader.disconnect();
         try {
           controller.close();
         } catch {
@@ -63,6 +62,7 @@ export function sseStream(threadId: string, cursor: string): Response {
     },
     cancel() {
       closed = true;
+      reader.disconnect();
     },
   });
 
@@ -74,12 +74,4 @@ export function sseStream(threadId: string, cursor: string): Response {
       'x-accel-buffering': 'no',
     },
   });
-}
-
-export async function emptyCursor(threadId: string): Promise<string> {
-  return latestEventId(threadId);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

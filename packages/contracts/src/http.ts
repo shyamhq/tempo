@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { ConnectorId, ConnectorTier } from './connectors';
-import { AgentTodo, Event } from './events';
 import {
   AgentBlock,
   AgentType,
@@ -237,17 +236,9 @@ export const UpdateThreadResponse = z.object({ thread: ThreadSummary });
 // DELETE /api/threads/:id
 export const DeleteThreadResponse = z.object({ ok: z.literal(true) });
 
-// GET /api/threads/:id/events  — long-poll OR SSE
-// Query: ?cursor=evt_…&wait=30s  (wait omitted = SSE stream)
-export const EventsQuery = z.object({
-  cursor: EventId,
-  wait: z.coerce.number().int().min(0).max(60).optional(),
-});
-export const EventsLongPollResponse = z.object({
-  events: z.array(Event),
-  cursor: EventId,
-});
-// SSE response is a stream of `event: <kind>\ndata: <Event JSON>\n\n` frames.
+// GET /api/threads/:id/events — Redis-backed SSE stream (no query params). Full
+// Thread state loads via GET /api/threads/:id, then this delivers new events as
+// a stream of `event: <kind>\ndata: <Event JSON>\n\n` frames.
 
 // Error envelope for all 4xx/5xx responses
 export const HttpError = z.object({
