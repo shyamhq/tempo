@@ -119,7 +119,9 @@ export async function githubListRepos(workspaceId: string): Promise<MappedRepo[]
 
 // Builds the GitHub App install URL. The `state` parameter round-trips the
 // workspace id so the install callback can bind the returned installation_id.
+// Use /select_target, not /new: GitHub drops the `state` query param on the
+// post-install redirect from /new, but preserves it from /select_target.
 export function githubAppInstallUrl(state: string): string {
   const slug = requireEnv('GITHUB_APP_SLUG');
-  return `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
+  return `https://github.com/apps/${slug}/installations/select_target?state=${encodeURIComponent(state)}`;
 }
