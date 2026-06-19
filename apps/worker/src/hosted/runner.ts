@@ -12,13 +12,13 @@ import type { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
 import type { TurnHydration } from '@tempo/contracts/http';
 import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
 import { buildAnthropicProvider, turnPath } from './helicone';
-import { HOSTED_SYSTEM_PROMPT } from './prompt-hosted';
 
 // Sandbox-local logger. Worker captures stdout/stderr per line via E2B's
 // onStdout/onStderr hooks (see vm/provision.ts) — pino's JSON lines flow
@@ -236,7 +236,7 @@ async function runTurn(
     model: anthropic(env.modelId),
     tools: tools as Parameters<typeof streamText>[0]['tools'],
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
-    system: HOSTED_SYSTEM_PROMPT,
+    system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages: history,
     // Per-step decision point. No-op today (every tool allowed).
     prepareStep: async () => ({}),
