@@ -29,3 +29,4 @@ apps/agent/dist
 apps/console/.next
 apps/console/next-env.d.ts
 .claude/worktrees/
+*.pem
