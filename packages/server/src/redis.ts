@@ -132,8 +132,11 @@ export async function isPresent(threadId: string): Promise<boolean> {
 // container's lock self-expires (TTL) and only the owner releases it.
 const TURN_LOCK_PREFIX = 'tempo:turnlock:';
 // Floor above the longest plausible single turn; the TTL is the crash safety
-// net (a container that dies mid-turn must not wedge the thread forever).
-export const TURN_LOCK_TTL_SEC = 120;
+// net (a container that dies mid-turn must not wedge the thread forever). Sized
+// for the worst case — MAX_STEPS_PER_TURN (50) steps fanning out to web search /
+// fetch tools — so a slow-but-live turn never has its lock expire under it,
+// which would let a second container start a duplicate turn.
+export const TURN_LOCK_TTL_SEC = 300;
 function turnLockKey(threadId: string): string {
   return `${TURN_LOCK_PREFIX}${threadId}`;
 }

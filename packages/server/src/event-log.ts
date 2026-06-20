@@ -5,7 +5,7 @@ import { newEventId } from '@tempo/db/ids';
 import { events, threads } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { listAttachmentsForParents } from './attachments';
-import { isHostedReadyToWake } from './mailbox';
+import { getHostedState } from './mailbox';
 import { appendToStream } from './redis';
 
 export type AppendPayload = Event extends infer E
@@ -58,8 +58,11 @@ async function routeWake(threadId: string): Promise<void> {
       .where(eq(threads.id, threadId))
       .limit(1);
     if (thread?.agent_type !== 'hosted') return;
-    const { live } = await isHostedReadyToWake(threadId);
-    if (live) return;
+    // A Sandbox is already alive → it'll pick up this event on its own drain; no
+    // redundant spawn. The lazy reap in getHostedState keeps a corpse from
+    // blocking a real wake.
+    const { vm } = await getHostedState(threadId);
+    if (vm) return;
     const workerUrl = process.env.WORKER_URL ?? 'http://localhost:3001';
     const secret = process.env.WORKER_INTERNAL_TOKEN;
     if (!secret) {

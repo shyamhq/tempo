@@ -83,7 +83,7 @@ function RepoChip({
   onRemove: () => void;
   disabled: boolean;
 }) {
-  const [owner, name] = fullName.split('/');
+  const [owner = '', name = ''] = fullName.split('/');
   return (
     <span className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[12px] font-medium text-amber-900">
       <GitPullRequest className="h-3 w-3 shrink-0 text-amber-700" strokeWidth={1.8} aria-hidden />

@@ -1,6 +1,6 @@
 'use client';
 
-import type { DiscussionMessage } from '@tempo/contracts';
+import type { AgentType, DiscussionMessage } from '@tempo/contracts';
 import { Sparkles } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { MAX_DISCUSSION_WIDTH, MIN_DISCUSSION_WIDTH, useThreadUi } from '@/store/thread-ui';
@@ -9,9 +9,11 @@ import { MessageList } from './message-list';
 
 export function DiscussionPanel({
   threadId,
+  agentType,
   messages,
 }: {
   threadId: string;
+  agentType: AgentType;
   messages: DiscussionMessage[];
 }) {
   // Stamp "seen" whenever the panel renders open. Parent guarantees this
@@ -24,7 +26,7 @@ export function DiscussionPanel({
   return (
     <aside aria-label="Discussion" className="relative flex flex-col h-full min-h-0 bg-canvas">
       <MessageList messages={messages} threadId={threadId} emptyState={<EmptyState />} />
-      <MessageComposer threadId={threadId} autoFocus />
+      <MessageComposer threadId={threadId} agentType={agentType} autoFocus />
       <p className="px-5 pb-3 -mt-1 text-micro font-normal text-ink-tertiary">
         <kbd className="font-sans">⌘Enter</kbd> to send
         <span aria-hidden> · </span>

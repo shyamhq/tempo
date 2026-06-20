@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { type RepoEntry, hasRepoLinked, parseRepos } from '../../src/hosted/clone';
+import {
+  hasRepoLinked,
+  parseRepos,
+  type RepoEntry,
+  sanitizeCloneError,
+} from '../../src/hosted/clone';
 
 // Unit tests for the two pure helpers extracted from runner.ts.
 // No I/O, no env vars, no mocks needed — these are data-in/data-out functions.
@@ -53,22 +58,27 @@ describe('parseRepos', () => {
     const entry = entries[0] as RepoEntry;
     expect(entry.owner).toBe('acme');
     expect(entry.name).toBe('api');
-    expect(entry.dir).toBe('/workspace/api');
-    expect(entry.cloneUrl).toBe(
-      `https://x-access-token:${TOKEN}@github.com/acme/api.git`,
-    );
+    expect(entry.dir).toBe('/workspace/acme__api');
+    expect(entry.cloneUrl).toBe(`https://x-access-token:${TOKEN}@github.com/acme/api.git`);
   });
 
   test('parses multiple repos and produces one entry per repo', () => {
     const entries = parseRepos('["acme/api","acme/web"]', TOKEN);
     expect(entries).toHaveLength(2);
     expect(entries.map((e) => e.name)).toEqual(['api', 'web']);
-    expect(entries.map((e) => e.dir)).toEqual(['/workspace/api', '/workspace/web']);
+    expect(entries.map((e) => e.dir)).toEqual(['/workspace/acme__api', '/workspace/acme__web']);
   });
 
-  test('dir uses the repo name (last segment), not the full owner/name path', () => {
+  test('dir is owner-scoped, so same-named repos under different owners do not collide', () => {
+    const entries = parseRepos('["acme/api","globex/api"]', TOKEN);
+    expect(entries.map((e) => e.dir)).toEqual(['/workspace/acme__api', '/workspace/globex__api']);
+    // The two dirs are distinct even though the repo name is identical.
+    expect(new Set(entries.map((e) => e.dir)).size).toBe(2);
+  });
+
+  test('dir keeps the full owner__name path (not just the last segment)', () => {
     const [entry] = parseRepos('["org/my-service"]', TOKEN) as RepoEntry[];
-    expect(entry.dir).toBe('/workspace/my-service');
+    expect(entry.dir).toBe('/workspace/org__my-service');
   });
 
   test('cloneUrl embeds the token verbatim for all repos', () => {
@@ -125,5 +135,41 @@ describe('hasRepoLinked', () => {
         [evt('agent_narration'), evt('agent_turn_ended'), evt('vm_progress')] as any,
       ),
     ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeCloneError — the install token must NEVER survive into a reason that
+// reaches a log line, an event payload, the DB, or the browser.
+// ---------------------------------------------------------------------------
+
+describe('sanitizeCloneError', () => {
+  test('strips the token from a credential-bearing clone URL', () => {
+    const raw =
+      "fatal: could not read from 'https://x-access-token:ghs_SECRET_TOKEN_123@github.com/acme/api.git'";
+    const sanitized = sanitizeCloneError(raw);
+    expect(sanitized).not.toContain('ghs_SECRET_TOKEN_123');
+    expect(sanitized).not.toContain('x-access-token');
+    expect(sanitized).toContain('https://github.com/acme/api.git');
+  });
+
+  test('strips the token from every occurrence in a multi-repo message', () => {
+    const raw =
+      'clone https://x-access-token:tokA@github.com/a/b.git and https://x-access-token:tokB@github.com/c/d.git failed';
+    const sanitized = sanitizeCloneError(raw);
+    expect(sanitized).not.toContain('tokA');
+    expect(sanitized).not.toContain('tokB');
+    expect(sanitized).not.toContain('x-access-token');
+  });
+
+  test('leaves a message with no credential URL untouched', () => {
+    const raw = 'fatal: repository not found';
+    expect(sanitizeCloneError(raw)).toBe(raw);
+  });
+
+  test('strips an empty-token URL (the @ form with no secret)', () => {
+    expect(sanitizeCloneError('https://x-access-token:@github.com/a/b.git')).toBe(
+      'https://github.com/a/b.git',
+    );
   });
 });

@@ -55,7 +55,7 @@ export type ProvisioningState = {
 
 const EMPTY_PROVISIONING: ProvisioningState = { steps: [] };
 
-export const provisioningKey = (threadId: string) => ['thread', threadId, 'provisioning'] as const;
+const provisioningKey = (threadId: string) => ['thread', threadId, 'provisioning'] as const;
 
 // Cache-only read of the current VM provisioning checklist state.
 // SSE writes it via `setQueryData`; this hook never fetches.

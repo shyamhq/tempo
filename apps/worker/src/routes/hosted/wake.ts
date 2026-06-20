@@ -54,6 +54,6 @@ export const wakeHostedHandler: RequestHandler<{ id: string }> = async (req, res
     return;
   }
 
-  const result = await spawnHosted({ threadId, workspaceId: row.workspaceId });
+  const result = await spawnHosted({ threadId, workspaceId: row.workspaceId, repos: row.repos });
   res.json(result);
 };

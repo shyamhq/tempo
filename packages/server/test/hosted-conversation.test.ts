@@ -170,7 +170,11 @@ describe('reapStaleVmRun', () => {
     expect(sql).toContain('"ended_at" is null');
     expect(sql).toContain('last_seen_at');
     expect(sql).toContain('started_at'); // coalesce fallback for a null heartbeat
-    expect(sql).toMatch(/<\s*now\(\)/); // stale = older than now() - threshold
+    // stale = NOT fresh, where fresh is `heartbeat >= now() - threshold`. The
+    // reap predicate is the exact negation of heartbeatFresh (shared SQL), so it
+    // can never drift from the liveness check.
+    expect(sql).toMatch(/not\s*\(/i);
+    expect(sql).toMatch(/>=\s*now\(\)/);
     expect(sql).toContain(' and '); // an AND of the open-row and staleness tests
   });
 });

@@ -1,20 +1,9 @@
 import { githubListRepos } from '@tempo/server';
 import type { NextRequest } from 'next/server';
-import { z } from 'zod';
+import { GithubReposResponse } from '@/lib/api-client';
+import { logger } from '../../../../../logger';
 import { authFromRequest } from '../../../../../server/actor';
 import { err, ok } from '../../../../../server/http';
-
-// Local response schema — not in contracts (this is a Console-internal route).
-export const GithubReposResponse = z.object({
-  repos: z.array(
-    z.object({
-      full_name: z.string(),
-      private: z.boolean(),
-      description: z.string().nullable(),
-      default_branch: z.string(),
-    }),
-  ),
-});
 
 // GET /api/connectors/github/repos — any authenticated workspace member.
 // Returns all repos accessible to the workspace's GitHub App installation.
@@ -36,9 +25,15 @@ export async function GET(req: NextRequest) {
         })),
       }),
     );
-  } catch {
+  } catch (e) {
     // GitHub not connected or API error — return empty list so the picker
-    // degrades gracefully instead of breaking the composer.
+    // degrades gracefully instead of breaking the composer. Log (workspace id +
+    // message, never the install token) so "GitHub is down" is distinguishable
+    // from "not connected" in the Console logs.
+    logger.warn(
+      { workspace_id: auth.workspace_id, err: (e as Error).message },
+      'github-repos: list failed',
+    );
     return ok(GithubReposResponse.parse({ repos: [] }));
   }
 }

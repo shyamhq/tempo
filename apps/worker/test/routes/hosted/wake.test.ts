@@ -19,7 +19,7 @@ const authorizeThread = mock(async () => 'ws_resolved');
 mock.module('../../../src/auth', () => ({ authorizeThread, ForbiddenError }));
 
 const spawnHosted = mock(
-  async (_opts: { threadId: string; workspaceId: string }) =>
+  async (_opts: { threadId: string; workspaceId: string; repos: string[] }) =>
     ({ status: 'spawned', vm_run_id: 'vmr_1', sandbox_id: 'sbx_1' }) as const,
 );
 mock.module('../../../src/hosted/supervisor', () => ({ spawnHosted }));
@@ -68,7 +68,11 @@ describe('wakeHostedHandler — repos gate', () => {
     await wakeHostedHandler(makeReq(THREAD, { kind: 'browser' }), res as never, noop);
 
     expect(spawnHosted).toHaveBeenCalledTimes(1);
-    expect(spawnHosted.mock.calls[0]?.[0]).toEqual({ threadId: THREAD, workspaceId: 'ws_1' });
+    expect(spawnHosted.mock.calls[0]?.[0]).toEqual({
+      threadId: THREAD,
+      workspaceId: 'ws_1',
+      repos: ['acme/api'],
+    });
     expect(runConversationTurn).not.toHaveBeenCalled();
     expect(res.body).toMatchObject({ status: 'spawned' });
   });

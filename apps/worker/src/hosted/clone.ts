@@ -6,10 +6,21 @@ import type { Event as TempoEvent } from '@tempo/contracts/events';
 export interface RepoEntry {
   owner: string;
   name: string;
-  /** Absolute path inside the sandbox: /workspace/<name> */
+  /** Absolute path inside the sandbox: /workspace/<owner>__<name> (owner-scoped
+   *  so two repos with the same name under different owners can't collide). */
   dir: string;
   /** Authenticated clone URL with the ephemeral token embedded. */
   cloneUrl: string;
+}
+
+// The GitHub install token rides in the clone URL as `x-access-token:<token>@`.
+// git surfaces the full URL in clone-failure messages, so any string derived
+// from a clone error MUST pass through here before it can reach a log line, an
+// event payload, the DB, or the browser. Strips the credential prefix from
+// every `https://x-access-token:…@host` occurrence, leaving `https://host`.
+const CREDENTIAL_URL = /https:\/\/x-access-token:[^@\s]*@/g;
+export function sanitizeCloneError(reason: string): string {
+  return reason.replace(CREDENTIAL_URL, 'https://');
 }
 
 /**
@@ -39,7 +50,7 @@ export function parseRepos(
     entries.push({
       owner,
       name,
-      dir: `/workspace/${name}`,
+      dir: `/workspace/${owner}__${name}`,
       cloneUrl: `https://x-access-token:${ghToken}@github.com/${owner}/${name}.git`,
     });
   }

@@ -30,7 +30,10 @@ export const CreateThreadRequest = z.object({
   space_id: SpaceId,
   agent_type: AgentType,
   // GitHub repos to associate with this Thread in `owner/name` form.
-  repos: z.array(z.string().regex(/^[^/\s]+\/[^/\s]+$/)).max(10).default([]),
+  repos: z
+    .array(z.string().regex(/^[^/\s]+\/[^/\s]+$/))
+    .max(10)
+    .default([]),
 });
 export const CreateThreadResponse = z.object({
   thread: ThreadSummary,

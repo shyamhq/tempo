@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import type { AgentType } from '@tempo/contracts';
 import { ArrowUp, Check, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -21,30 +22,45 @@ const SENT_DWELL_MS = 1200;
 
 type Phase = 'idle' | 'sending' | 'sent';
 
-export function MessageComposer({ threadId, autoFocus }: { threadId: string; autoFocus: boolean }) {
+export function MessageComposer({
+  threadId,
+  agentType,
+  autoFocus,
+}: {
+  threadId: string;
+  agentType: AgentType;
+  autoFocus: boolean;
+}) {
   const wApi = useWorkerApi();
   const [phase, setPhase] = useState<Phase>('idle');
   const [sendError, setSendError] = useState<string | null>(null);
   const [hasText, setHasText] = useState(false);
 
+  // Repos are a Hosted-only concern (they gate the VM). Local threads never show
+  // the context bar and always send an empty list.
+  const isHosted = agentType === 'hosted';
   // Thread repos — fetched from the dedicated thin route; invalidated by
   // repo_linked SSE events via useThreadEvents. Starts empty while loading.
   const threadRepos = useQuery({
     queryKey: ['thread-repos', threadId],
     queryFn: () => api.getThreadRepos(threadId),
     staleTime: 30_000,
+    enabled: isHosted,
   });
-  // Local repos tracks what the composer will send. Stays in sync with the
-  // server value (threadRepos.data) but can be adjusted by the Dev before
-  // they hit send — the server diffs on receipt.
-  const [repos, setRepos] = useState<string[]>(() => threadRepos.data?.repos ?? []);
-  // Sync from server whenever the cached value changes (repo_linked event
-  // or initial load resolves).
-  useEffect(() => {
-    if (threadRepos.data?.repos !== undefined) {
-      setRepos(threadRepos.data.repos);
-    }
-  }, [threadRepos.data?.repos]);
+  // Draft repo list the composer will send. Seeded from the server value and
+  // re-seeded whenever it changes (initial load, or a repo_linked invalidation
+  // refetch) by adjusting state during render — the canonical alternative to a
+  // sync-on-effect (react.dev "You Might Not Need an Effect"). Keyed by the
+  // serialized server list so an external change wins while a local edit between
+  // refetches is preserved.
+  const serverRepos = threadRepos.data?.repos ?? [];
+  const serverReposKey = serverRepos.join('\n');
+  const [repos, setRepos] = useState<string[]>(serverRepos);
+  const [seenServerKey, setSeenServerKey] = useState(serverReposKey);
+  if (serverReposKey !== seenServerKey) {
+    setSeenServerKey(serverReposKey);
+    setRepos(serverRepos);
+  }
 
   // inputRef gives imperative access (focus / clear / serialise) to the
   // contenteditable inside MentionableInput.
@@ -78,9 +94,10 @@ export function MessageComposer({ threadId, autoFocus }: { threadId: string; aut
         ...(doc.text.length > 0 ? { text: doc.text } : {}),
         attachments: uploader.readyIds,
         ...(doc.mentions.length > 0 ? { mentions: doc.mentions } : {}),
-        // Always include repos so the server can diff against threads.repos and
-        // emit repo_linked even when the Dev removes all repos (empty array).
-        repos,
+        // Hosted only: always include repos so the server can diff against
+        // threads.repos and emit repo_linked even when the Dev removes all repos
+        // (empty array). Local threads never attach repos.
+        ...(isHosted ? { repos } : {}),
       });
       inputRef.current.clear();
       setHasText(false);
@@ -140,9 +157,11 @@ export function MessageComposer({ threadId, autoFocus }: { threadId: string; aut
         </div>
       </div>
 
-      {/* Thread-context bar — below the composer, separated by a top border.
-          Thread-scoped: applies to the whole thread, not just this message. */}
-      <ThreadContextBar repos={repos} onReposChange={setRepos} disabled={phase === 'sending'} />
+      {/* Thread-context bar — Hosted only (repos gate the VM); below the
+          composer, thread-scoped. */}
+      {isHosted ? (
+        <ThreadContextBar repos={repos} onReposChange={setRepos} disabled={phase === 'sending'} />
+      ) : null}
 
       {sendError ? (
         <p className="mt-2 px-1 text-micro font-normal text-danger">{sendError}</p>

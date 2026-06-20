@@ -132,12 +132,7 @@ export function RepoPicker({ open, onOpenChange, selectedRepos, onConfirm }: Rep
             <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleConfirm}
-              disabled={!hasChanges && localSelection.length === selectedRepos.length}
-            >
+            <Button variant="primary" size="sm" onClick={handleConfirm} disabled={!hasChanges}>
               {hasChanges
                 ? addedCount > 0
                   ? `Add ${addedCount} repo${addedCount === 1 ? '' : 's'}`
@@ -160,7 +155,7 @@ function RepoRow({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const [owner, name] = repo.full_name.split('/');
+  const [owner = '', name = ''] = repo.full_name.split('/');
   return (
     <li>
       <button

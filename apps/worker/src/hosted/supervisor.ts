@@ -1,7 +1,4 @@
-import { db } from '@tempo/db/client';
-import { threads } from '@tempo/db/schema';
 import { getInstallationToken } from '@tempo/server';
-import { eq } from 'drizzle-orm';
 import { logger } from '../logger';
 import { provision, type VmRun } from '../vm/provision';
 import { teardown } from '../vm/teardown';
@@ -53,8 +50,12 @@ export type WakeResult =
 export async function spawnHosted(opts: {
   threadId: string;
   workspaceId: string;
+  // The attached repos, read once by the wake handler. Passing them in (rather
+  // than re-reading threads.repos here) closes a race with a concurrent
+  // repo_linked: the handler's gate and this spawn act on the same snapshot.
+  repos: string[];
 }): Promise<WakeResult> {
-  const { threadId, workspaceId } = opts;
+  const { threadId, workspaceId, repos } = opts;
   if (stopped) throw new Error('supervisor: stopped');
 
   const existing = live.get(threadId);
@@ -69,16 +70,10 @@ export async function spawnHosted(opts: {
   spawning.add(threadId);
 
   try {
-    // Read the attached repos and mint the GitHub App installation token right
-    // before Sandbox.create (token is ~1h TTL — decision 6 / "Cloning"). Only
-    // mint when there's something to clone; a repo-less Thread never reaches
-    // here (the wake handler routes it to the in-process conversation).
-    const [row] = await db
-      .select({ repos: threads.repos })
-      .from(threads)
-      .where(eq(threads.id, threadId))
-      .limit(1);
-    const repos = row?.repos ?? [];
+    // Mint the GitHub App installation token right before Sandbox.create (token
+    // is ~1h TTL — decision 6 / "Cloning"). Only mint when there's something to
+    // clone; a repo-less Thread never reaches here (the wake handler routes it
+    // to the in-process conversation).
     const token = repos.length > 0 ? (await getInstallationToken(workspaceId)).token : undefined;
 
     const run = await provision({ threadId, workspaceId, repos, token });

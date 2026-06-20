@@ -71,7 +71,10 @@ export const PostDiscussionMessageInput = z
     questions: z.array(QuestionInput).min(1).max(10).optional(),
     attachments: z.array(AttachmentId).max(8).default([]),
     mentions: z.array(Mention).optional(),
-    repos: z.array(z.string().regex(/^[^/\s]+\/[^/\s]+$/)).max(10).optional(),
+    repos: z
+      .array(z.string().regex(/^[^/\s]+\/[^/\s]+$/))
+      .max(10)
+      .optional(),
   })
   .refine((m) => m.text !== undefined || m.questions !== undefined || m.attachments.length > 0, {
     message: 'message must carry text, questions, attachments, or any combination',

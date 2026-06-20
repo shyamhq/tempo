@@ -30,6 +30,8 @@ const freshnessFloor = sql`now() - (${HOSTED_HEARTBEAT_STALE_MS}::double precisi
 // (first heartbeat not yet written) falls back to started_at so a just-spawned
 // VM isn't treated as dead before its first touch.
 const heartbeatFresh = sql`coalesce(${vm_runs.last_seen_at}, ${vm_runs.started_at}) >= ${freshnessFloor}`;
+// Exact negation — defined as `NOT (fresh)` so the two predicates can never drift.
+const heartbeatStale = sql`NOT (${heartbeatFresh})`;
 
 // Hosted state snapshot for the Console card: live VM metadata, or null when no
 // Sandbox is currently live. "Live" requires an open row (ended_at IS NULL) AND
@@ -70,20 +72,7 @@ export async function reapStaleVmRun(threadId: string): Promise<void> {
   await db
     .update(vm_runs)
     .set({ ended_at: sql`now()`, exit_reason: 'orphaned_stale' })
-    .where(
-      and(
-        eq(vm_runs.thread_id, threadId),
-        isNull(vm_runs.ended_at),
-        sql`coalesce(${vm_runs.last_seen_at}, ${vm_runs.started_at}) < ${freshnessFloor}`,
-      ),
-    );
-}
-
-// True when a Sandbox is already alive for this thread — the wake endpoint
-// and the event-log post-hook both use this to skip a redundant spawn.
-export async function isHostedReadyToWake(threadId: string): Promise<{ live: boolean }> {
-  const state = await getHostedState(threadId);
-  return { live: state.vm !== null };
+    .where(and(eq(vm_runs.thread_id, threadId), isNull(vm_runs.ended_at), heartbeatStale));
 }
 
 // Everything the runner needs to start a Turn without any MCP round-trips.

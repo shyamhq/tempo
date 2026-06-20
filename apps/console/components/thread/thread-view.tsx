@@ -320,7 +320,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
         // list scroll internally without the page itself overflowing.
         <div className="flex-1 min-h-0 flex justify-center px-4 animate-in fade-in duration-300">
           <div className="w-full max-w-4xl min-h-0 flex flex-col">
-            <DiscussionPanel threadId={threadId} messages={view.discussion.messages} />
+            <DiscussionPanel
+              threadId={threadId}
+              agentType={view.thread.agent_type}
+              messages={view.discussion.messages}
+            />
           </div>
         </div>
       ) : (
@@ -347,7 +351,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
                 {activeRailTab === 'comment' && enlargedCommentId !== null ? (
                   <div ref={setPanelMount} className="h-full overflow-hidden" />
                 ) : (
-                  <DiscussionPanel threadId={threadId} messages={view.discussion.messages} />
+                  <DiscussionPanel
+                    threadId={threadId}
+                    agentType={view.thread.agent_type}
+                    messages={view.discussion.messages}
+                  />
                 )}
               </div>
             </aside>

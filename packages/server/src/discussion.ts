@@ -94,11 +94,12 @@ export async function postMessage(
 
 // Order-independent set comparison: the Dev sends the full updated repo list,
 // so a reorder of the same repos is not a change and must not re-emit
-// `repo_linked` (which would wake the Agent for nothing).
-function sameRepos(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  return b.every((r) => set.has(r));
+// `repo_linked` (which would wake the Agent for nothing). Compares de-duplicated
+// sets so a list with repeats (e.g. ["x","x"] vs ["x","y"]) isn't a false match.
+export function sameRepos(a: string[], b: string[]): boolean {
+  const setA = new Set(a);
+  const setB = new Set(b);
+  return setA.size === setB.size && [...setA].every((r) => setB.has(r));
 }
 
 function shapeMessage(

@@ -189,7 +189,7 @@ export const vm_runs = pgTable(
     sandbox_id: text('sandbox_id'),
     // Heartbeat: touched by any container on VM activity. A row whose
     // last_seen_at has lapsed beyond ~2× the E2B idle window is treated as
-    // dead by getHostedState / isHostedReadyToWake (lazy reap path).
+    // dead by getHostedState (lazy reap path).
     last_seen_at: nullableTimestamp('last_seen_at'),
   },
   (t) => [
@@ -198,9 +198,7 @@ export const vm_runs = pgTable(
     // path lazily reaps any stale-heartbeat open row first (WHERE ended_at IS
     // NULL AND last_seen_at < threshold) so this index never permanently
     // wedges a thread after a phantom row is reaped.
-    uniqueIndex('uq_vm_runs_thread_live')
-      .on(t.thread_id)
-      .where(sql`ended_at IS NULL`),
+    uniqueIndex('uq_vm_runs_thread_live').on(t.thread_id).where(sql`ended_at IS NULL`),
   ],
 );
 

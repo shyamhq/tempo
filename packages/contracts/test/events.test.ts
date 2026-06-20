@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { RepoLinkedEvent, VmProgressEvent, shouldDeliverToAgent, shouldWake } from '../src/events';
 import type { Event } from '../src/events';
+import { RepoLinkedEvent, shouldDeliverToAgent, shouldWake, VmProgressEvent } from '../src/events';
 import { CreateThreadRequest } from '../src/http';
 import { PostDiscussionMessageInput } from '../src/mcp';
 
@@ -17,7 +17,9 @@ function makeRepoLinked(repos: string[]): Event {
   return RepoLinkedEvent.parse({ ...eventBase, kind: 'repo_linked', repos });
 }
 
-function makeVmProgress(step: 'sandbox_ready' | 'repos_cloned' | 'agent_started' | 'failed'): Event {
+function makeVmProgress(
+  step: 'sandbox_ready' | 'repos_cloned' | 'agent_started' | 'failed',
+): Event {
   return VmProgressEvent.parse({ ...eventBase, kind: 'vm_progress', step });
 }
 

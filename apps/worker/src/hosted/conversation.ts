@@ -14,8 +14,9 @@
 //     landed on ANY container during the turn are caught. The DB is the shared
 //     source of truth, so cross-container events coalesce here.
 
-import type { createAnthropic } from '@ai-sdk/anthropic';
 import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
+import type { Event as TempoEvent } from '@tempo/contracts/events';
+import type { TurnHydration } from '@tempo/contracts/http';
 import {
   AddBlocksInput,
   DeleteBlockInput,
@@ -41,9 +42,11 @@ import {
   updateBlock,
   updatePlan,
 } from '@tempo/server';
-import { type ModelMessage, stepCountIs, streamText, tool } from 'ai';
+import { type ModelMessage, stepCountIs, streamText, type ToolSet, tool } from 'ai';
 import { nanoid } from 'nanoid';
+import { env } from '../env';
 import { logger } from '../logger';
+import { emitStepEvents, webToolsForModel } from './agent-tools';
 import { buildAnthropicProvider, turnPath } from './helicone';
 
 const log = logger.child({ module: 'conversation' });
@@ -105,9 +108,9 @@ type StreamTurnInput = {
   threadId: string;
   workspaceId: string;
   turnNumber: number;
-  events: unknown[];
-  context: unknown;
-  tools: Record<string, unknown>;
+  events: TempoEvent[];
+  context: TurnHydration | null;
+  tools: ToolSet;
 };
 
 // One streamText turn. Same user-message shape and emission shapes as one
@@ -116,6 +119,8 @@ type StreamTurnInput = {
 // during the turn is caught by the outer re-drain loop instead).
 async function runStreamTurn(input: StreamTurnInput): Promise<void> {
   const startedAt = Date.now();
+  // context is the Turn-1 snapshot; null on the coalescing re-drain turns, where
+  // it's omitted from the JSON so the Agent reads state from the events deltas.
   const userMessage = JSON.stringify({
     thread_id: input.threadId,
     events: input.events,
@@ -124,8 +129,8 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
   const messages: ModelMessage[] = [{ role: 'user', content: userMessage }];
 
   const anthropic = buildAnthropicProvider({
-    anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
-    heliconeKey: process.env.HELICONE_API_KEY,
+    anthropicKey: env.ANTHROPIC_API_KEY,
+    heliconeKey: env.HELICONE_API_KEY,
     threadId: input.threadId,
     workspaceId: input.workspaceId,
     sessionPath: turnPath(input.turnNumber),
@@ -133,37 +138,17 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
 
   const result = streamText({
     model: anthropic(MODEL_ID),
-    tools: { ...input.tools, ...serverTools(anthropic) } as Parameters<
-      typeof streamText
-    >[0]['tools'],
+    tools: { ...input.tools, ...webToolsForModel(anthropic, MODEL_ID) },
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages,
     // Anthropic ephemeral prompt cache on the static prefix (system + tool
     // defs). Per-wake turns within the 5-min TTL read the warm cache.
     providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
-    onStepFinish: async ({ text, toolCalls, reasoning }) => {
-      const reasoningText = Array.isArray(reasoning)
-        ? reasoning.map((r) => (r as { text?: string }).text ?? '').join('')
-        : '';
-      if (reasoningText) {
-        await appendEvent(input.threadId, {
-          kind: 'agent_narration',
-          text: `[thinking] ${reasoningText}`,
-        });
-      }
-      if (text) {
-        await appendEvent(input.threadId, { kind: 'agent_narration', text });
-      }
-      for (const c of toolCalls) {
-        const summary = JSON.stringify((c as { input?: unknown }).input ?? {}).slice(0, 200);
-        await appendEvent(input.threadId, {
-          kind: 'agent_tool_use',
-          tool: (c as { toolName: string }).toolName,
-          summary,
-        });
-      }
-    },
+    onStepFinish: (step) =>
+      emitStepEvents(step, async (event) => {
+        await appendEvent(input.threadId, event);
+      }),
   });
 
   await result.consumeStream();
@@ -195,7 +180,7 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
 //
 // The Agent is always the author: null author_user_id on postMessage, null
 // updated_by_user_id on every Plan edit.
-function buildToolset(threadId: string, workspaceId: string): Record<string, unknown> {
+function buildToolset(threadId: string, workspaceId: string): ToolSet {
   const tempo_post_discussion_message = tool({
     description:
       'Post a Discussion Message to the Thread. Use for free-form prose replies to the Dev, or to post a batch of structured questions (questions array). The Dev sees question batches as a stepper card.',
@@ -270,20 +255,4 @@ function buildToolset(threadId: string, workspaceId: string): Record<string, unk
     tempo_delete_block,
     tempo_github_list_repos,
   };
-}
-
-// Anthropic-hosted server tools (web search + fetch). Version is picked by model
-// capability — identical logic to runner.ts (Sonnet/Opus get the dynamic-
-// filtering versions; everything else the broad-support ones). Built per-turn
-// because they bind to the turn's provider.
-function serverTools(anthropic: ReturnType<typeof createAnthropic>): Record<string, unknown> {
-  const dynamicFilteringModels =
-    MODEL_ID.startsWith('claude-sonnet-') || MODEL_ID.startsWith('claude-opus-');
-  const webSearch = dynamicFilteringModels
-    ? anthropic.tools.webSearch_20260209({ maxUses: 5 })
-    : anthropic.tools.webSearch_20250305({ maxUses: 5 });
-  const webFetch = dynamicFilteringModels
-    ? anthropic.tools.webFetch_20260209({ maxUses: 5 })
-    : anthropic.tools.webFetch_20250910({ maxUses: 5 });
-  return { webSearch, webFetch };
 }
