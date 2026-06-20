@@ -1,33 +1,38 @@
 // Shared agent-turn helpers used by BOTH hosted runtimes — the in-Sandbox
 // runner.ts (emits via /agent-events HTTP) and the in-process conversation.ts
-// (emits via appendEvent). Keeping the web-tool version logic and the
+// (emits via appendEvent). Keeping the model factory, the web tools, and the
 // onStepFinish → event projection in one place stops the two runtimes from
 // drifting apart.
 
-import type { createAnthropic } from '@ai-sdk/anthropic';
-import type { StepResult, ToolSet } from 'ai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { tavilyExtract, tavilySearch } from '@tavily/ai-sdk';
+import type { LanguageModel, StepResult, ToolSet } from 'ai';
 
-// Web search + web fetch — Anthropic-hosted server tools. Version is picked by
-// model capability:
-//   Sonnet 4.6+ / Opus 4.6+ → 20260209 versions with *dynamic filtering*
-//     (Claude writes code to filter results, cutting tokens). Per
-//     platform.claude.com/docs/.../web-search-tool and .../web-fetch-tool these
-//     are the only models supported by the new versions.
-//   Everything else (Haiku) → previous 20250305 / 20250910 versions, no dynamic
-//     filtering but broad model support.
-export function webToolsForModel(
-  anthropic: ReturnType<typeof createAnthropic>,
-  modelId: string,
-): ToolSet {
-  const dynamicFiltering =
-    modelId.startsWith('claude-sonnet-') || modelId.startsWith('claude-opus-');
-  const webSearch = dynamicFiltering
-    ? anthropic.tools.webSearch_20260209({ maxUses: 5 })
-    : anthropic.tools.webSearch_20250305({ maxUses: 5 });
-  const webFetch = dynamicFiltering
-    ? anthropic.tools.webFetch_20260209({ maxUses: 5 })
-    : anthropic.tools.webFetch_20250910({ maxUses: 5 });
-  return { webSearch, webFetch };
+// Kimi (Moonshot's OpenAI-compatible endpoint). One model, hardcoded — switching
+// the variant is a one-line edit; switching providers means wrapping this in
+// createProviderRegistry, which is a 5-line add the day a second provider lands.
+export const MODEL_ID = 'kimi-k2.6';
+
+// Pure factory — runtimes source env differently (Sandbox: process.env; Worker:
+// validated env), so it never reads process.env here, staying bundle-safe.
+export function buildModel(args: { apiKey: string; baseURL: string }): LanguageModel {
+  const moonshot = createOpenAICompatible({
+    name: 'moonshot',
+    apiKey: args.apiKey,
+    baseURL: args.baseURL,
+    includeUsage: true,
+  });
+  return moonshot(MODEL_ID);
+}
+
+// Provider-agnostic web search + page fetch via Tavily (auth from TAVILY_API_KEY).
+// Replaces Anthropic's server-side web tools, which were locked to Anthropic
+// models. `tavilyExtract` is the page reader — clean LLM-ready text, not raw HTML.
+export function webTools(): ToolSet {
+  return {
+    web_search: tavilySearch({ maxResults: 5 }),
+    web_fetch: tavilyExtract(),
+  };
 }
 
 // The agent events one completed step projects to. Same shape on both runtimes;

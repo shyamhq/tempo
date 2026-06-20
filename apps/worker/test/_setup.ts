@@ -12,7 +12,8 @@ const defaults: Record<string, string> = {
   TOKEN_HASH_PEPPER: 'test-pepper-00000000000000000000000000',
   CLERK_SECRET_KEY: 'sk_clerk_test_placeholder',
   E2B_API_KEY: 'e2b_test',
-  ANTHROPIC_API_KEY: 'sk-ant-test',
+  MOONSHOT_API_KEY: 'sk-moonshot-test',
+  TAVILY_API_KEY: 'tvly-test',
   NODE_ENV: 'test',
 };
 

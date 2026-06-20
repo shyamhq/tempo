@@ -36,16 +36,16 @@ const schema = z.object({
   // Sandbox provider (E2B) — provisioning API key, Worker-only; never
   // reaches the Sandbox itself.
   E2B_API_KEY: z.string().min(1),
-  // Anthropic API key — Worker holds it; provision.ts injects it into the
-  // Sandbox per-Session so the Claude Agent SDK loop can make model calls.
-  ANTHROPIC_API_KEY: z.string().startsWith('sk-ant-'),
+  // Moonshot (Kimi) — OpenAI-compatible endpoint. Worker holds the key;
+  // provision.ts injects both into the Sandbox per-Session for the runner's
+  // model calls.
+  MOONSHOT_API_KEY: z.string().min(1),
+  MOONSHOT_BASE_URL: z.string().url().default('https://api.moonshot.ai/v1'),
+  // Tavily — provider-agnostic web search + page fetch for the planning agent.
+  TAVILY_API_KEY: z.string().min(1),
   // Public URL the Sandbox uses to reach Worker's MCP endpoint. Must be
   // reachable from inside the E2B sandbox network.
   WORKER_PUBLIC_URL: z.string().url().default('http://localhost:3001'),
-  // Optional Helicone proxy key — when set, the Hosted runner routes all
-  // Anthropic calls through anthropic.helicone.ai so every request shows
-  // up in the Helicone dashboard with usage / cost / tool-call traces.
-  HELICONE_API_KEY: z.string().min(1).optional(),
 
   // --- Connectors (slice 3) ---------------------------------------------
   // All optional: connectors are additive. The connector clients (in
