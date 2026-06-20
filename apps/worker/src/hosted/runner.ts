@@ -21,7 +21,7 @@ import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
 import { emitStepEvents, webToolsForModel } from './agent-tools';
-import { hasRepoLinked, parseRepos, sanitizeCloneError } from './clone';
+import { parseRepos, sanitizeCloneError } from './clone';
 import { runWakeSubscriber } from './event-source';
 import { buildAnthropicProvider, turnPath } from './helicone';
 
@@ -304,16 +304,17 @@ async function main(): Promise<void> {
   } catch (err) {
     // git puts the token-bearing clone URL in both `message` and `stderr`, so
     // every string derived from a clone error is sanitized before it can reach
-    // a log line, the vm_progress payload, the DB, or the browser.
+    // a log line, the vm_failed payload, or the browser.
     const e = err as { stderr?: Buffer | string; message?: string };
     const raw = e.stderr?.toString().trim() || e.message || String(err);
     const reason = sanitizeCloneError(raw);
     logger.error({ reason, threadId: env.threadId }, 'runner: repo_clone_failed');
-    await postAgentEvent({ kind: 'vm_progress', step: 'failed', reason }).catch(() => {});
+    await postAgentEvent({ kind: 'vm_failed', reason }).catch(() => {});
     process.exit(1);
   }
-
-  await postAgentEvent({ kind: 'vm_progress', step: 'repos_cloned' });
+  // Happy-path provisioning phases are owned by the Worker (provision.ts) and by
+  // agent presence — the runner reports nothing on success. Its only provisioning
+  // signal is a failure (above / the fatal handler).
 
   // Initial provider (path: /init) — only used for buildToolset, which reads
   // tool definitions and doesn't actually make a request. Every Turn rebuilds
@@ -390,15 +391,6 @@ async function main(): Promise<void> {
       return;
     }
 
-    // Check for a repo_linked in the Turn-1 catch-up events BEFORE running any
-    // turn. A repo was attached while this sandbox was booting; its env is
-    // immutable, so self-exit so the next wake re-provisions with the full list.
-    if (hasRepoLinked(first.events)) {
-      logger.info('runner: repo_linked in turn-1 catch-up; self-exiting for re-provision');
-      return;
-    }
-
-    await postAgentEvent({ kind: 'vm_progress', step: 'agent_started' });
     await runTurnOnce(first);
 
     // Subsequent turns: process buffered wakes; self-exit after MAX_IDLE_MS idle.
@@ -421,14 +413,6 @@ async function main(): Promise<void> {
         if (bufferedWakeEvents.length === 0) continue; // idle timeout — re-check deadline
       }
 
-      // A repo_linked in the buffered events means the Dev attached a new repo
-      // while this VM was live. Env is immutable — self-exit cleanly so the
-      // next wake provisions a fresh sandbox with the complete repo list.
-      if (hasRepoLinked(bufferedWakeEvents)) {
-        logger.info('runner: repo_linked received; self-exiting for re-provision');
-        return;
-      }
-
       await runTurnOnce({ events: bufferedWakeEvents.splice(0) });
     }
   } finally {
@@ -445,6 +429,6 @@ main().catch(async (err) => {
   const reason = sanitizeCloneError(err instanceof Error ? err.message : String(err));
   logger.error({ reason }, 'runner: fatal');
   // Best-effort: if the Worker is reachable, surface the failure in the UI.
-  await postAgentEvent({ kind: 'vm_progress', step: 'failed', reason }).catch(() => {});
+  await postAgentEvent({ kind: 'vm_failed', reason }).catch(() => {});
   process.exit(1);
 });

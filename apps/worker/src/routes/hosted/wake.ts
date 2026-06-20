@@ -1,10 +1,11 @@
 import { db } from '@tempo/db/client';
 import { threads } from '@tempo/db/schema';
+import { endVmRunsForThread } from '@tempo/server';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { ForbiddenError } from '../../auth';
 import { runConversationTurn } from '../../hosted/conversation';
-import { spawnHosted } from '../../hosted/supervisor';
+import { reap, spawnHosted } from '../../hosted/supervisor';
 import { logger } from '../../logger';
 
 const log = logger.child({ module: 'wake' });
@@ -42,6 +43,19 @@ export const wakeHostedHandler: RequestHandler<{ id: string }> = async (req, res
   if (row.agentType !== 'hosted') {
     res.status(400).json({ error: 'agent_type_mismatch' });
     return;
+  }
+
+  // A repo change under a live Sandbox (immutable env) → tear the old one down
+  // first, so the branch below re-provisions against the new repo list (or
+  // routes to the in-process conversation if every repo was removed).
+  const reprovision = (req.body as { reprovision?: boolean } | undefined)?.reprovision === true;
+  if (reprovision) {
+    // Tear down the stale-input VM: kill the Sandbox if THIS worker owns it, and
+    // close any open vm_runs row by DB. The DB close is what lets the fresh
+    // provision past the partial unique index even when this worker doesn't hold
+    // the handle (e.g. the row was orphaned by a worker restart).
+    await reap(threadId, 'repo_changed');
+    await endVmRunsForThread(threadId, 'repo_changed');
   }
 
   if (row.repos.length === 0) {

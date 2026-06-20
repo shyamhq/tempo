@@ -135,6 +135,11 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
 
   const view = data ?? initial;
   const agentPresent = view.agent_present;
+  // While a Hosted sandbox is provisioning the floating activity widget would
+  // just say "Agent idle" — noise next to the header's provisioning line. Hide
+  // it until the runner connects: a live `vm` with presence not yet up.
+  const hostedProvisioning =
+    view.thread.agent_type === 'hosted' && view.vm !== null && !agentPresent;
 
   // Connect dialog state is lifted so the LocalDisconnectedBanner's "Connect"
   // CTA can open the same dialog the header button does, and so the
@@ -297,11 +302,7 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
           </div>
           <div className="flex-1" />
           {view.thread.agent_type === 'hosted' ? (
-            <HostedAgentControl
-              threadId={threadId}
-              agentType={view.thread.agent_type}
-              agentPresent={agentPresent}
-            />
+            <HostedAgentControl agentPresent={agentPresent} vm={view.vm} />
           ) : null}
         </div>
       </header>
@@ -396,12 +397,16 @@ export function ThreadView({ threadId, initial }: { threadId: string; initial: V
       )}
 
       {/* AgentTrails is position:fixed and lives outside the layout branches
-          so it stays visible in both Pre-Plan and Plan phases. */}
-      <AgentTrails
-        threadId={threadId}
-        agentPresent={agentPresent}
-        hasPlan={view.plan.body !== null}
-      />
+          so it stays visible in both Pre-Plan and Plan phases. Hidden while a
+          Hosted sandbox provisions — the header's provisioning line is the
+          status then; agent presence is irrelevant. */}
+      {hostedProvisioning ? null : (
+        <AgentTrails
+          threadId={threadId}
+          agentPresent={agentPresent}
+          hasPlan={view.plan.body !== null}
+        />
+      )}
 
       {planUpdatedAt ? (
         <div

@@ -18,6 +18,7 @@ export {
   clearPresent,
   isPresent,
   publishPresence,
+  publishVmSignal,
   refreshPresent,
   releaseTurnLock,
   setPresent,

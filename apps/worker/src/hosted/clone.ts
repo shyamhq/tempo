@@ -1,8 +1,6 @@
 // Pure helpers for the hosted runner — no I/O, no side effects, no top-level
 // env access, so they're importable from tests without booting the runner.
 
-import type { Event as TempoEvent } from '@tempo/contracts/events';
-
 export interface RepoEntry {
   owner: string;
   name: string;
@@ -55,13 +53,4 @@ export function parseRepos(
     });
   }
   return entries;
-}
-
-/**
- * Returns true when the buffered wake events include a `repo_linked` event,
- * meaning the runner must self-exit so the next wake re-provisions with the
- * full repo list (the sandbox env is immutable — no clone-in-place possible).
- */
-export function hasRepoLinked(events: TempoEvent[]): boolean {
-  return events.some((e) => e.kind === 'repo_linked');
 }

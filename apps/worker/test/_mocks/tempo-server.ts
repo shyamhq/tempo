@@ -69,6 +69,9 @@ let vmRunCounter = 0;
 const newVmRunId = mock(() => `vmr_test_${++vmRunCounter}`);
 const reapStaleVmRun = mock(async (_threadId: string): Promise<void> => {});
 const touchVmRun = mock(async (_threadId: string): Promise<void> => {});
+const endVmRunsForThread = mock(async (_threadId: string, _reason: string): Promise<void> => {});
+const failVmRun = mock(async (_threadId: string, _reason: string): Promise<void> => {});
+const publishVmSignal = mock(async (_threadId: string, _vm: unknown): Promise<void> => {});
 const getInstallationToken = mock(
   async (_workspaceId: string): Promise<{ token: string; expiresAt: string }> => ({
     token: 'ghs_test_token',
@@ -86,6 +89,7 @@ export type ServerMock = {
   isConnectorEnabled: ReturnType<typeof mock>;
   insertAuditRow: ReturnType<typeof mock>;
   getActionPolicy: ReturnType<typeof mock>;
+  githubListRepos: ReturnType<typeof mock>;
   // Conversation runtime handles.
   acquireTurnLock: ReturnType<typeof mock>;
   releaseTurnLock: ReturnType<typeof mock>;
@@ -97,6 +101,9 @@ export type ServerMock = {
   newVmRunId: ReturnType<typeof mock>;
   reapStaleVmRun: ReturnType<typeof mock>;
   touchVmRun: ReturnType<typeof mock>;
+  endVmRunsForThread: ReturnType<typeof mock>;
+  failVmRun: ReturnType<typeof mock>;
+  publishVmSignal: ReturnType<typeof mock>;
   getInstallationToken: ReturnType<typeof mock>;
 };
 
@@ -132,6 +139,9 @@ const handle: ServerMock = {
       newVmRunId,
       reapStaleVmRun,
       touchVmRun,
+      endVmRunsForThread,
+      failVmRun,
+      publishVmSignal,
       getInstallationToken,
     ]) {
       m.mockClear();
@@ -141,6 +151,7 @@ const handle: ServerMock = {
   isConnectorEnabled,
   insertAuditRow,
   getActionPolicy,
+  githubListRepos,
   acquireTurnLock,
   releaseTurnLock,
   getEventsSinceLastTurn,
@@ -150,6 +161,9 @@ const handle: ServerMock = {
   newVmRunId,
   reapStaleVmRun,
   touchVmRun,
+  endVmRunsForThread,
+  failVmRun,
+  publishVmSignal,
   getInstallationToken,
 };
 
@@ -178,6 +192,9 @@ function register(): void {
     newVmRunId,
     reapStaleVmRun,
     touchVmRun,
+    endVmRunsForThread,
+    failVmRun,
+    publishVmSignal,
     getInstallationToken,
   }));
 }

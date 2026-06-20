@@ -10,7 +10,10 @@ export default async function ThreadPage({ params }: { params: Promise<{ id: str
   try {
     initial = await api.getThread(id);
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) notFound();
+    // 404 = gone; 403 = not in your workspace (deleted threads return this too —
+    // the API refuses to confirm existence). Both render as not-found rather
+    // than crashing the page. A 401 (auth) still throws → middleware handles it.
+    if (e instanceof ApiError && (e.status === 404 || e.status === 403)) notFound();
     throw e;
   }
   return <ThreadView threadId={id} initial={initial} />;

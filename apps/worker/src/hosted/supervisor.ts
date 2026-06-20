@@ -1,4 +1,4 @@
-import { getInstallationToken } from '@tempo/server';
+import { getInstallationToken, publishVmSignal } from '@tempo/server';
 import { logger } from '../logger';
 import { provision, type VmRun } from '../vm/provision';
 import { teardown } from '../vm/teardown';
@@ -100,7 +100,10 @@ export async function spawnHosted(opts: {
   }
 }
 
-async function reap(threadId: string, reason: string): Promise<void> {
+// Tear down the live Sandbox for a thread (if this process owns it). Public so
+// the wake route can reap on a repo change before re-provisioning against the
+// new repo list — a live VM's env is immutable.
+export async function reap(threadId: string, reason: string): Promise<void> {
   const entry = live.get(threadId);
   if (!entry) return;
   clearTimeout(entry.expiresTimer);
@@ -110,6 +113,9 @@ async function reap(threadId: string, reason: string): Promise<void> {
     vm_run_id: entry.run.vm_run_id,
     exit_reason: reason,
   });
+  // Clear the Console checklist — the row is closed; no Sandbox is live. A
+  // repo-change reap is immediately followed by a fresh `provisioning` push.
+  await publishVmSignal(threadId, null);
 }
 
 export async function stopSupervisor(): Promise<void> {

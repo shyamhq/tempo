@@ -108,14 +108,21 @@ export const RepoLinkedEvent = eventBase.extend({
   repos: z.array(z.string()),
 });
 
-// Emitted by the Worker / runner to track VM provisioning steps. Browser-only
-// — never delivered to the Agent and never wakes it. `reason` carries a human-
-// readable description only on the `failed` step.
-export const VmProgressEvent = eventBase.extend({
-  kind: z.literal('vm_progress'),
-  step: z.enum(['sandbox_ready', 'repos_cloned', 'agent_started', 'failed']),
+// VM provisioning state for the Console checklist. `phase` is DERIVED from the
+// vm_runs row, not stored: no sandbox_id yet → `provisioning`; sandbox_id set →
+// `cloning`. "done" is not a phase — it's agent presence (the runner connects
+// its SSE before it would ever report "started", so presence is the ready
+// signal). `failed` is terminal and carries a sanitized reason.
+export const VmPhase = z.enum(['provisioning', 'cloning', 'failed']);
+export type VmPhase = z.infer<typeof VmPhase>;
+
+export const VmState = z.object({
+  sandbox_id: z.string().nullable(),
+  started_at: IsoTimestamp,
+  phase: VmPhase,
   reason: z.string().optional(),
 });
+export type VmState = z.infer<typeof VmState>;
 
 // Ephemeral SSE-only frame (NOT a persisted Event): the Worker XADDs it to the
 // thread stream when an agent's SSE connection opens/closes so browsers flip the
@@ -125,6 +132,16 @@ export const PresenceSignal = z.object({
   online: z.boolean(),
 });
 export type PresenceSignal = z.infer<typeof PresenceSignal>;
+
+// Ephemeral SSE-only frame (NOT a persisted Event), sibling of PresenceSignal:
+// the Worker XADDs it when a hosted VM is created, finishes booting, fails, or
+// is torn down, so the Console's provisioning checklist tracks the Sandbox
+// lifecycle live. `vm` is null when no Sandbox is provisioning. Browser-only.
+export const VmSignal = z.object({
+  kind: z.literal('vm'),
+  vm: VmState.nullable(),
+});
+export type VmSignal = z.infer<typeof VmSignal>;
 
 export const Event = z.discriminatedUnion('kind', [
   CommentAddedEvent,
@@ -145,7 +162,6 @@ export const Event = z.discriminatedUnion('kind', [
   ThreadRenamedEvent,
   AgentCancelRequestedEvent,
   RepoLinkedEvent,
-  VmProgressEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -168,7 +184,6 @@ export const EventKind = z.enum([
   'thread_renamed',
   'agent_cancel_requested',
   'repo_linked',
-  'vm_progress',
 ]);
 export type EventKind = z.infer<typeof EventKind>;
 
@@ -212,9 +227,9 @@ export function shouldWake(event: Event): boolean {
 // signal. The Worker filters Agent connections with this so plan edits,
 // presence, the Agent's own echoes, and browser-only provisioning frames
 // never ship; browsers get everything.
-export function shouldDeliverToAgent(event: Event | PresenceSignal): boolean {
+export function shouldDeliverToAgent(event: Event | PresenceSignal | VmSignal): boolean {
   if (event.kind === 'presence') return false;
-  // vm_progress is browser-only: provisioning status for the UI checklist.
-  if (event.kind === 'vm_progress') return false;
+  // vm is browser-only: provisioning status for the UI checklist.
+  if (event.kind === 'vm') return false;
   return shouldWake(event) || event.kind === 'agent_cancel_requested';
 }

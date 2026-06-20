@@ -26,7 +26,10 @@ export { ForbiddenError };
 export type Caller =
   | { kind: 'agent'; workspaceId: string }
   | { kind: 'cli'; userId: string }
-  | { kind: 'browser'; userId: string }
+  // orgId is the active Clerk org from the session JWT — present iff the user
+  // has an org active; it is Clerk's proof of membership (only emitted for a
+  // member's active org), so a workspace-scoped route can trust it directly.
+  | { kind: 'browser'; userId: string; orgId: string | null }
   | { kind: 'hosted'; threadId: string; workspaceId: string; sessionId: string }
   | { kind: 'internal' };
 
@@ -37,6 +40,20 @@ declare global {
       workspaceId: string;
     }
   }
+}
+
+// The active organization on a verified Clerk session JWT. Clerk encodes it
+// differently across session-token versions: a flat `org_id` (v1) or the
+// compact `o.id` claim (v2, the default for instances on recent API versions).
+// Read both so the workspace resolves regardless of the instance's token
+// version; null when no org is active.
+function activeOrgId(claims: Record<string, unknown>): string | null {
+  if (typeof claims.org_id === 'string') return claims.org_id;
+  const o = claims.o;
+  if (o && typeof o === 'object' && typeof (o as { id?: unknown }).id === 'string') {
+    return (o as { id: string }).id;
+  }
+  return null;
 }
 
 // Parse Bearer → identify caller. Throws ForbiddenError on a bad/unknown
@@ -92,7 +109,11 @@ async function identify(header: string | undefined): Promise<Caller> {
 
   try {
     const claims = await clerkVerifyToken(token, { secretKey: env.CLERK_SECRET_KEY });
-    return { kind: 'browser', userId: claims.sub };
+    return {
+      kind: 'browser',
+      userId: claims.sub,
+      orgId: activeOrgId(claims as Record<string, unknown>),
+    };
   } catch (err) {
     logger.debug({ err }, 'auth: clerk jwt verification failed');
     throw new ForbiddenError('bad_clerk_jwt');

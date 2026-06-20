@@ -17,6 +17,7 @@ import {
   unresolveCommentHandler,
 } from './routes/browser/comments';
 import { createDiscussionMessageHandler } from './routes/browser/discussion';
+import { githubReposHandler } from './routes/browser/github-repos';
 import { writePlanHandler } from './routes/browser/plan';
 import { createReplyHandler } from './routes/browser/replies';
 import { cliExchangeHandler } from './routes/cli/exchange';
@@ -94,6 +95,10 @@ app.delete('/api/comments/:id', bearerAuth, ensureCommentAccess, deleteCommentHa
 app.post('/api/comments/:id/resolve', bearerAuth, ensureCommentAccess, resolveCommentHandler);
 app.post('/api/comments/:id/unresolve', bearerAuth, ensureCommentAccess, unresolveCommentHandler);
 app.post('/api/comments/:id/replies', bearerAuth, ensureCommentAccess, createReplyHandler);
+
+// Workspace-scoped (no thread): the Console repo picker. Browser-only; the
+// handler resolves the workspace from the caller's active Clerk org.
+app.get('/api/connectors/github/repos', bearerAuth, githubReposHandler);
 
 // MCP endpoint — bearerAuth identifies caller; tools call authorizeThread
 // per-thread inside the tool implementation.

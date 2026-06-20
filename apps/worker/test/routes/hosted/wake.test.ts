@@ -22,7 +22,8 @@ const spawnHosted = mock(
   async (_opts: { threadId: string; workspaceId: string; repos: string[] }) =>
     ({ status: 'spawned', vm_run_id: 'vmr_1', sandbox_id: 'sbx_1' }) as const,
 );
-mock.module('../../../src/hosted/supervisor', () => ({ spawnHosted }));
+const reap = mock(async (_threadId: string, _reason: string): Promise<void> => {});
+mock.module('../../../src/hosted/supervisor', () => ({ reap, spawnHosted }));
 
 // Resolves on a microtask so a test can assert it was kicked off without the
 // handler blocking on it.
@@ -57,6 +58,7 @@ const THREAD = 'thr_01234567890123456789ABCDEF';
 beforeEach(() => {
   db.reset();
   spawnHosted.mockClear();
+  reap.mockClear();
   runConversationTurn.mockClear();
 });
 

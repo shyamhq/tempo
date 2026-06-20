@@ -3,7 +3,7 @@
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTodo } from '@tempo/contracts';
-import { Event, PresenceSignal } from '@tempo/contracts/events';
+import { Event, PresenceSignal, VmSignal } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { subscribeToEvents } from '@tempo/sse-client';
 import { useEffect, useRef } from 'react';
@@ -37,38 +37,6 @@ const EMPTY_ACTIVITY: LiveActivity = {
 };
 
 export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
-
-// ---------------------------------------------------------------------------
-// Provisioning state — populated by vm_progress SSE events (browser-only).
-// Steps accumulate in order: sandbox_ready → repos_cloned → agent_started.
-// `failed` is terminal and carries an optional reason.
-// ---------------------------------------------------------------------------
-
-export type ProvisioningStep = {
-  step: 'sandbox_ready' | 'repos_cloned' | 'agent_started' | 'failed';
-  reason?: string;
-};
-
-export type ProvisioningState = {
-  steps: ProvisioningStep[];
-};
-
-const EMPTY_PROVISIONING: ProvisioningState = { steps: [] };
-
-const provisioningKey = (threadId: string) => ['thread', threadId, 'provisioning'] as const;
-
-// Cache-only read of the current VM provisioning checklist state.
-// SSE writes it via `setQueryData`; this hook never fetches.
-export function useProvisioningState(threadId: string): ProvisioningState {
-  const { data } = useQuery<ProvisioningState>({
-    queryKey: provisioningKey(threadId),
-    queryFn: () => EMPTY_PROVISIONING,
-    initialData: EMPTY_PROVISIONING,
-    staleTime: Infinity,
-    enabled: false,
-  });
-  return data ?? EMPTY_PROVISIONING;
-}
 
 // Cache-only read of the current "Agent activity" group: latest TodoWrite plus
 // the activity entries (tool calls + narration) accumulated since the most
@@ -130,6 +98,15 @@ export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => vo
         if (presence.success) {
           qc.setQueryData<ThreadView>(['thread', threadId], (prev) =>
             prev ? { ...prev, agent_present: presence.data.online } : prev,
+          );
+          return;
+        }
+        // vm is an SSE-only signal (not in the Event union) — the VM provisioning
+        // lifecycle. Patch the thread view's `vm` exactly like presence above.
+        const vmSig = VmSignal.safeParse(data);
+        if (vmSig.success) {
+          qc.setQueryData<ThreadView>(['thread', threadId], (prev) =>
+            prev ? { ...prev, vm: vmSig.data.vm } : prev,
           );
           return;
         }
@@ -340,21 +317,6 @@ function applyLiveActivity(
       if (ev.reply.author_user_id !== null) {
         qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       }
-      return;
-    case 'vm_progress':
-      qc.setQueryData<ProvisioningState>(provisioningKey(threadId), (prev) => {
-        const base = prev ?? EMPTY_PROVISIONING;
-        // sandbox_ready signals the start of a new provisioning cycle — reset
-        // any stale steps so the checklist always shows the current run.
-        if (ev.step === 'sandbox_ready') {
-          return { steps: [{ step: 'sandbox_ready' }] };
-        }
-        // Deduplicate: a retry or replay may re-deliver the same step.
-        if (base.steps.some((s) => s.step === ev.step)) return base;
-        return {
-          steps: [...base.steps, { step: ev.step, ...(ev.reason ? { reason: ev.reason } : {}) }],
-        };
-      });
       return;
   }
 }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ConnectorId, ConnectorTier } from './connectors';
-import { Event } from './events';
+import { Event, VmState } from './events';
 import {
   AgentBlock,
   AgentType,
@@ -44,19 +44,6 @@ export const CreateThreadResponse = z.object({
 // stable connect token for re-display ("Connect" button on the Thread page).
 export const GetConnectTokenResponse = z.object({
   connect_token: ConnectToken,
-});
-
-// GET /api/threads/:id/hosted/state — live Hosted-runtime snapshot.
-// `vm` is non-null when a Sandbox is currently provisioned (vm_runs row
-// with ended_at IS NULL). Endpoint rejects with 400 when the Thread's
-// agent_type is not 'hosted'.
-export const HostedStateResponse = z.object({
-  vm: z
-    .object({
-      sandbox_id: z.string(),
-      started_at: z.iso.datetime(),
-    })
-    .nullable(),
 });
 
 // POST /api/threads/:id/hosted/wake — Hosted wake (user-triggered button or
@@ -140,6 +127,10 @@ export const GetThreadResponse = z.object({
   // True while the agent's SSE connection is live (Redis presence key); the
   // `presence` SSE frame flips it in real time.
   agent_present: z.boolean(),
+  // Hosted VM provisioning state, or null when no Sandbox is live. Hydrated
+  // here and kept live by the `vm` SSE frame — same hydrate-then-push shape as
+  // `agent_present`. Always null for Local Threads.
+  vm: VmState.nullable(),
 });
 
 // GET /api/threads/:id/trails — derived view of the agent's work, grouped
@@ -388,6 +379,16 @@ export const AgentModeChangedEvent = z.object({
   mode_id: z.string().max(64),
 });
 
+// The hosted runner's only provisioning report: a clone/boot failure. Posted
+// through the same agent-events channel, but it is NOT a persisted event — the
+// handler closes the vm_runs row and pushes a `vm` failed frame instead of
+// appending it. Happy-path phases are owned by the Worker (provision.ts) and by
+// agent presence, so the runner reports nothing on success.
+export const VmFailedReport = z.object({
+  kind: z.literal('vm_failed'),
+  reason: z.string(),
+});
+
 export const AgentEventRequest = z.object({
   thread_id: ThreadId,
   event: z.discriminatedUnion('kind', [
@@ -398,9 +399,26 @@ export const AgentEventRequest = z.object({
     AgentTodosUpdatedEvent,
     AgentModeChangedEvent,
     AgentTurnEndedEvent,
+    VmFailedReport,
   ]),
 });
 export type AgentEventRequest = z.infer<typeof AgentEventRequest>;
+
+// GET /api/connectors/github/repos (Worker) — repos accessible to the
+// workspace's GitHub App installation, for the Console repo picker. Empty list
+// when GitHub is not connected (the picker shows a connect prompt). The Worker
+// owns the GitHub App private key; the Console never mints install tokens.
+export const GithubReposResponse = z.object({
+  repos: z.array(
+    z.object({
+      full_name: z.string(),
+      private: z.boolean(),
+      description: z.string().nullable(),
+      default_branch: z.string(),
+    }),
+  ),
+});
+export type GithubRepo = z.infer<typeof GithubReposResponse>['repos'][number];
 
 // --- Connectors (Settings → Integrations) ---------------------------------
 // Console-side management API. The Worker never serves these — admin connect /

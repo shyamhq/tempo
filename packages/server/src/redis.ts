@@ -5,7 +5,7 @@
 // connection live." Old events live in Postgres and load on page open — the
 // stream only needs enough recent entries to bridge a reconnect, so it's capped.
 
-import type { Event, PresenceSignal } from '@tempo/contracts';
+import type { Event, PresenceSignal, VmSignal, VmState } from '@tempo/contracts';
 import Redis from 'ioredis';
 
 const STREAM_PREFIX = 'tempo:t:';
@@ -57,10 +57,21 @@ export async function publishPresence(threadId: string, online: boolean): Promis
   await pushFrame(threadId, { kind: 'presence', online });
 }
 
+// Ephemeral VM-status frame — same stream, never persisted. Pushed by the
+// provisioner and the agent-events failure path so the Console's checklist
+// tracks the Sandbox lifecycle live (sibling of publishPresence). `vm` is null
+// on teardown.
+export async function publishVmSignal(threadId: string, vm: VmState | null): Promise<void> {
+  await pushFrame(threadId, { kind: 'vm', vm });
+}
+
 // MAXLEN ~ caps the stream in the same round-trip (lazy, macro-node granularity).
 // Auto-id (*) never rejects on concurrent writes; consumers order by the event's
 // own evt_<seq> id, so stream order isn't authoritative.
-async function pushFrame(threadId: string, frame: Event | PresenceSignal): Promise<void> {
+async function pushFrame(
+  threadId: string,
+  frame: Event | PresenceSignal | VmSignal,
+): Promise<void> {
   await redis().xadd(
     streamKey(threadId),
     'MAXLEN',
@@ -74,11 +85,11 @@ async function pushFrame(threadId: string, frame: Event | PresenceSignal): Promi
 
 // Pull the JSON frame back out of a stream entry's flat [field, value, ...]
 // array. Returns null on a missing or unparseable payload. Pure.
-export function parseStreamEvent(fields: string[]): Event | PresenceSignal | null {
+export function parseStreamEvent(fields: string[]): Event | PresenceSignal | VmSignal | null {
   for (let i = 0; i + 1 < fields.length; i += 2) {
     if (fields[i] === 'payload') {
       try {
-        return JSON.parse(fields[i + 1] as string) as Event | PresenceSignal;
+        return JSON.parse(fields[i + 1] as string) as Event | PresenceSignal | VmSignal;
       } catch {
         return null;
       }

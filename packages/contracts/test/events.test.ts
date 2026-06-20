@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { Event } from '../src/events';
-import { RepoLinkedEvent, shouldDeliverToAgent, shouldWake, VmProgressEvent } from '../src/events';
-import { CreateThreadRequest } from '../src/http';
+import { RepoLinkedEvent, shouldDeliverToAgent, shouldWake, VmSignal } from '../src/events';
+import { AgentEventRequest, CreateThreadRequest } from '../src/http';
 import { PostDiscussionMessageInput } from '../src/mcp';
 
 // ---------------------------------------------------------------------------
@@ -17,12 +17,6 @@ function makeRepoLinked(repos: string[]): Event {
   return RepoLinkedEvent.parse({ ...eventBase, kind: 'repo_linked', repos });
 }
 
-function makeVmProgress(
-  step: 'sandbox_ready' | 'repos_cloned' | 'agent_started' | 'failed',
-): Event {
-  return VmProgressEvent.parse({ ...eventBase, kind: 'vm_progress', step });
-}
-
 // ---------------------------------------------------------------------------
 // shouldWake
 // ---------------------------------------------------------------------------
@@ -31,13 +25,6 @@ describe('shouldWake', () => {
   test('repo_linked wakes the agent', () => {
     expect(shouldWake(makeRepoLinked(['acme/api']))).toBe(true);
   });
-
-  test('vm_progress does NOT wake the agent', () => {
-    expect(shouldWake(makeVmProgress('sandbox_ready'))).toBe(false);
-    expect(shouldWake(makeVmProgress('repos_cloned'))).toBe(false);
-    expect(shouldWake(makeVmProgress('agent_started'))).toBe(false);
-    expect(shouldWake(makeVmProgress('failed'))).toBe(false);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -45,9 +32,8 @@ describe('shouldWake', () => {
 // ---------------------------------------------------------------------------
 
 describe('shouldDeliverToAgent', () => {
-  test('vm_progress is excluded from agent delivery', () => {
-    expect(shouldDeliverToAgent(makeVmProgress('sandbox_ready'))).toBe(false);
-    expect(shouldDeliverToAgent(makeVmProgress('failed'))).toBe(false);
+  test('vm signal is browser-only — excluded from agent delivery', () => {
+    expect(shouldDeliverToAgent(VmSignal.parse({ kind: 'vm', vm: null }))).toBe(false);
   });
 
   test('repo_linked is delivered to the agent (wake-eligible)', () => {
@@ -103,22 +89,80 @@ describe('repos regex (owner/name)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// vm_progress — optional reason on failed step
+// VmSignal — ephemeral SSE-only VM lifecycle frame
 // ---------------------------------------------------------------------------
 
-describe('VmProgressEvent', () => {
-  test('failed step accepts an optional reason', () => {
-    const ev = VmProgressEvent.parse({
-      ...eventBase,
-      kind: 'vm_progress',
-      step: 'failed',
-      reason: 'clone timed out',
+describe('VmSignal', () => {
+  const startedAt = new Date().toISOString();
+
+  test('carries a vm state with its derived phase', () => {
+    const f = VmSignal.parse({
+      kind: 'vm',
+      vm: { sandbox_id: 'sbx_1', started_at: startedAt, phase: 'cloning' },
     });
-    expect(ev.reason).toBe('clone timed out');
+    expect(f.vm?.phase).toBe('cloning');
+    expect(f.vm?.sandbox_id).toBe('sbx_1');
   });
 
-  test('non-failed steps accept no reason', () => {
-    const ev = VmProgressEvent.parse({ ...eventBase, kind: 'vm_progress', step: 'sandbox_ready' });
-    expect(ev.reason).toBeUndefined();
+  test('vm is null on teardown', () => {
+    expect(VmSignal.parse({ kind: 'vm', vm: null }).vm).toBeNull();
+  });
+
+  test('provisioning carries a null sandbox_id', () => {
+    const f = VmSignal.parse({
+      kind: 'vm',
+      vm: { sandbox_id: null, started_at: startedAt, phase: 'provisioning' },
+    });
+    expect(f.vm?.sandbox_id).toBeNull();
+  });
+
+  test('failed carries an optional reason', () => {
+    const f = VmSignal.parse({
+      kind: 'vm',
+      vm: { sandbox_id: null, started_at: startedAt, phase: 'failed', reason: 'clone timed out' },
+    });
+    expect(f.vm?.reason).toBe('clone timed out');
+  });
+
+  test('rejects an unknown phase', () => {
+    const r = VmSignal.safeParse({
+      kind: 'vm',
+      vm: { sandbox_id: null, started_at: startedAt, phase: 'ready' },
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AgentEventRequest — the hosted runner posts a vm_failed report through this
+// schema; it must accept it alongside the agent_* kinds (the handler routes it
+// to failVmRun instead of the event log).
+// ---------------------------------------------------------------------------
+
+describe('AgentEventRequest', () => {
+  const THREAD_ID = 'thr_01KVJW7TGR5PSQP3JDYW8088XE';
+
+  test('accepts a vm_failed report', () => {
+    const r = AgentEventRequest.safeParse({
+      thread_id: THREAD_ID,
+      event: { kind: 'vm_failed', reason: 'clone failed' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  test('still accepts an agent_* kind', () => {
+    const r = AgentEventRequest.safeParse({
+      thread_id: THREAD_ID,
+      event: { kind: 'agent_narration', text: 'hello' },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  test('rejects an unknown kind', () => {
+    const r = AgentEventRequest.safeParse({
+      thread_id: THREAD_ID,
+      event: { kind: 'not_a_real_kind' },
+    });
+    expect(r.success).toBe(false);
   });
 });

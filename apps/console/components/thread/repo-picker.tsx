@@ -5,7 +5,8 @@ import { Check, GitPullRequest, Loader2, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { api, type GithubRepo } from '@/lib/api-client';
+import { useWorkerApi } from '@/hooks/use-worker-api';
+import { type GithubRepo } from '@/lib/api-client';
 
 type RepoPickerProps = {
   open: boolean;
@@ -21,6 +22,7 @@ type RepoPickerProps = {
  * Renders a "GitHub not connected" empty state when the list is empty.
  */
 export function RepoPicker({ open, onOpenChange, selectedRepos, onConfirm }: RepoPickerProps) {
+  const wApi = useWorkerApi();
   const [query, setQuery] = useState('');
   // Local selection — copy of selectedRepos on open, mutated until Confirm.
   const [localSelection, setLocalSelection] = useState<string[]>(selectedRepos);
@@ -35,7 +37,7 @@ export function RepoPicker({ open, onOpenChange, selectedRepos, onConfirm }: Rep
 
   const { data, isLoading } = useQuery({
     queryKey: ['github-repos'],
-    queryFn: () => api.listGithubRepos(),
+    queryFn: () => wApi.listGithubRepos(),
     staleTime: 60_000,
     enabled: open,
   });

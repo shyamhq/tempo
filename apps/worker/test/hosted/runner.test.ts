@@ -1,10 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  hasRepoLinked,
-  parseRepos,
-  type RepoEntry,
-  sanitizeCloneError,
-} from '../../src/hosted/clone';
+import { parseRepos, type RepoEntry, sanitizeCloneError } from '../../src/hosted/clone';
 
 // Unit tests for the two pure helpers extracted from runner.ts.
 // No I/O, no env vars, no mocks needed — these are data-in/data-out functions.
@@ -92,49 +87,6 @@ describe('parseRepos', () => {
     const entries = parseRepos('[42, "bad", "acme/api", null, ""]', TOKEN);
     expect(entries).toHaveLength(1);
     expect((entries[0] as RepoEntry).name).toBe('api');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// hasRepoLinked
-// ---------------------------------------------------------------------------
-
-// Minimal valid TempoEvent-shaped objects (the kind field is all hasRepoLinked
-// needs; the rest of the shape is irrelevant to this predicate).
-const evt = (kind: string) => ({ kind, id: 'evt_test', created_at: '2026-06-20T00:00:00.000Z' });
-
-describe('hasRepoLinked', () => {
-  test('returns false for an empty events array', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: test fixture
-    expect(hasRepoLinked([] as any)).toBe(false);
-  });
-
-  test('returns false when no repo_linked event is present', () => {
-    expect(
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture
-      hasRepoLinked([evt('comment_added'), evt('discussion_message_posted')] as any),
-    ).toBe(false);
-  });
-
-  test('returns true when a repo_linked event is present', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: test fixture
-    expect(hasRepoLinked([evt('repo_linked')] as any)).toBe(true);
-  });
-
-  test('returns true when repo_linked is mixed with other event kinds', () => {
-    expect(
-      // biome-ignore lint/suspicious/noExplicitAny: test fixture
-      hasRepoLinked([evt('comment_added'), evt('repo_linked'), evt('reply_added')] as any),
-    ).toBe(true);
-  });
-
-  test('returns false for agent-only events', () => {
-    expect(
-      hasRepoLinked(
-        // biome-ignore lint/suspicious/noExplicitAny: test fixture
-        [evt('agent_narration'), evt('agent_turn_ended'), evt('vm_progress')] as any,
-      ),
-    ).toBe(false);
   });
 });
 
