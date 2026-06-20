@@ -1,6 +1,9 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Readable, Writable } from 'node:stream';
+import type { ThreadId } from '@tempo/contracts';
+import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
+import type { AgentEventRequest } from '@tempo/contracts/http';
 import {
   type Client,
   ClientSideConnection,
@@ -18,7 +21,6 @@ import { postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';
 import { ADAPTER_KILL_GRACE_MS, DISALLOWED_TOOLS, MAX_THINKING_TOKENS } from './config';
 import { NotificationMapper } from './notifications';
-import { TEMPO_SYSTEM_PROMPT_APPEND } from './system-prompt';
 
 const requireFromHere = createRequire(import.meta.url);
 
@@ -88,10 +90,11 @@ export class AcpSession {
       cwd: this.opts.cwd,
       mcpServers: [this.tempoMcpServer()],
       _meta: {
-        systemPrompt: { append: TEMPO_SYSTEM_PROMPT_APPEND },
-        // Edit/Write mutate user code — explicitly forbidden by §Identity in
-        // the system prompt. Enforce architecturally so a drifted or
-        // injection-prompted model can't reach for them. Bash and WebFetch
+        systemPrompt: { append: TEMPO_AGENT_SYSTEM_PROMPT },
+        // Edit/Write mutate user code — the system prompt forbids touching the
+        // working directory (the Plan is the only writeable output). Enforce
+        // architecturally so a drifted or injection-prompted model can't reach
+        // for them. Bash and WebFetch
         // stay allowed — the Agent uses them to fetch docs, search GitHub,
         // and inspect the repo during exploration.
         claudeCode: {
