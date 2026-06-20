@@ -58,6 +58,11 @@ All three encode the same rule: **the VM gate is programmatic — "Thread has �
 
 ## Verdict
 
-_TBD — awaiting Dev._ Likely a mix ("affordance from X, list from Y").
+**Variant A — Composer + “+” menu.** Dev picked it on 2026-06-20, GitHub-only for
+v1. Refinement: the attached-repo chips sit **below** the textarea in a "Thread
+context" bar (thread-scoped), distinct from per-message attachments (images),
+which sit above. The `+` opens a modal repo picker (multi-select). Folds into the
+plan `docs/plans/hosted-conversation-before-vm.md`. Delete the losing variants +
+switcher when the real composer ships.
 
 **Open data-model question this surfaced:** ship `threads.repos text[]` (repos-only — the only VM-relevant + only wired connector) in v1 with a universal-looking UI, OR go straight to a general `thread_resources` table. Recommend repos-backed v1; generalize storage when a second connector type actually attaches per-Thread (real second adapter, not hypothetical — CONTEXT §"one adapter is hypothetical").
