@@ -101,8 +101,16 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
     signal: subAbort.signal,
     onWake: (event) => {
       pending.push(event);
-      if (turnInFlight) session?.cancel().catch(() => null);
-      else notify();
+      if (turnInFlight) {
+        logger.info(
+          { kind: event.kind },
+          'wake: human event mid-turn — cancelling turn to re-prompt',
+        );
+        session?.cancel().catch(() => null);
+      } else {
+        logger.info({ kind: event.kind }, 'wake: human event while idle — waking agent');
+        notify();
+      }
     },
     onCancel: () => {
       // Dev pressed Stop — abort the in-flight turn, don't re-prompt.
@@ -136,6 +144,10 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       events: access.events,
       context: access.context,
     });
+    logger.info(
+      { count: access.events.length, ids: access.events.map((e) => e.id) },
+      'turn-1: catch-up events from /access (overlap with live SSE shows up as dup ids)',
+    );
     turnInFlight = true;
     let first: PromptOutcome;
     try {
@@ -209,6 +221,10 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       }
 
       const events = pending.splice(0);
+      logger.info(
+        { count: events.length, ids: events.map((e) => e.id) },
+        'turn: prompting agent with events',
+      );
       turnInFlight = true;
       let result: PromptOutcome;
       try {
@@ -257,8 +273,10 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
 type PromptOutcome = 'ok' | 'failed';
 
 async function sendPrompt(session: AcpSession, payload: string): Promise<PromptOutcome> {
+  logger.info('turn: sending prompt to agent');
   try {
     const stop: StopReason = await session.prompt(payload);
+    logger.info({ stop }, 'turn: agent finished');
     if (stop === 'end_turn' || stop === 'cancelled') return 'ok';
     logger.debug({ stop }, 'connect: turn ended with non-clean stop reason');
     return 'failed';

@@ -44,6 +44,15 @@ export async function writePlan(
   if (pmJson === null || typeof pmJson !== 'object') {
     throw new ValidationError('plan body must be a document object');
   }
+  // Adding/removing a comment mutates the PM doc (a `comment` mark) but changes
+  // no agent-visible content — the blocks projection drops comment marks. When
+  // only marks moved we still persist them, but skip `plan_edited_by_*` so the
+  // Agent isn't told to re-pull a Plan whose content is unchanged. Equality is
+  // trusted only when both sides project cleanly; on any doubt we emit.
+  const before = await readBlocksJson(threadId);
+  const after = safeBlocksJson(pmJson);
+  const contentChanged = before === null || after === null || before !== after;
+
   const updated_at = new Date();
   const updated_at_iso = updated_at.toISOString();
   await db
@@ -51,11 +60,34 @@ export async function writePlan(
     .set({ body_pm_json: JSON.stringify(pmJson), updated_by_user_id, updated_at })
     .where(eq(plans.thread_id, threadId));
   await db.update(threads).set({ updated_at }).where(eq(threads.id, threadId));
-  await appendEvent(threadId, {
-    kind: updated_by_user_id === null ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
-    updated_at: updated_at_iso,
-  });
+  if (contentChanged) {
+    await appendEvent(threadId, {
+      kind: updated_by_user_id === null ? 'plan_edited_by_agent' : 'plan_edited_by_dev',
+      updated_at: updated_at_iso,
+    });
+  }
   return { updated_at: updated_at_iso };
+}
+
+// Stable JSON of the blocks projection (comment marks dropped), or null if the
+// Plan has no content yet or the doc can't be projected — null forces the
+// caller to treat the write as a content change.
+async function readBlocksJson(threadId: string): Promise<string | null> {
+  const row = await readPlanRow(threadId);
+  if (row.body_pm_json == null) return null;
+  try {
+    return JSON.stringify(pmDocToBlocks(JSON.parse(row.body_pm_json)));
+  } catch {
+    return null;
+  }
+}
+
+function safeBlocksJson(pmJson: unknown): string | null {
+  try {
+    return JSON.stringify(pmDocToBlocks(pmJson));
+  } catch {
+    return null;
+  }
 }
 
 export async function getPlanBlocks(threadId: string): Promise<AgentPlanBlocks> {

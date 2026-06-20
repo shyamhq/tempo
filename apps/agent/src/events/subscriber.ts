@@ -32,8 +32,16 @@ export function runWakeSubscriber(opts: WakeSubscriberOptions): Promise<void> {
     subscribeToEvents({
       url: `${opts.workerUrl}/api/threads/${opts.threadId}/events`,
       getToken: opts.getToken,
-      onMessage: (d) => dispatch(d, opts),
-      onOpen: () => opts.onConnected?.(),
+      onMessage: (d) => {
+        // The Worker pre-filters this stream to wake + cancel for agents, so
+        // any frame here is actionable. `dispatch` still routes defensively.
+        logger.info(summarizeEvent(d as Event), 'wake-sse: event received');
+        dispatch(d, opts);
+      },
+      onOpen: () => {
+        logger.info('wake-sse: stream open, tailing events');
+        opts.onConnected?.();
+      },
       onError: (code) => {
         if (code === 401) opts.onAuthError();
         else logger.debug({ code }, 'wake-sse: connection error, retrying');
@@ -42,6 +50,31 @@ export function runWakeSubscriber(opts: WakeSubscriberOptions): Promise<void> {
     });
     opts.signal.addEventListener('abort', () => resolve(), { once: true });
   });
+}
+
+// Compact, log-friendly view of an event. `id` is the dedupe key — the same id
+// logged twice means duplicate delivery; the same text under two ids means the
+// message was authored twice. `author` is null for the Agent's own posts.
+export function summarizeEvent(ev: Event): Record<string, unknown> {
+  const base = { kind: ev?.kind, id: ev?.id, at: ev?.created_at };
+  switch (ev?.kind) {
+    case 'comment_added':
+      return {
+        ...base,
+        author: ev.comment.author_user_id,
+        text: ev.comment.replies[0]?.payload.text?.slice(0, 120),
+      };
+    case 'reply_added':
+      return {
+        ...base,
+        author: ev.reply.author_user_id,
+        text: ev.reply.payload.text.slice(0, 120),
+      };
+    case 'discussion_message_posted':
+      return { ...base, author: ev.message.author_user_id, text: ev.message.text?.slice(0, 120) };
+    default:
+      return base;
+  }
 }
 
 // Route one parsed event. Exported for unit testing — pure, no I/O.

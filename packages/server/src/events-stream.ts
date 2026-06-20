@@ -1,3 +1,4 @@
+import type { Event, PresenceSignal } from '@tempo/contracts';
 import { createReader, parseStreamEvent, streamKey } from './redis';
 
 const BLOCK_MS = 25_000;
@@ -13,7 +14,12 @@ type StreamReadReply = [key: string, entries: [id: string, fields: string[]][]][
 //
 // `lastEventId` (the client's Last-Event-ID header on reconnect) resumes from
 // that Redis entry; absent, the stream starts from the live tail ($).
-export function sseStream(threadId: string, lastEventId?: string): Response {
+export function sseStream(
+  threadId: string,
+  lastEventId?: string,
+  // Optional per-connection filter; Agent connections pass `shouldDeliverToAgent`.
+  filter?: (event: Event | PresenceSignal) => boolean,
+): Response {
   const encoder = new TextEncoder();
   const reader = createReader();
   const key = streamKey(threadId);
@@ -49,10 +55,12 @@ export function sseStream(threadId: string, lastEventId?: string): Response {
           for (const [id, fields] of entries) {
             lastId = id;
             const event = parseStreamEvent(fields);
-            // `id:` lets the client resume via Last-Event-ID; no `event:` field —
-            // consumers route on the parsed `data.kind`, so every frame is a
-            // default `message` event the `eventsource` package surfaces.
-            if (event) enqueue(`id: ${id}\ndata: ${JSON.stringify(event)}\n\n`);
+            // `id:` lets the client resume via Last-Event-ID; consumers route on
+            // `data.kind`, so every frame is a default `message` event. A filtered
+            // frame still advanced `lastId`, so reconnect won't re-read it.
+            if (event && (!filter || filter(event))) {
+              enqueue(`id: ${id}\ndata: ${JSON.stringify(event)}\n\n`);
+            }
           }
         }
       } catch {

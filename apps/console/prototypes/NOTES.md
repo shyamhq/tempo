@@ -37,3 +37,27 @@ Where should the Stop-agent button sit in the Thread view when the agent is mid-
 ## Verdict
 
 **Variant A — In activity widget.** Dev picked it on 2026-06-09. Keep the existing floating activity status as the affordance and add a small Stop icon button to it; no new persistent chrome introduced. Real implementation lives wherever the activity widget component already is in `apps/console/components/**`; the Stop click fires the cancel event from feature #1 of the agent-control brainstorm. Delete `stop-button.html` once the real Stop button ships in the activity widget.
+
+---
+
+## Question
+
+What should attaching context to a Thread look like, when GitHub repos are the special case that provisions a VM and everything else (Linear, Jira, Notion, Sentry) is read-only context the Gateway fetches? Part of the "conversation-before-VM" design.
+
+## Artifact
+
+`thread-resources.html` — three variants, switch via `?variant=A|B|C` or the floating bar / `←` `→`.
+
+## Variants
+
+- **A — Composer + “+” menu.** Chips above the textarea; a `+` popover lists connectors → resources (multi-select). Incremental, Claude.ai-style. Lowest build cost.
+- **B — Context side-rail.** A persistent right "Context" panel; resources as first-class rows grouped by connector; a dedicated Sandbox status card with the provisioning checklist. Best when resources carry metadata and the VM state deserves its own real estate.
+- **C — @-mention palette.** Inline `@` tokens in the composer + a fuzzy command palette across all connectors. Keyboard-first, scales to many connector types.
+
+All three encode the same rule: **the VM gate is programmatic — "Thread has ≥1 repo" → sandbox.** Read-only sources never provision. Provisioning checklist uses Tempo vocabulary (sandbox/agent), not "session"/"Claude Code".
+
+## Verdict
+
+_TBD — awaiting Dev._ Likely a mix ("affordance from X, list from Y").
+
+**Open data-model question this surfaced:** ship `threads.repos text[]` (repos-only — the only VM-relevant + only wired connector) in v1 with a universal-looking UI, OR go straight to a general `thread_resources` table. Recommend repos-backed v1; generalize storage when a second connector type actually attaches per-Thread (real second adapter, not hypothetical — CONTEXT §"one adapter is hypothetical").

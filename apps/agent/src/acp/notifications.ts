@@ -1,5 +1,6 @@
 import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { AgentEventRequest } from '@tempo/contracts/http';
+import { logger } from '../logger';
 
 type Event = AgentEventRequest['event'];
 
@@ -33,11 +34,10 @@ export class NotificationMapper {
 
       case 'tool_call': {
         const tool = (u.title || u.kind || 'tool').slice(0, 64);
+        const summary = summarizeInput(u.rawInput).slice(0, 200);
         this.toolNames.set(u.toolCallId, tool);
-        return [
-          ...this.flushText(),
-          { kind: 'agent_tool_use', tool, summary: summarizeInput(u.rawInput).slice(0, 200) },
-        ];
+        logger.info({ tool, summary }, 'tool: running');
+        return [...this.flushText(), { kind: 'agent_tool_use', tool, summary }];
       }
 
       case 'tool_call_update': {
@@ -46,6 +46,7 @@ export class NotificationMapper {
         // become user-visibly missed, add them here.
         const tool = this.toolNames.get(u.toolCallId) ?? 'tool';
         this.toolNames.delete(u.toolCallId);
+        logger.info({ tool, status: u.status }, 'tool: update');
         if (u.status !== 'failed') return [];
         return [{ kind: 'agent_tool_failed', tool }];
       }
@@ -92,9 +93,12 @@ export class NotificationMapper {
 
 function textEvent(r: { kind: TextKind; text: string }): Event {
   const text = r.text.slice(0, 8000);
-  return r.kind === 'narration'
-    ? { kind: 'agent_narration', text }
-    : { kind: 'agent_thought', text };
+  if (r.kind === 'narration') {
+    logger.info(`narration: ${text}`);
+    return { kind: 'agent_narration', text };
+  }
+  logger.info(`thinking: ${text}`);
+  return { kind: 'agent_thought', text };
 }
 
 function planStatus(s: string): 'pending' | 'in_progress' | 'completed' {

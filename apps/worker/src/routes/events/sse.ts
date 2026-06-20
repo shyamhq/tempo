@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { shouldDeliverToAgent } from '@tempo/contracts';
 import {
   clearPresent,
   publishPresence,
@@ -36,7 +37,13 @@ export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
   // sseStream returns a Web API Response; pipe its body to the Express response.
   // Last-Event-ID (sent automatically by the client on reconnect) resumes the
   // Redis stream from where it dropped instead of the live tail.
-  const webResponse = sseStream(threadId, req.header('Last-Event-ID'));
+  // Agents act only on wake + cancel — filter the rest server-side so a chatty
+  // turn's echoes don't stream back. Browsers render the whole Thread.
+  const webResponse = sseStream(
+    threadId,
+    req.header('Last-Event-ID'),
+    isAgent ? shouldDeliverToAgent : undefined,
+  );
   const body = webResponse.body;
   if (!body) {
     if (presenceTimer) clearInterval(presenceTimer);

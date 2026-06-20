@@ -75,6 +75,7 @@ export class AcpSession {
   // Handshake + create the conversation session. Returns once the adapter
   // has spun up its inner Claude Code SDK and is ready to receive prompts.
   async start(): Promise<void> {
+    logger.info('acp: starting new session (handshake + newSession)');
     const init = await this.conn.initialize({
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {
@@ -106,7 +107,7 @@ export class AcpSession {
       },
     });
     this.sessionId = session.sessionId;
-    logger.debug({ sessionId: this.sessionId }, 'acp: session created');
+    logger.info({ sessionId: this.sessionId }, 'acp: session ready');
   }
 
   // Send a single prompt and wait for the turn to settle.

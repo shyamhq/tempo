@@ -186,3 +186,11 @@ export function shouldWake(event: Event): boolean {
   }
   return true;
 }
+
+// The only frames an Agent runtime acts on: human wake events + the Stop
+// signal. The Worker filters Agent connections with this so plan edits,
+// presence, and the Agent's own echoes never ship; browsers get everything.
+export function shouldDeliverToAgent(event: Event | PresenceSignal): boolean {
+  if (event.kind === 'presence') return false;
+  return shouldWake(event) || event.kind === 'agent_cancel_requested';
+}

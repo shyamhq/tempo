@@ -181,6 +181,7 @@ function MessageRow({
         <time
           dateTime={message.created_at}
           className="text-micro font-normal text-ink-tertiary tabular-nums"
+          suppressHydrationWarning // locale-dependent time differs server vs client
         >
           {formatTime(message.created_at)}
         </time>
