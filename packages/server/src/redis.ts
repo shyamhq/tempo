@@ -136,7 +136,7 @@ const TURN_LOCK_PREFIX = 'tempo:turnlock:';
 // for the worst case — MAX_STEPS_PER_TURN (50) steps fanning out to web search /
 // fetch tools — so a slow-but-live turn never has its lock expire under it,
 // which would let a second container start a duplicate turn.
-export const TURN_LOCK_TTL_SEC = 300;
+const TURN_LOCK_TTL_SEC = 300;
 function turnLockKey(threadId: string): string {
   return `${TURN_LOCK_PREFIX}${threadId}`;
 }

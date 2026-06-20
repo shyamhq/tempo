@@ -4,9 +4,13 @@ import { provision, type VmRun } from '../vm/provision';
 import { teardown } from '../vm/teardown';
 
 // Single-process Hosted lifecycle manager. No NOTIFY, no LISTEN, no
-// auto-spawn — VMs are created by an explicit user click on the Console
-// (POST /api/hosted/wake). This module only tracks live Sandboxes, arms
-// the wallclock timer, and reaps on shutdown.
+// auto-spawn — VMs are created by a wake POST (/api/hosted/wake). This module
+// tracks the Sandboxes THIS process spawned, refreshes their E2B wallclock on
+// activity, and reaps them on inactivity or shutdown. There is deliberately no
+// boot orphan-sweep: in multi-container it would close sibling containers' live
+// vm_runs on every deploy. Cross-container liveness is the DB heartbeat
+// (touchVmRun) + lazy reapStaleVmRun before spawn, with E2B's wallclock as the
+// backstop that actually kills the sandbox.
 
 const log = logger.child({ module: 'supervisor' });
 
@@ -111,11 +115,4 @@ async function reap(threadId: string, reason: string): Promise<void> {
 export async function stopSupervisor(): Promise<void> {
   stopped = true;
   await Promise.all(Array.from(live.keys()).map((tid) => reap(tid, 'worker_shutdown')));
-}
-
-export async function startSupervisor(): Promise<void> {
-  // Boot orphan-sweep deleted: in multi-container it would close sibling
-  // containers' live `vm_runs` on every deploy. Liveness is now the heartbeat
-  // (touchVmRun) + lazy reapStaleVmRun before spawn, with E2B's wallclock as the
-  // backstop that actually kills the sandbox.
 }

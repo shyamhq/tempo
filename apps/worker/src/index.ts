@@ -5,7 +5,7 @@ import type { ErrorRequestHandler } from 'express';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectWorkspaceAgent } from './auth';
 import { env } from './env';
-import { startSupervisor, stopSupervisor } from './hosted/supervisor';
+import { stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
 import { agentEventsHandler } from './routes/agent-events/index';
@@ -118,12 +118,6 @@ app.use(errorHandler);
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'worker started');
-  // Boot orphan-sweep removed (multi-container — heartbeat + lazy reap handle
-  // orphans now). Kept as a fire-and-forget hook so future boot-time supervisor
-  // setup has a home; failure logs but doesn't block readiness.
-  void startSupervisor().catch((err) =>
-    logger.warn({ err }, 'supervisor: boot init failed (continuing)'),
-  );
 });
 
 // Graceful shutdown — drain HTTP first, then end the pg pool. Reverse order

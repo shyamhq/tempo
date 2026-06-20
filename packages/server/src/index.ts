@@ -21,7 +21,6 @@ export {
   refreshPresent,
   releaseTurnLock,
   setPresent,
-  TURN_LOCK_TTL_SEC,
 } from './redis';
 export * from './replies';
 export * from './threads';
