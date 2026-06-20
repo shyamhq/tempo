@@ -10,12 +10,15 @@ type StreamReadReply = [key: string, entries: [id: string, fields: string[]][]][
 // XREAD BLOCK. Full Thread state loads separately (GET /api/threads/:id); this
 // only delivers what arrives after subscribe. An idle stream issues zero DB
 // queries — it blocks on Redis.
-export function sseStream(threadId: string): Response {
+//
+// `lastEventId` (the client's Last-Event-ID header on reconnect) resumes from
+// that Redis entry; absent, the stream starts from the live tail ($).
+export function sseStream(threadId: string, lastEventId?: string): Response {
   const encoder = new TextEncoder();
   const reader = createReader();
   const key = streamKey(threadId);
   let closed = false;
-  let lastId = '$';
+  let lastId = lastEventId ?? '$';
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -46,7 +49,10 @@ export function sseStream(threadId: string): Response {
           for (const [id, fields] of entries) {
             lastId = id;
             const event = parseStreamEvent(fields);
-            if (event) enqueue(`event: ${event.kind}\ndata: ${JSON.stringify(event)}\n\n`);
+            // `id:` lets the client resume via Last-Event-ID; no `event:` field —
+            // consumers route on the parsed `data.kind`, so every frame is a
+            // default `message` event the `eventsource` package surfaces.
+            if (event) enqueue(`id: ${id}\ndata: ${JSON.stringify(event)}\n\n`);
           }
         }
       } catch {
@@ -66,12 +72,7 @@ export function sseStream(threadId: string): Response {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no',
-    },
-  });
+  // Just a body carrier — the only caller (Worker sse.ts) reads `.body` and sets
+  // the SSE headers on its own Express response, so headers here would be dead.
+  return new Response(stream);
 }

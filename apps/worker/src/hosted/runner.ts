@@ -19,7 +19,7 @@ import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
-import { wakeEvents } from './event-source';
+import { runWakeSubscriber } from './event-source';
 import { buildAnthropicProvider, turnPath } from './helicone';
 import { HOSTED_SYSTEM_PROMPT } from './prompt-hosted';
 
@@ -367,24 +367,22 @@ async function main(): Promise<void> {
     resolve?.();
   };
 
-  // ONE consumer of the SSE feed for the runner's lifetime. A single for-await
-  // is never two concurrent reads — and it IS the interrupt mechanism: a wake
-  // aborts the running turn (the loop re-prompts with it) or wakes the idle
-  // loop. Same shape as the local CLI's connect loop.
-  const consume = (async () => {
-    for await (const ev of wakeEvents(
-      env.workerMcpUrl,
-      env.threadId,
-      env.hostedToken,
-      sseController.signal,
-    )) {
+  // ONE consumer of the SSE feed for the runner's lifetime. It IS the interrupt
+  // mechanism: a wake aborts the running turn (the loop re-prompts with it) or
+  // wakes the idle loop. Same shape as the local CLI's connect loop.
+  const consume = runWakeSubscriber({
+    workerUrl: env.workerMcpUrl,
+    threadId: env.threadId,
+    token: env.hostedToken,
+    signal: sseController.signal,
+    onWake: (ev) => {
       bufferedWakeEvents.push(ev);
       // Both no-ops in the off case: abort() does nothing on a settled
       // controller (between turns); notify() does nothing mid-turn (no waiter).
       turnController.abort();
       notify();
-    }
-  })();
+    },
+  });
 
   let turnCounter = 0;
   let lastActivity = Date.now();

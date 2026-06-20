@@ -87,6 +87,13 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
     });
 
   // Tail the Worker SSE feed for wake events. Runs until subAbort fires.
+  //
+  // ponytail: turn-1 catch-up comes from /access; the subscriber then tails the
+  // live SSE tail ($). A human event landing in the sub-second window between
+  // the /access read and the subscriber's first connect is missed — browsers
+  // refetch full state on reconnect to close this, agents don't. Accepted: the
+  // window is tiny and one-time per `connect`. Upgrade path if it ever bites:
+  // subscribe-first, then drop buffered events at/below an /access watermark id.
   const subscriber = runWakeSubscriber({
     threadId,
     workerUrl: creds.worker_url,

@@ -39,7 +39,7 @@
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.48.0",
     "@agentclientprotocol/sdk": "^0.28.1",
-    "eventsource-parser": "^3.1.0",
+    "@tempo/sse-client": "workspace:*",
     "open": "^11.0.0",
     "proper-lockfile": "^4.1.2"
   }

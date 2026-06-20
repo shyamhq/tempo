@@ -88,25 +88,36 @@ export function parseStreamEvent(fields: string[]): Event | PresenceSignal | nul
 }
 
 // --- Presence: "is the agent's SSE connection live" -----------------------
-// The Worker setPresent()s on an agent SSE connect, refreshPresent()s on the
-// ping, and clearPresent()s on close. The TTL is the abrupt-disconnect safety
-// net — no goodbye is ever trusted.
+// The Worker setPresent()s on an agent SSE connect (with a per-connection
+// nonce), refreshPresent()s on a timer, and clearPresent()s on close. The TTL
+// is the abrupt-disconnect safety net — no goodbye is ever trusted. The nonce
+// keeps overlapping connections honest: a stale connection's late close can't
+// evict a newer connection's presence.
 function presenceKey(threadId: string): string {
   return `${PRESENCE_PREFIX}${threadId}`;
 }
 
-export async function setPresent(threadId: string): Promise<void> {
-  await redis().set(presenceKey(threadId), '1', 'EX', PRESENCE_TTL_SEC);
+export async function setPresent(threadId: string, nonce: string): Promise<void> {
+  await redis().set(presenceKey(threadId), nonce, 'EX', PRESENCE_TTL_SEC);
 }
 
+// EXPIRE (not SET) so a refresh only bumps the TTL and never overwrites the
+// owning nonce — a stale connection's refresh keeps the live one's key alive
+// rather than stealing it. (SET here would re-introduce the clobber this nonce
+// scheme fixes. The 15s refresh vs 45s TTL margin means a live connection never
+// lets the key lapse, so EXPIRE never no-ops in practice.)
 export async function refreshPresent(threadId: string): Promise<void> {
-  // SET (not EXPIRE) so it self-heals if the key lapsed between connect and the
-  // first refresh (e.g. a brief Worker restart) — EXPIRE no-ops on a missing key.
-  await redis().set(presenceKey(threadId), '1', 'EX', PRESENCE_TTL_SEC);
+  await redis().expire(presenceKey(threadId), PRESENCE_TTL_SEC);
 }
 
-export async function clearPresent(threadId: string): Promise<void> {
-  await redis().del(presenceKey(threadId));
+// Compare-and-delete: clears the key only if it still holds our nonce, so an
+// old connection's close can't evict a newer one. Returns true iff this call
+// actually removed the key (i.e. we were the live owner) — the caller pushes
+// the offline frame only then.
+const CLEAR_IF_OWNER = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`;
+export async function clearPresent(threadId: string, nonce: string): Promise<boolean> {
+  const deleted = (await redis().eval(CLEAR_IF_OWNER, 1, presenceKey(threadId), nonce)) as number;
+  return deleted === 1;
 }
 
 export async function isPresent(threadId: string): Promise<boolean> {

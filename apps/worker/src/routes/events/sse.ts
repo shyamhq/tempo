@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   clearPresent,
   publishPresence,
@@ -19,10 +20,13 @@ const PRESENCE_REFRESH_MS = 15_000;
 export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
   const threadId = req.params.id;
   const isAgent = req.caller.kind === 'cli' || req.caller.kind === 'hosted';
+  // Identifies THIS connection's ownership of the presence key, so a stale
+  // connection's close can't clear a newer one's presence.
+  const nonce = randomUUID();
 
   let presenceTimer: ReturnType<typeof setInterval> | null = null;
   if (isAgent) {
-    void setPresent(threadId).catch(() => {});
+    void setPresent(threadId, nonce).catch(() => {});
     void publishPresence(threadId, true).catch(() => {});
     presenceTimer = setInterval(() => {
       void refreshPresent(threadId).catch(() => {});
@@ -30,7 +34,9 @@ export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
   }
 
   // sseStream returns a Web API Response; pipe its body to the Express response.
-  const webResponse = sseStream(threadId);
+  // Last-Event-ID (sent automatically by the client on reconnect) resumes the
+  // Redis stream from where it dropped instead of the live tail.
+  const webResponse = sseStream(threadId, req.header('Last-Event-ID'));
   const body = webResponse.body;
   if (!body) {
     if (presenceTimer) clearInterval(presenceTimer);
@@ -63,8 +69,11 @@ export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
     reader.cancel();
     if (isAgent) {
       if (presenceTimer) clearInterval(presenceTimer);
-      void clearPresent(threadId).catch(() => {});
-      void publishPresence(threadId, false).catch(() => {});
+      // Only push the offline frame if we still owned the key — a reconnect may
+      // have already taken over presence on a fresher connection.
+      void clearPresent(threadId, nonce)
+        .then((wasOwner) => (wasOwner ? publishPresence(threadId, false) : undefined))
+        .catch(() => {});
     }
   });
   pump();

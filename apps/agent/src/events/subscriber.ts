@@ -1,11 +1,6 @@
 import { type Event, shouldWake } from '@tempo/contracts';
-import { EventSourceParserStream } from 'eventsource-parser/stream';
+import { subscribeToEvents } from '@tempo/sse-client';
 import { logger } from '../logger';
-
-const RECONNECT_DELAY_MS = 1000;
-// Back off harder on auth failures so a persistently-rejected token doesn't
-// hammer the Worker (and the refresh endpoint behind it) every second.
-const AUTH_RETRY_DELAY_MS = 5000;
 
 export interface WakeSubscriberOptions {
   threadId: string;
@@ -30,82 +25,32 @@ export interface WakeSubscriberOptions {
 //   human wake (shouldWake)          -> onWake
 //   agent_cancel_requested (Stop)    -> onCancel
 //   anything else (our own echoes)   -> ignored
-// Reconnects on drop until the signal aborts; resolves once stopped.
-export async function runWakeSubscriber(opts: WakeSubscriberOptions): Promise<void> {
-  const url = `${opts.workerUrl}/api/threads/${opts.threadId}/events`;
-
-  while (!opts.signal.aborted) {
-    try {
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${opts.getToken()}` },
-        signal: opts.signal,
-      });
-
-      if (res.status === 401) {
-        opts.onAuthError();
-        await delay(AUTH_RETRY_DELAY_MS, opts.signal);
-        continue;
-      }
-      if (!res.ok || !res.body) {
-        logger.debug({ status: res.status }, 'wake-sse: bad response, retrying');
-      } else {
-        opts.onConnected?.();
-        const frames = res.body
-          .pipeThrough(new TextDecoderStream())
-          .pipeThrough(new EventSourceParserStream());
-        for await (const frame of frames) {
-          // One malformed frame must not tear down the whole connection — skip it.
-          try {
-            dispatch(frame.data, opts);
-          } catch (err) {
-            logger.debug({ err }, 'wake-sse: bad frame, skipping');
-          }
-        }
-        // Stream ended (server closed / network) — fall through to reconnect.
-      }
-    } catch (err) {
-      if (opts.signal.aborted) break;
-      logger.debug({ err }, 'wake-sse: connection error, retrying');
-    }
-    await delay(RECONNECT_DELAY_MS, opts.signal);
-  }
+// The transport (@tempo/sse-client) reconnects on drop natively; the signal
+// stops it (the returned promise resolves once aborted).
+export function runWakeSubscriber(opts: WakeSubscriberOptions): Promise<void> {
+  return new Promise((resolve) => {
+    subscribeToEvents({
+      url: `${opts.workerUrl}/api/threads/${opts.threadId}/events`,
+      getToken: opts.getToken,
+      onMessage: (d) => dispatch(d, opts),
+      onOpen: () => opts.onConnected?.(),
+      onError: (code) => {
+        if (code === 401) opts.onAuthError();
+        else logger.debug({ code }, 'wake-sse: connection error, retrying');
+      },
+      signal: opts.signal,
+    });
+    opts.signal.addEventListener('abort', () => resolve(), { once: true });
+  });
 }
 
-// Parse one SSE data payload and route it. Exported for unit testing.
+// Route one parsed event. Exported for unit testing — pure, no I/O.
 export function dispatch(
-  data: string,
+  event: unknown,
   handlers: Pick<WakeSubscriberOptions, 'onWake' | 'onCancel'>,
 ): void {
-  const event = parseEvent(data);
-  if (!event) return;
-  if (event.kind === 'agent_cancel_requested') handlers.onCancel();
-  else if (shouldWake(event)) handlers.onWake(event);
-}
-
-export function parseEvent(data: string): Event | null {
-  try {
-    return JSON.parse(data) as Event;
-  } catch {
-    return null;
-  }
-}
-
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(t);
-      resolve();
-    };
-    // Remove the listener on the normal-timeout path so reconnect cycles don't
-    // accumulate abort listeners on the long-lived signal.
-    const t = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
+  const ev = event as Event;
+  if (!ev?.kind) return;
+  if (ev.kind === 'agent_cancel_requested') handlers.onCancel();
+  else if (shouldWake(ev)) handlers.onWake(ev);
 }

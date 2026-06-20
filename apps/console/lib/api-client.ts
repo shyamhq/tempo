@@ -308,10 +308,9 @@ export function workerApi(getToken: () => Promise<string | null>) {
   };
 }
 
-// Convenience: the Worker SSE URL for use with fetchEventSource.
-// The server subscribes from the live tail ($) — no cursor param; events
-// that arrive during a disconnect gap are recovered via full-state refetch
-// on reconnect (see use-thread-events.ts).
+// Convenience: the Worker SSE URL for the @tempo/sse-client subscription.
+// The server tails from the live tail ($), or resumes from the client's
+// Last-Event-ID on reconnect — no cursor param (see use-thread-events.ts).
 export function workerEventsUrl(threadId: string): string {
   return `${WORKER_URL}/api/threads/${threadId}/events`;
 }
