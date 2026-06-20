@@ -101,6 +101,22 @@ export const AgentCancelRequestedEvent = eventBase.extend({
   kind: z.literal('agent_cancel_requested'),
 });
 
+// Dev attached (or changed) the repo list for this Thread. Wakes the Agent
+// so it can acknowledge the new context. repos is the full updated list.
+export const RepoLinkedEvent = eventBase.extend({
+  kind: z.literal('repo_linked'),
+  repos: z.array(z.string()),
+});
+
+// Emitted by the Worker / runner to track VM provisioning steps. Browser-only
+// — never delivered to the Agent and never wakes it. `reason` carries a human-
+// readable description only on the `failed` step.
+export const VmProgressEvent = eventBase.extend({
+  kind: z.literal('vm_progress'),
+  step: z.enum(['sandbox_ready', 'repos_cloned', 'agent_started', 'failed']),
+  reason: z.string().optional(),
+});
+
 // Ephemeral SSE-only frame (NOT a persisted Event): the Worker XADDs it to the
 // thread stream when an agent's SSE connection opens/closes so browsers flip the
 // presence chip instantly. Never written to Postgres or the trail.
@@ -128,6 +144,8 @@ export const Event = z.discriminatedUnion('kind', [
   DiscussionMessagePostedEvent,
   ThreadRenamedEvent,
   AgentCancelRequestedEvent,
+  RepoLinkedEvent,
+  VmProgressEvent,
 ]);
 export type Event = z.infer<typeof Event>;
 
@@ -149,6 +167,8 @@ export const EventKind = z.enum([
   'discussion_message_posted',
   'thread_renamed',
   'agent_cancel_requested',
+  'repo_linked',
+  'vm_progress',
 ]);
 export type EventKind = z.infer<typeof EventKind>;
 
@@ -176,6 +196,7 @@ const WAKE_KINDS: ReadonlySet<EventKind> = new Set<EventKind>([
   'comment_added',
   'reply_added',
   'discussion_message_posted',
+  'repo_linked',
 ]);
 
 export function shouldWake(event: Event): boolean {
@@ -189,8 +210,11 @@ export function shouldWake(event: Event): boolean {
 
 // The only frames an Agent runtime acts on: human wake events + the Stop
 // signal. The Worker filters Agent connections with this so plan edits,
-// presence, and the Agent's own echoes never ship; browsers get everything.
+// presence, the Agent's own echoes, and browser-only provisioning frames
+// never ship; browsers get everything.
 export function shouldDeliverToAgent(event: Event | PresenceSignal): boolean {
   if (event.kind === 'presence') return false;
+  // vm_progress is browser-only: provisioning status for the UI checklist.
+  if (event.kind === 'vm_progress') return false;
   return shouldWake(event) || event.kind === 'agent_cancel_requested';
 }

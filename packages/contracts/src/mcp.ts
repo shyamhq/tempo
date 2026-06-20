@@ -62,12 +62,16 @@ export const PostReplyOutput = z.object({
 // questions (server assigns ids on insert), attachments, or any combination.
 // Server-side rules: only the Agent may set `questions`; a message with no
 // text, no questions, and no attachments is rejected.
+// `repos` is Dev-only (enforced server-side by an author-role check, exactly
+// as `questions` is Agent-only today). It is intentionally absent from the MCP
+// tool description so the Agent never learns about or attempts to set it.
 export const PostDiscussionMessageInput = z
   .object({
     text: z.string().min(1).max(8_000).optional(),
     questions: z.array(QuestionInput).min(1).max(10).optional(),
     attachments: z.array(AttachmentId).max(8).default([]),
     mentions: z.array(Mention).optional(),
+    repos: z.array(z.string().regex(/^[^/\s]+\/[^/\s]+$/)).max(10).optional(),
   })
   .refine((m) => m.text !== undefined || m.questions !== undefined || m.attachments.length > 0, {
     message: 'message must carry text, questions, attachments, or any combination',

@@ -29,6 +29,8 @@ export const CreateThreadRequest = z.object({
   description: z.string().max(10_000),
   space_id: SpaceId,
   agent_type: AgentType,
+  // GitHub repos to associate with this Thread in `owner/name` form.
+  repos: z.array(z.string().regex(/^[^/\s]+\/[^/\s]+$/)).max(10).default([]),
 });
 export const CreateThreadResponse = z.object({
   thread: ThreadSummary,
@@ -304,7 +306,14 @@ const TurnHydrationMessage = z.object({
   mentions: z.array(Mention).nullable(),
 });
 export const TurnHydration = z.object({
-  thread: z.object({ title: z.string(), description: z.string().nullable() }),
+  thread: z.object({
+    title: z.string(),
+    description: z.string().nullable(),
+    // Repos attached to this Thread in `owner/name` form. Empty means no VM
+    // will be provisioned; the Agent sees this at Turn 1 so it knows whether
+    // repo I/O is available.
+    repos: z.array(z.string()),
+  }),
   plan: z.object({ blocks: z.array(AgentBlock) }),
   comments: z.array(TurnHydrationComment),
   discussion: z.object({ messages: z.array(TurnHydrationMessage) }),
