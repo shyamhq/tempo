@@ -12,6 +12,7 @@ import {
   AttachmentThumbnails,
   useAttachmentSurface,
 } from '@/components/thread/attachments/attachment-tray';
+import { ThreadContextBar } from '@/components/thread/thread-context-bar';
 import type { PendingAttachment } from '@/hooks/use-attachment-uploader';
 import { useWorkerApi } from '@/hooks/use-worker-api';
 import { ApiError, api } from '@/lib/api-client';
@@ -58,6 +59,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
   const [error, setError] = useState<string | null>(null);
   const [agentType, setAgentType] = useState<AgentType>('hosted');
   const [pending, setPending] = useState<Pending[]>([]);
+  const [repos, setRepos] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Track every blob: URL we mint so revoke runs on remove and on unmount.
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
@@ -151,6 +153,7 @@ export function NewThreadCompose({ space }: { space: Space }) {
         description: '',
         space_id: space.id,
         agent_type: agentType,
+        repos,
       });
       // Sequential init + PUT per pending file. All-or-nothing for v1:
       // a failure here surfaces as the same error toast as a failed
@@ -272,6 +275,11 @@ export function NewThreadCompose({ space }: { space: Space }) {
                 onClick={submit}
               />
             </div>
+            {/* Thread-context bar — below the composer textarea, thread-scoped.
+                Only shown when hosting a Hosted agent (repos gate the VM). */}
+            {agentType === 'hosted' ? (
+              <ThreadContextBar repos={repos} onReposChange={setRepos} disabled={isSubmitting} />
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2 justify-center mt-[18px]">

@@ -25,6 +25,7 @@ export async function createThread(
   title: string,
   description: string,
   agent_type: AgentType,
+  repos: string[] = [],
 ): Promise<{ thread: ThreadSummary; connect_token: string }> {
   // 24 random bytes = 32 url-safe base64 chars (no padding).
   const token = `tmp_${randomBytes(24).toString('base64url')}`;
@@ -44,6 +45,7 @@ export async function createThread(
       connect_token: token,
       agent_type,
       sort_order,
+      repos,
     });
     await tx.insert(plans).values({ id: newPlanId(), thread_id: id });
   });
@@ -60,6 +62,19 @@ export async function getConnectToken(threadId: string): Promise<{ connect_token
   return { connect_token: row.connect_token };
 }
 
+// A repo-less Hosted Thread runs its conversation in-process (no VM, no Redis
+// presence write), so it is "present" by construction. Mirror that on the read
+// path: trust Redis when it says present; otherwise a Hosted Thread with no
+// repos is still present. Local Threads and repo-backed Hosted Threads depend
+// solely on the live SSE-connection presence in Redis.
+export function resolveAgentPresent(
+  agentType: AgentType,
+  repos: string[],
+  redisPresent: boolean,
+): boolean {
+  return redisPresent || (agentType === 'hosted' && repos.length === 0);
+}
+
 export async function listThreads(workspaceId: string, spaceId?: string) {
   const filter = spaceId
     ? sql`t.workspace_id = ${workspaceId} AND t.space_id = ${spaceId}`
@@ -70,8 +85,9 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     description: string;
     agent_type: 'local' | 'hosted';
     updated_at: Date | null;
+    repos: string[];
   }>(sql`
-    SELECT t.id, t.title, t.description, t.agent_type, t.updated_at
+    SELECT t.id, t.title, t.description, t.agent_type, t.updated_at, t.repos
     FROM threads t
     WHERE ${filter}
     ORDER BY t.updated_at DESC
@@ -83,7 +99,7 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     description: r.description,
     agent_type: r.agent_type,
     updated_at: r.updated_at?.toISOString() ?? null,
-    agent_present: present.get(r.id) ?? false,
+    agent_present: resolveAgentPresent(r.agent_type, r.repos, present.get(r.id) ?? false),
   }));
 }
 

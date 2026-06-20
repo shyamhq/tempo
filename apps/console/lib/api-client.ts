@@ -39,6 +39,21 @@ import { z } from 'zod';
 const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 const OkResponse = z.object({ ok: z.literal(true) });
 
+// Console-internal response schemas (not in @tempo/contracts).
+export const GithubReposResponse = z.object({
+  repos: z.array(
+    z.object({
+      full_name: z.string(),
+      private: z.boolean(),
+      description: z.string().nullable(),
+      default_branch: z.string(),
+    }),
+  ),
+});
+export type GithubRepo = z.infer<typeof GithubReposResponse>['repos'][number];
+
+const ThreadReposResponse = z.object({ repos: z.array(z.string()) });
+
 // Workspace identity is read client-side from Clerk's hooks
 // (`useOrganization`, `useOrganizationList`). Schemas below cover routes that
 // hit our DB or the Clerk admin SDK — not data already available client-side.
@@ -257,6 +272,20 @@ export const api = {
 
   disconnectConnector: (id: string) =>
     request('DELETE', `/api/connectors/${encodeURIComponent(id)}`, undefined, ConnectorOkResponse),
+
+  // Returns all GitHub repos accessible to the workspace's App installation.
+  // Returns { repos: [] } when GitHub is not connected.
+  listGithubRepos: () =>
+    request('GET', '/api/connectors/github/repos', undefined, GithubReposResponse),
+
+  // Returns the thread's current attached repos (["owner/name", ...]).
+  getThreadRepos: (threadId: string) =>
+    request(
+      'GET',
+      `/api/threads/${encodeURIComponent(threadId)}/repos`,
+      undefined,
+      ThreadReposResponse,
+    ),
 };
 
 // ---------------------------------------------------------------------------

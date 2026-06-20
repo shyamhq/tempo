@@ -38,6 +38,38 @@ const EMPTY_ACTIVITY: LiveActivity = {
 
 export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
 
+// ---------------------------------------------------------------------------
+// Provisioning state — populated by vm_progress SSE events (browser-only).
+// Steps accumulate in order: sandbox_ready → repos_cloned → agent_started.
+// `failed` is terminal and carries an optional reason.
+// ---------------------------------------------------------------------------
+
+export type ProvisioningStep = {
+  step: 'sandbox_ready' | 'repos_cloned' | 'agent_started' | 'failed';
+  reason?: string;
+};
+
+export type ProvisioningState = {
+  steps: ProvisioningStep[];
+};
+
+const EMPTY_PROVISIONING: ProvisioningState = { steps: [] };
+
+export const provisioningKey = (threadId: string) => ['thread', threadId, 'provisioning'] as const;
+
+// Cache-only read of the current VM provisioning checklist state.
+// SSE writes it via `setQueryData`; this hook never fetches.
+export function useProvisioningState(threadId: string): ProvisioningState {
+  const { data } = useQuery<ProvisioningState>({
+    queryKey: provisioningKey(threadId),
+    queryFn: () => EMPTY_PROVISIONING,
+    initialData: EMPTY_PROVISIONING,
+    staleTime: Infinity,
+    enabled: false,
+  });
+  return data ?? EMPTY_PROVISIONING;
+}
+
 // Cache-only read of the current "Agent activity" group: latest TodoWrite plus
 // the activity entries (tool calls + narration) accumulated since the most
 // recent Dev Discussion Message. SSE writes the value via `setQueryData`;
@@ -218,6 +250,13 @@ function apply(
   if (ev.kind === 'thread_renamed') {
     qc.invalidateQueries({ queryKey: ['space-threads'] });
   }
+
+  // repo_linked means the server has updated threads.repos — invalidate the
+  // composer's repo query so the thread-context bar reflects the new list
+  // immediately without a manual refetch.
+  if (ev.kind === 'repo_linked') {
+    qc.invalidateQueries({ queryKey: ['thread-repos', threadId] });
+  }
 }
 
 // Append one activity entry and mark the turn active. Used by every
@@ -301,6 +340,21 @@ function applyLiveActivity(
       if (ev.reply.author_user_id !== null) {
         qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
       }
+      return;
+    case 'vm_progress':
+      qc.setQueryData<ProvisioningState>(provisioningKey(threadId), (prev) => {
+        const base = prev ?? EMPTY_PROVISIONING;
+        // sandbox_ready signals the start of a new provisioning cycle — reset
+        // any stale steps so the checklist always shows the current run.
+        if (ev.step === 'sandbox_ready') {
+          return { steps: [{ step: 'sandbox_ready' }] };
+        }
+        // Deduplicate: a retry or replay may re-deliver the same step.
+        if (base.steps.some((s) => s.step === ev.step)) return base;
+        return {
+          steps: [...base.steps, { step: ev.step, ...(ev.reason ? { reason: ev.reason } : {}) }],
+        };
+      });
       return;
   }
 }

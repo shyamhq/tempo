@@ -8,16 +8,33 @@ import { listCommentsForThread } from './comments';
 import { listMessagesForThread } from './discussion';
 import { getPlanBlocks } from './plan';
 
+// A VM is "live" only while its heartbeat is fresh. The window is ~2× the E2B
+// sandbox idle timeout (10 min in the supervisor), not 1×: a live VM's
+// heartbeat can lag during a long single tool call, so a 1× window would reap a
+// VM that is genuinely working. 2× absorbs that lag while still closing a true
+// corpse within one idle window of slack.
+export const HOSTED_HEARTBEAT_STALE_MS = 20 * 60 * 1000;
+
 // Hosted Agent runtime helpers — used by the Worker's wake/drain routes and
 // the Console state endpoint. Per-Thread `agent_type` decides the runtime;
 // no workspace-level gate. Hosted Threads auto-spawn a Sandbox when a
 // wake-eligible event lands (event-log.ts post-hook fires the wake), and the
 // "Run Hosted Agent" button is the manual fallback for dead VMs.
 
-// Hosted state snapshot for the Console card: live VM metadata, or null if
-// no Sandbox is currently provisioned.
-// ponytail: vm.ended_at is wallclock-updated by the supervisor; a Worker
-// crash leaves the row open. Add a heartbeat / TTL column when the gap bites.
+// SQL freshness floor: a row is live only if its heartbeat (last_seen_at), or
+// its started_at when no heartbeat has landed yet, is newer than this. Computed
+// from the JS constant so the boundary is defined in exactly one place.
+const freshnessFloor = sql`now() - (${HOSTED_HEARTBEAT_STALE_MS}::double precision / 1000) * interval '1 second'`;
+
+// Predicate for "this open row's heartbeat is still fresh." A null last_seen_at
+// (first heartbeat not yet written) falls back to started_at so a just-spawned
+// VM isn't treated as dead before its first touch.
+const heartbeatFresh = sql`coalesce(${vm_runs.last_seen_at}, ${vm_runs.started_at}) >= ${freshnessFloor}`;
+
+// Hosted state snapshot for the Console card: live VM metadata, or null when no
+// Sandbox is currently live. "Live" requires an open row (ended_at IS NULL) AND
+// a fresh heartbeat — a phantom open row whose heartbeat has lapsed reports null
+// here, so it never shows a ghost VM or blocks a wake (the spawn path reaps it).
 export async function getHostedState(
   threadId: string,
 ): Promise<{ vm: { sandbox_id: string; started_at: string } | null }> {
@@ -27,11 +44,39 @@ export async function getHostedState(
       started_at: vm_runs.started_at,
     })
     .from(vm_runs)
-    .where(and(eq(vm_runs.thread_id, threadId), isNull(vm_runs.ended_at)))
+    .where(and(eq(vm_runs.thread_id, threadId), isNull(vm_runs.ended_at), heartbeatFresh))
     .orderBy(desc(vm_runs.started_at))
     .limit(1);
   if (!row?.sandbox_id) return { vm: null };
   return { vm: { sandbox_id: row.sandbox_id, started_at: row.started_at.toISOString() } };
+}
+
+// Heartbeat touch: any container with activity on this thread's VM bumps
+// last_seen_at on the open row, keeping it inside the freshness window.
+export async function touchVmRun(threadId: string): Promise<void> {
+  await db
+    .update(vm_runs)
+    .set({ last_seen_at: sql`now()` })
+    .where(and(eq(vm_runs.thread_id, threadId), isNull(vm_runs.ended_at)));
+}
+
+// Lazy reap: close an open row whose heartbeat has lapsed. CRITICAL — the WHERE
+// clause carries the freshness predicate (ended_at IS NULL AND heartbeat stale),
+// never ended_at IS NULL alone: an unconditional close would re-create the
+// sibling-killing boot sweep we deleted, killing a live VM on another container.
+// Run by the spawn path before its INSERT so the partial unique index can never
+// permanently wedge a thread on a corpse row.
+export async function reapStaleVmRun(threadId: string): Promise<void> {
+  await db
+    .update(vm_runs)
+    .set({ ended_at: sql`now()`, exit_reason: 'orphaned_stale' })
+    .where(
+      and(
+        eq(vm_runs.thread_id, threadId),
+        isNull(vm_runs.ended_at),
+        sql`coalesce(${vm_runs.last_seen_at}, ${vm_runs.started_at}) < ${freshnessFloor}`,
+      ),
+    );
 }
 
 // True when a Sandbox is already alive for this thread — the wake endpoint
@@ -50,6 +95,7 @@ export async function getTurnHydration(threadId: string): Promise<TurnHydration 
     .select({
       title: threads.title,
       description: threads.description,
+      repos: threads.repos,
     })
     .from(threads)
     .where(eq(threads.id, threadId))

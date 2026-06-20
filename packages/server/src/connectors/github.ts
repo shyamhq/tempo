@@ -45,7 +45,7 @@ function getApp(): App {
 
 // --- Installation resolution -----------------------------------------------
 
-async function getInstallationOctokit(workspaceId: string) {
+async function resolveInstallationId(workspaceId: string): Promise<number> {
   const cfg = await getConnectorConfig(workspaceId, 'github');
   const installationId = cfg?.installation_id;
   if (
@@ -55,7 +55,25 @@ async function getInstallationOctokit(workspaceId: string) {
   ) {
     throw new Error('github is not connected for this workspace');
   }
-  return getApp().getInstallationOctokit(installationId);
+  return installationId;
+}
+
+async function getInstallationOctokit(workspaceId: string) {
+  return getApp().getInstallationOctokit(await resolveInstallationId(workspaceId));
+}
+
+// The raw installation access token — for callers that need the bearer string
+// itself (the provisioner passes it into the sandbox to clone repos), not an
+// Octokit. `app.octokit.auth({ type: 'installation' })` runs the App's auth-app
+// strategy and returns the freshly-minted (or cached) installation token; the
+// token is ~1h TTL, so callers must mint immediately before use.
+export async function getInstallationToken(
+  workspaceId: string,
+): Promise<{ token: string; expiresAt: string }> {
+  const installationId = await resolveInstallationId(workspaceId);
+  const auth = await getApp().octokit.auth({ type: 'installation', installationId });
+  const { token, expiresAt } = auth as { token: string; expiresAt: string };
+  return { token, expiresAt };
 }
 
 // --- Public API ------------------------------------------------------------

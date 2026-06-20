@@ -1,7 +1,6 @@
 import { TempoError } from '@tempo/errors';
-import { insertAuditRow, isConnectorEnabled } from '@tempo/server';
+import { assertConnectorEnabled, insertAuditRow } from '@tempo/server';
 import { summarize } from './audit';
-import { ConnectorNotEnabledError } from './errors';
 
 // The governance core every connector tool flows through: allowlist gate →
 // execute → audit. Deliberately free of the auth / env / db-client import chain
@@ -14,15 +13,6 @@ export type ConnectorCallContext = { threadId: string; workspaceId: string };
 // MCP tool result shape (a tool returns text content). Kept local so the
 // gateway doesn't reach into the mcp/ tree.
 type ToolResult = { content: { type: 'text'; text: string }[] };
-
-export async function assertConnectorEnabled(
-  workspaceId: string,
-  connectorId: string,
-): Promise<void> {
-  if (!(await isConnectorEnabled(workspaceId, connectorId))) {
-    throw new ConnectorNotEnabledError(connectorId);
-  }
-}
 
 function describeError(err: unknown): { error: string; message: string } {
   if (err instanceof TempoError) return { error: err.code, message: err.message };
