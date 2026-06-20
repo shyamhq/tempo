@@ -203,16 +203,12 @@ export const ensureCommentAccess: RequestHandler<{ id: string }> = async (req, r
   }
 };
 
-// SSE and other user-facing routes — reject any non-User caller. Hosted
-// and internal are also rejected on user-only paths (Sandbox agents have no
-// business reading the SSE feed, and server-to-server callers don't reach
-// for it either). The wake route uses its own per-kind allowlist.
-export const rejectAgent: RequestHandler = (req, res, next) => {
-  if (
-    req.caller.kind === 'agent' ||
-    req.caller.kind === 'hosted' ||
-    req.caller.kind === 'internal'
-  ) {
+// SSE feed guard. Rejects only the workspace-scoped agent key and the internal
+// token (neither carries a single-thread context). cli, browser, and the
+// thread-bound hosted runner pass — the hosted runner subscribes to its OWN
+// thread's SSE feed, and ensureThreadAccess pins it to that thread.
+export const rejectWorkspaceAgent: RequestHandler = (req, res, next) => {
+  if (req.caller.kind === 'agent' || req.caller.kind === 'internal') {
     res.status(403).json({ error: 'forbidden' });
     return;
   }

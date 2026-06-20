@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 const schema = z.object({
   DATABASE_URL: z.string().min(1),
+  // Redis — real-time event delivery (streams) + shared cache. Required, same
+  // as DATABASE_URL: the system does not start without it.
+  REDIS_URL: z.string().min(1),
   PORT: z.coerce.number().int().positive().default(3001),
   WORKER_LOG_LEVEL: z
     .enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'])

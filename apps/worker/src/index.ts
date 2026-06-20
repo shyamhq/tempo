@@ -3,7 +3,7 @@ import { TempoError } from '@tempo/errors';
 import cors from 'cors';
 import type { ErrorRequestHandler } from 'express';
 import express from 'express';
-import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectAgent } from './auth';
+import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectWorkspaceAgent } from './auth';
 import { env } from './env';
 import { startSupervisor, stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
@@ -23,7 +23,6 @@ import { cliExchangeHandler } from './routes/cli/exchange';
 import { cliRefreshHandler } from './routes/cli/refresh';
 import { sseHandler } from './routes/events/sse';
 import { healthHandler } from './routes/health';
-import { drainHostedHandler } from './routes/hosted/drain';
 import { wakeHostedHandler } from './routes/hosted/wake';
 import { threadAccessHandler } from './routes/threads/access';
 
@@ -58,18 +57,20 @@ app.get('/api/threads/:id/access', bearerAuth, threadAccessHandler);
 // handler (the threadId arrives in the body, not the URL).
 app.post('/api/agent-events', bearerAuth, express.json({ limit: '1mb' }), agentEventsHandler);
 
-// Hosted runner's outer-loop poll. sk_hosted_* only; threadId is JWT-bound.
-app.post('/api/hosted/drain', bearerAuth, drainHostedHandler);
-
 // Hosted Agent spawn — browser button OR internal Console server-to-server
-// auto-wake. Handler enforces the per-kind allowlist; `rejectAgent` is omitted
-// here so the `internal` caller can reach this route while still being
-// blocked on SSE and other user-facing paths.
+// auto-wake. Handler enforces the per-kind allowlist; the `internal` caller can
+// reach this route while still being blocked on SSE and other user-facing paths.
 app.post('/api/threads/:id/hosted/wake', bearerAuth, ensureThreadAccess, wakeHostedHandler);
 
-// SSE is a browser activity feed — agent keys (workspace-scoped, no user)
-// have no business subscribing.
-app.get('/api/threads/:id/events', bearerAuth, rejectAgent, ensureThreadAccess, sseHandler);
+// SSE activity feed — browsers, the local CLI, and the hosted runner all tail
+// it for new events. Workspace-scoped agent keys (no single thread) stay out.
+app.get(
+  '/api/threads/:id/events',
+  bearerAuth,
+  rejectWorkspaceAgent,
+  ensureThreadAccess,
+  sseHandler,
+);
 
 // Thread-scoped routes — bearerAuth → ensureThreadAccess sets req.workspaceId.
 app.post('/api/threads/:id/plan', bearerAuth, ensureThreadAccess, writePlanHandler);

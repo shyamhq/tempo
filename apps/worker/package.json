@@ -28,6 +28,7 @@
     "@tempo/db": "workspace:*",
     "@tempo/errors": "workspace:*",
     "@tempo/server": "workspace:*",
+    "@tempo/sse-client": "workspace:*",
     "ai": "^6.0.206",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",

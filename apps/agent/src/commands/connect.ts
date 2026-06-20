@@ -1,9 +1,4 @@
-import {
-  type Event,
-  shouldWake,
-  type ThreadId,
-  ThreadId as ThreadIdSchema,
-} from '@tempo/contracts';
+import { type Event, type ThreadId, ThreadId as ThreadIdSchema } from '@tempo/contracts';
 import {
   type ThreadAccessResponse,
   ThreadAccessResponse as ThreadAccessResponseSchema,
@@ -11,15 +6,18 @@ import {
 import { AcpSession, type StopReason } from '../acp/session';
 import { type Credentials, read, refresh } from '../credentials';
 import { env } from '../env';
+import { runWakeSubscriber } from '../events/subscriber';
 import { logger } from '../logger';
 
 const REFRESH_BEFORE_EXPIRY_S = 60;
-const POLL_WAIT_SECONDS = 25;
 
 // One persistent ACP session per `tempo-agent connect` lifetime. Failures
 // counted here are prompt-level (a single Turn errored out), not spawn-level —
 // the adapter subprocess is shared across turns.
 const MAX_CONSECUTIVE_TURN_FAILURES = 3;
+// Auth failures that survive a token refresh (the Worker keeps rejecting the
+// new token) — bail rather than hammer the refresh endpoint forever.
+const MAX_CONSECUTIVE_AUTH_FAILURES = 3;
 
 export async function connectCommand(rawThreadId: string | undefined): Promise<void> {
   if (!rawThreadId) {
@@ -42,24 +40,39 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
   );
 
   let token = creds.token;
-  let cursor = access.latest_event_id;
-  let abortPoll: AbortController | null = null;
   let session: AcpSession | null = null;
   let stopping = false;
+
+  // Wake buffer + turn state. The SSE subscriber pushes human-authored events
+  // here. A wake arriving mid-turn cancels the turn so the loop re-prompts with
+  // it; arriving between turns it wakes the idle loop.
+  const pending: Event[] = [];
+  let turnInFlight = false;
+  let needsRefresh = false;
+  let wakeNotify: (() => void) | null = null;
+  const notify = (): void => {
+    const resolve = wakeNotify;
+    wakeNotify = null;
+    resolve?.();
+  };
+
+  const subAbort = new AbortController();
 
   const onSignal = (): void => {
     if (stopping) return;
     stopping = true;
     logger.debug('connect: signal received, shutting down');
-    abortPoll?.abort();
-    // Cancel may race with the adapter teardown; catch so a broken-pipe
-    // write doesn't become an unhandled rejection.
+    subAbort.abort();
+    // Cancel may race with the adapter teardown; catch so a broken-pipe write
+    // doesn't become an unhandled rejection.
     session?.cancel().catch(() => null);
+    notify();
   };
   process.on('SIGINT', onSignal);
   process.on('SIGTERM', onSignal);
 
   let consecutiveFailures = 0;
+  let consecutiveAuthFailures = 0;
   let exitCode = 0;
   let terminalFailReason: string | null = null;
 
@@ -73,6 +86,37 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       adapterArgs: env.TEMPO_AGENT_ADAPTER_ARGS?.split(/\s+/).filter(Boolean),
     });
 
+  // Tail the Worker SSE feed for wake events. Runs until subAbort fires.
+  //
+  // ponytail: turn-1 catch-up comes from /access; the subscriber then tails the
+  // live SSE tail ($). A human event landing in the sub-second window between
+  // the /access read and the subscriber's first connect is missed — browsers
+  // refetch full state on reconnect to close this, agents don't. Accepted: the
+  // window is tiny and one-time per `connect`. Upgrade path if it ever bites:
+  // subscribe-first, then drop buffered events at/below an /access watermark id.
+  const subscriber = runWakeSubscriber({
+    threadId,
+    workerUrl: creds.worker_url,
+    getToken: () => token,
+    signal: subAbort.signal,
+    onWake: (event) => {
+      pending.push(event);
+      if (turnInFlight) session?.cancel().catch(() => null);
+      else notify();
+    },
+    onCancel: () => {
+      // Dev pressed Stop — abort the in-flight turn, don't re-prompt.
+      if (turnInFlight) session?.cancel().catch(() => null);
+    },
+    onAuthError: () => {
+      needsRefresh = true;
+      notify();
+    },
+    onConnected: () => {
+      consecutiveAuthFailures = 0;
+    },
+  });
+
   try {
     session = makeSession(token);
 
@@ -80,18 +124,25 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
       await session.start();
     } catch (err) {
       terminalFailReason = `adapter failed to start: ${errMsg(err)}`.slice(0, 200);
-      process.stderr.write(`tempo connect: ${terminalFailReason}\n`);
       exitCode = 1;
       return;
     }
 
-    // Turn 1 — full Thread context.
+    // Turn 1 — full Thread context + any wake events that arrived since the last
+    // turn (catch-up from /access). Cancellable: a Dev comment while the agent
+    // is still exploring should interrupt and fold in.
     const firstPayload = JSON.stringify({
       thread_id: threadId,
-      events: [],
+      events: access.events,
       context: access.context,
     });
-    const first = await sendPrompt(session, firstPayload);
+    turnInFlight = true;
+    let first: PromptOutcome;
+    try {
+      first = await sendPrompt(session, firstPayload);
+    } finally {
+      turnInFlight = false;
+    }
     if (first === 'failed') consecutiveFailures = 1;
 
     // Loop until SIGINT or N consecutive failures.
@@ -106,41 +157,72 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
         break;
       }
 
-      abortPoll = new AbortController();
-      const polled = await pollEvents(threadId, cursor, creds.worker_url, token, abortPoll.signal);
-      abortPoll = null;
-      if (stopping) break;
+      // Token upkeep, between turns only — refresh and restart the session so
+      // the new bearer is re-baked into the MCP server config (it can't change
+      // mid-session). refresh() uses the refresh token, so it works even after
+      // the access token has expired.
+      if (needsRefresh || nearExpiry(creds)) {
+        const dueToAuthError = needsRefresh;
+        try {
+          creds = await refresh(creds);
+          token = creds.token;
+          needsRefresh = false;
+          await session.close();
+          session = makeSession(token);
+          await session.start();
+        } catch (err) {
+          terminalFailReason = `token refresh / session restart failed: ${errMsg(err)}`.slice(
+            0,
+            200,
+          );
+          exitCode = 1;
+          break;
+        }
+        // A 401-triggered refresh the Worker still rejects means re-auth is
+        // needed. onConnected resets this the moment a stream reopens cleanly,
+        // so only a persistent failure trips the limit.
+        if (dueToAuthError) {
+          consecutiveAuthFailures += 1;
+          if (consecutiveAuthFailures >= MAX_CONSECUTIVE_AUTH_FAILURES) {
+            terminalFailReason =
+              'authentication kept failing after refresh — run `tempo-agent init` to re-authenticate';
+            exitCode = 1;
+            break;
+          }
+        }
+      }
 
-      if (polled === 'token-expired') {
-        // Refresh, then restart the session — the bearer token is baked into
-        // the MCP server config at newSession time and can't be updated mid-session.
-        creds = await refresh(creds);
-        token = creds.token;
-        await session.close();
-        session = makeSession(token);
-        await session.start();
+      // Wait for buffered wake events. A notify() also fires for stop/refresh.
+      if (pending.length === 0) {
+        await new Promise<void>((resolve) => {
+          // Re-check inside the executor: an onWake between the length check and
+          // here would otherwise be missed (defensive — JS is single-threaded,
+          // so today nothing can interleave, but this keeps it honest).
+          if (stopping || pending.length > 0 || needsRefresh) {
+            resolve();
+            return;
+          }
+          wakeNotify = resolve;
+        });
+        if (stopping) break;
         continue;
       }
-      if (polled === 'aborted') break;
 
-      cursor = polled.cursor;
-      // Stop button: Dev pressed Cancel on the Thread → server emits
-      // `agent_cancel_requested`. Not a wake kind (we don't restart the Turn),
-      // but the live session must abort its in-flight prompt.
-      if (polled.events.some((e) => e.kind === 'agent_cancel_requested')) {
-        session?.cancel().catch(() => null);
+      const events = pending.splice(0);
+      turnInFlight = true;
+      let result: PromptOutcome;
+      try {
+        result = await sendPrompt(session, JSON.stringify({ thread_id: threadId, events }));
+      } finally {
+        turnInFlight = false;
       }
-      const events = polled.events.filter(shouldWake);
-      if (events.length === 0) continue;
 
-      const nudgePayload = JSON.stringify({ thread_id: threadId, events });
-      const result = await sendPrompt(session, nudgePayload);
       if (result === 'failed') {
         consecutiveFailures += 1;
         logger.debug({ consecutiveFailures }, 'connect: nudged turn failed');
-        // If the adapter itself died, rebuild before the next iteration.
-        // The strike count keeps incrementing — a broken adapter binary loops
-        // until it trips MAX_CONSECUTIVE_TURN_FAILURES rather than indefinitely.
+        // If the adapter itself died, rebuild before the next iteration. The
+        // strike count keeps incrementing — a broken adapter binary trips
+        // MAX_CONSECUTIVE_TURN_FAILURES rather than looping forever.
         if (!session.isAlive()) {
           logger.info('connect: adapter exited, respawning');
           await session.close();
@@ -161,35 +243,15 @@ export async function connectCommand(rawThreadId: string | undefined): Promise<v
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    subAbort.abort();
     if (terminalFailReason) {
       process.stderr.write(`tempo connect: ${terminalFailReason}\n`);
     }
-    await postAgentDisconnected(threadId, creds.worker_url, token);
     await session?.close();
+    await subscriber.catch(() => null);
   }
 
   process.exit(exitCode);
-}
-
-// Best-effort goodbye on clean shutdown. Worker handler nulls
-// `threads.agent_last_seen_at` and emits `agent_disconnected` so the Console
-// flips presence to idle without waiting for the 60s window. Hard kills don't
-// reach this path; they age out via the column window.
-async function postAgentDisconnected(
-  threadId: ThreadId,
-  workerUrl: string,
-  token: string,
-): Promise<void> {
-  try {
-    await fetch(`${workerUrl}/api/agent-events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ thread_id: threadId, event: { kind: 'agent_disconnected' } }),
-      signal: AbortSignal.timeout(2000),
-    });
-  } catch (err) {
-    logger.debug({ err }, 'connect: agent_disconnected post failed (continuing exit)');
-  }
 }
 
 type PromptOutcome = 'ok' | 'failed';
@@ -206,6 +268,10 @@ async function sendPrompt(session: AcpSession, payload: string): Promise<PromptO
   }
 }
 
+function nearExpiry(creds: Credentials): boolean {
+  return new Date(creds.expires_at).getTime() - Date.now() < REFRESH_BEFORE_EXPIRY_S * 1000;
+}
+
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -218,8 +284,7 @@ async function readCreds(): Promise<Credentials> {
 }
 
 async function maybeRefresh(creds: Credentials): Promise<Credentials> {
-  const expiresAt = new Date(creds.expires_at).getTime();
-  if (expiresAt - Date.now() >= REFRESH_BEFORE_EXPIRY_S * 1000) return creds;
+  if (!nearExpiry(creds)) return creds;
   logger.debug({ expires_at: creds.expires_at }, 'token near expiry, refreshing');
   try {
     return await refresh(creds);
@@ -265,36 +330,4 @@ async function preflight(threadId: ThreadId, creds: Credentials): Promise<Thread
     process.exit(1);
   }
   return parsed.data;
-}
-
-type PollResult = { events: Event[]; cursor: string } | 'token-expired' | 'aborted';
-
-async function pollEvents(
-  threadId: string,
-  cursor: string,
-  workerUrl: string,
-  token: string,
-  signal: AbortSignal,
-): Promise<PollResult> {
-  const url =
-    `${workerUrl}/api/threads/${threadId}/events` +
-    `?cursor=${encodeURIComponent(cursor)}&wait=${POLL_WAIT_SECONDS}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal,
-    });
-  } catch (err) {
-    if (signal.aborted) return 'aborted';
-    logger.debug({ err }, 'poll: fetch error, will retry');
-    return { events: [], cursor };
-  }
-  if (res.status === 401) return 'token-expired';
-  if (!res.ok) {
-    logger.debug({ status: res.status }, 'poll: unexpected status, will retry');
-    return { events: [], cursor };
-  }
-  const json = (await res.json()) as { events: Event[]; cursor: string };
-  return json;
 }

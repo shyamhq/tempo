@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ConnectorId, ConnectorTier } from './connectors';
-import { AgentTodo, Event } from './events';
+import { Event } from './events';
 import {
   AgentBlock,
   AgentType,
@@ -9,7 +9,6 @@ import {
   Comment,
   ConnectToken,
   DiscussionMessage,
-  EventId,
   IsoTimestamp,
   Mention,
   Plan,
@@ -80,7 +79,7 @@ export const ListThreadsResponse = z.object({
   threads: z.array(
     ThreadSummary.extend({
       updated_at: IsoTimestamp,
-      agent_last_seen_at: IsoTimestamp.nullable(),
+      agent_present: z.boolean(),
     }),
   ),
 });
@@ -128,10 +127,9 @@ export const GetThreadResponse = z.object({
   discussion: z.object({
     messages: z.array(DiscussionMessage),
   }),
-  // Console derives "is the Agent reachable" as
-  // `now() - agent_last_seen_at < 60s`. Null until first Agent contact.
-  agent_last_seen_at: IsoTimestamp.nullable(),
-  last_event_id: EventId,
+  // True while the agent's SSE connection is live (Redis presence key); the
+  // `presence` SSE frame flips it in real time.
+  agent_present: z.boolean(),
 });
 
 // GET /api/threads/:id/trails — derived view of the agent's work, grouped
@@ -237,17 +235,9 @@ export const UpdateThreadResponse = z.object({ thread: ThreadSummary });
 // DELETE /api/threads/:id
 export const DeleteThreadResponse = z.object({ ok: z.literal(true) });
 
-// GET /api/threads/:id/events  — long-poll OR SSE
-// Query: ?cursor=evt_…&wait=30s  (wait omitted = SSE stream)
-export const EventsQuery = z.object({
-  cursor: EventId,
-  wait: z.coerce.number().int().min(0).max(60).optional(),
-});
-export const EventsLongPollResponse = z.object({
-  events: z.array(Event),
-  cursor: EventId,
-});
-// SSE response is a stream of `event: <kind>\ndata: <Event JSON>\n\n` frames.
+// GET /api/threads/:id/events — Redis-backed SSE stream (no query params). Full
+// Thread state loads via GET /api/threads/:id, then this delivers new events as
+// a stream of `event: <kind>\ndata: <Event JSON>\n\n` frames.
 
 // Error envelope for all 4xx/5xx responses
 export const HttpError = z.object({
@@ -321,16 +311,16 @@ export const TurnHydration = z.object({
 });
 export type TurnHydration = z.infer<typeof TurnHydration>;
 
-// GET /api/threads/:id/access — thread membership check for CLI callers.
-// `latest_event_id` seeds the CLI's SSE-cursor. `context` is the full Turn 1
-// snapshot injected into `--print` so the agent starts without MCP round-trips.
+// GET /api/threads/:id/access — unified turn-1 bootstrap for BOTH agent styles
+// (local CLI + hosted runner). `context` is the full snapshot; `events` are the
+// wake events since the last turn (catch-up for a freshly-(re)started agent).
 export const ThreadAccessResponse = z.object({
   thread_id: ThreadId,
   thread_title: z.string(),
   workspace_id: z.string(),
   workspace_name: z.string(),
-  latest_event_id: z.string(),
   context: TurnHydration,
+  events: z.array(Event),
 });
 export type ThreadAccessResponse = z.infer<typeof ThreadAccessResponse>;
 
@@ -381,10 +371,6 @@ export const AgentModeChangedEvent = z.object({
   mode_id: z.string().max(64),
 });
 
-export const AgentDisconnectedEvent = z.object({
-  kind: z.literal('agent_disconnected'),
-});
-
 export const AgentEventRequest = z.object({
   thread_id: ThreadId,
   event: z.discriminatedUnion('kind', [
@@ -395,7 +381,6 @@ export const AgentEventRequest = z.object({
     AgentTodosUpdatedEvent,
     AgentModeChangedEvent,
     AgentTurnEndedEvent,
-    AgentDisconnectedEvent,
   ]),
 });
 export type AgentEventRequest = z.infer<typeof AgentEventRequest>;

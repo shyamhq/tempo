@@ -6,6 +6,7 @@ import { events, threads } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { listAttachmentsForParents } from './attachments';
 import { isHostedReadyToWake } from './mailbox';
+import { appendToStream } from './redis';
 
 export type AppendPayload = Event extends infer E
   ? E extends { id: string; created_at: string }
@@ -33,6 +34,12 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
     payload_json: stripAttachmentUrls(event) as unknown as Record<string, unknown>,
     created_at: created_at_date,
   });
+  // Fan out to the Redis stream for real-time delivery. Fire-and-forget: the DB
+  // insert above is the source of truth, so a Redis hiccup must not fail the
+  // write — the event still lands and any consumer picks it up on reconnect.
+  void appendToStream(threadId, event).catch((err) =>
+    console.error('appendToStream failed', { threadId, err }),
+  );
   if (shouldWake(event)) void routeWake(threadId);
   return event;
 }

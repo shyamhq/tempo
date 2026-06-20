@@ -14,7 +14,9 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
-} from '@zed-industries/agent-client-protocol';
+} from '@agentclientprotocol/sdk';
+import type { ThreadId } from '@tempo/contracts';
+import type { AgentEventRequest } from '@tempo/contracts/http';
 import { postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';
 import { ADAPTER_KILL_GRACE_MS, DISALLOWED_TOOLS, MAX_THINKING_TOKENS } from './config';
@@ -27,7 +29,7 @@ export interface AcpSessionOpts {
   cwd: string;
   workerUrl: string;
   token: string;
-  // Optional adapter override — defaults to the bundled @zed-industries/claude-code-acp.
+  // Optional adapter override — defaults to the bundled @agentclientprotocol/claude-agent-acp.
   adapterCmd?: string;
   adapterArgs?: string[];
 }
@@ -210,11 +212,11 @@ export class AcpSession {
   }
 }
 
-// Resolve the adapter to spawn. Default is the bundled claude-code-acp:
-// run its CJS entry under the current Node binary so the published CLI
+// Resolve the adapter to spawn. Default is the bundled claude-agent-acp:
+// run its entry under the current Node binary so the published CLI
 // works whether installed locally or globally.
 function resolveAdapter(cmd?: string, args?: string[]): [string, string[]] {
   if (cmd) return [cmd, args ?? []];
-  const entry = requireFromHere.resolve('@zed-industries/claude-code-acp/dist/index.js');
+  const entry = requireFromHere.resolve('@agentclientprotocol/claude-agent-acp/dist/index.js');
   return [process.execPath, [entry, ...(args ?? [])]];
 }

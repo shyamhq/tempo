@@ -99,6 +99,13 @@
       "when": 1782070000002,
       "tag": "0013_colossal_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1782070000003,
+      "tag": "0014_solid_blue_blade",
+      "breakpoints": true
     }
   ]
 }

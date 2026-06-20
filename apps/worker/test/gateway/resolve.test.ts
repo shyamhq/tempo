@@ -7,7 +7,7 @@ import { ForbiddenError } from '@tempo/errors';
 import type { Caller } from '../../src/auth';
 import { installTempoServerMock } from '../_mocks/tempo-server';
 
-// Shared @tempo/server mock (provides bumpAgentLastSeen); ../auth is mocked
+// Shared @tempo/server mock; ../auth is mocked
 // locally so we control authorizeThread.
 installTempoServerMock();
 const authorizeThread = mock(async (_caller: Caller, _threadId: string) => 'ws_resolved');

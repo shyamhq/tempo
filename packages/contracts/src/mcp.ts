@@ -1,11 +1,9 @@
 import { z } from 'zod';
 import { Tier2ConnectorId } from './connectors';
-import { Event } from './events';
 import {
   AgentPlanBlocks,
   AttachmentId,
   CommentId,
-  EventId,
   Mention,
   MessageId,
   QuestionInput,
@@ -48,18 +46,6 @@ export const UpdatePlanInput = z.object({ html: z.string().min(1).max(200_000) }
 export const UpdatePlanOutput = z.object({
   ok: z.literal(true),
   ids: z.array(z.string()),
-});
-
-export const PollInput = z.object({
-  cursor: EventId,
-});
-// `tempo_poll` returns the events JSON in its first text content block, and
-// emits one MCP `image` content block per attachment found on a live event
-// (e.g. `discussion_message_posted`, `comment_added`, `reply_added`) so the
-// Agent sees each picture exactly once as it arrives.
-export const PollOutput = z.object({
-  events: z.array(Event),
-  cursor: EventId,
 });
 
 export const PostReplyInput = z.object({
@@ -157,7 +143,6 @@ export const McpTool = z.enum([
   'tempo_update_block',
   'tempo_add_blocks',
   'tempo_delete_block',
-  'tempo_poll',
   'tempo_post_reply',
   'tempo_post_discussion_message',
   'tempo_set_thread_meta',

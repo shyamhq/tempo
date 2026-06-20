@@ -9,10 +9,6 @@ import { listSpaces } from '@/server/spaces';
 
 export const dynamic = 'force-dynamic';
 
-const PRESENCE_WINDOW_MS = 60_000;
-const agentPresent = (iso: string | null): boolean =>
-  iso !== null && Date.now() - new Date(iso).getTime() < PRESENCE_WINDOW_MS;
-
 export default async function HomePage({
   searchParams,
 }: {
@@ -89,7 +85,7 @@ export default async function HomePage({
                   ) : null}
                 </div>
                 <div className="w-24 text-right shrink-0">
-                  {agentPresent(t.agent_last_seen_at) ? (
+                  {t.agent_present ? (
                     <Badge tone="success">connected</Badge>
                   ) : (
                     <Badge tone="muted">idle</Badge>

@@ -1,11 +1,11 @@
 'use client';
 
 import { useAuth, useUser } from '@clerk/nextjs';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTodo } from '@tempo/contracts';
-import { Event, EventKind } from '@tempo/contracts/events';
+import { Event, PresenceSignal } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
+import { subscribeToEvents } from '@tempo/sse-client';
 import { useEffect, useRef } from 'react';
 import type { z } from 'zod';
 import { workerEventsUrl } from '../lib/api-client';
@@ -55,22 +55,19 @@ export function useLiveActivityGroup(threadId: string): LiveActivity {
 
 // SSE consumer for a single Thread. Mutates the cached Thread view via
 // setQueryData so a single network stream feeds every Plan/Comment/Modal
-// subscriber. Reconnects automatically (the browser's EventSource handles
-// reconnects; we restart from the last applied event id).
+// subscriber. Reconnects automatically (the transport resumes via Last-Event-ID).
+//
+// Last-Event-ID replays the events missed during a brief drop. A reconnect also
+// invalidates ['thread', threadId] as the backstop for the rare case the gap
+// outlived the Redis stream's MAXLEN trim and some ids are gone.
 //
 // `onPlanEditedByAgent` is the direct trigger for the "Plan updated by Agent"
 // UI (toast + editor ring pulse) — fired at the SSE boundary so it can't be
 // lost in a cache-diff race between updated_at and updated_by.
-export function useThreadEvents(
-  threadId: string,
-  initialCursor: string,
-  onPlanEditedByAgent?: () => void,
-) {
+export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => void) {
   const qc = useQueryClient();
   const { getToken } = useAuth();
   const { user } = useUser();
-  const cursorRef = useRef(initialCursor);
-  cursorRef.current = initialCursor;
   // Latest-ref so a new callback identity on every parent render doesn't
   // re-subscribe (the effect deps are [threadId, qc] only).
   const planEditedByAgentRef = useRef(onPlanEditedByAgent);
@@ -82,57 +79,38 @@ export function useThreadEvents(
 
   useEffect(() => {
     if (!threadId) return;
-    // AbortController lets us cancel the fetchEventSource stream on cleanup.
-    const controller = new AbortController();
 
-    const run = async () => {
-      await fetchEventSource(workerEventsUrl(threadId, cursorRef.current), {
-        signal: controller.signal,
-        // Override the underlying fetch so the library calls this on every
-        // (re)connect. We fetch a fresh Clerk JWT each attempt — without this,
-        // the library reuses headers captured at the first call, and a JWT
-        // expiry mid-session permanently 401s the stream.
-        fetch: async (input, init) => {
-          const token = await getToken();
-          return globalThis.fetch(input, {
-            ...init,
-            headers: {
-              ...init?.headers,
-              Authorization: token ? `Bearer ${token}` : '',
-            },
-          });
-        },
-        onopen: async (res) => {
-          if (!res.ok) throw new Error(`SSE open failed: ${res.status}`);
-        },
-        onmessage: (msg) => {
-          if (!msg.event || !EventKind.options.includes(msg.event as z.infer<typeof EventKind>))
-            return;
-          try {
-            const parsed = Event.safeParse(JSON.parse(msg.data));
-            if (!parsed.success) return;
-            const ev = parsed.data;
-            cursorRef.current = ev.id;
-            apply(qc, threadId, ev, userIdRef.current);
-            if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
-          } catch {
-            // ignore malformed frame
-          }
-        },
-        onerror: (err) => {
-          // Re-throw to let fetchEventSource retry with backoff. If aborted,
-          // the library will not retry.
-          throw err;
-        },
-      }).catch(() => {
-        // Swallow abort errors on cleanup; other errors are retried by the library.
-      });
-    };
-
-    run();
+    const sub = subscribeToEvents({
+      url: workerEventsUrl(threadId),
+      // Fresh Clerk JWT on every (re)connect so a mid-session expiry doesn't
+      // permanently 401 the stream.
+      getToken: async () => (await getToken()) ?? '',
+      onOpen: (reconnected) => {
+        // MAXLEN-trim backstop: if the drop outlived the Redis stream window,
+        // Last-Event-ID can't replay it — pull full state from DB. The normal
+        // (in-window) case is covered by the replay, so first open skips this.
+        if (reconnected) qc.invalidateQueries({ queryKey: ['thread', threadId] });
+      },
+      onMessage: (data) => {
+        // presence is an SSE-only signal (not in the Event union) — try it first
+        // so it isn't dropped by the Event guard.
+        const presence = PresenceSignal.safeParse(data);
+        if (presence.success) {
+          qc.setQueryData<ThreadView>(['thread', threadId], (prev) =>
+            prev ? { ...prev, agent_present: presence.data.online } : prev,
+          );
+          return;
+        }
+        const parsed = Event.safeParse(data);
+        if (!parsed.success) return;
+        const ev = parsed.data;
+        apply(qc, threadId, ev, userIdRef.current);
+        if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
+      },
+    });
 
     return () => {
-      controller.abort();
+      sub.close();
       // Drop the live activity entry so a remount or thread-switch doesn't
       // flash the previous Agent run's last todos or tool calls before fresh
       // events arrive.
@@ -152,28 +130,7 @@ function apply(
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;
-    // Any agent-authored event is proof of life — refresh the cached presence
-    // timestamp so the chip doesn't say "idle" while a tool call is mid-flight.
-    // The 30s refetch backstop covers quiet-but-connected periods; this covers
-    // active-but-not-yet-refetched windows. `agent_cancel_requested` is
-    // dev-authored (Stop button) and `agent_disconnected` is the goodbye —
-    // both excluded here; the latter is handled explicitly below.
-    const agentAlive =
-      ev.kind === 'agent_tool_use' ||
-      ev.kind === 'agent_tool_failed' ||
-      ev.kind === 'agent_narration' ||
-      ev.kind === 'agent_thought' ||
-      ev.kind === 'agent_todos_updated' ||
-      ev.kind === 'agent_mode_changed' ||
-      ev.kind === 'agent_turn_ended' ||
-      ev.kind === 'plan_edited_by_agent' ||
-      (ev.kind === 'reply_added' && ev.reply.author_user_id === null) ||
-      (ev.kind === 'discussion_message_posted' && ev.message.author_user_id === null);
-    const next: ThreadView = {
-      ...prev,
-      last_event_id: ev.id,
-      agent_last_seen_at: agentAlive ? new Date().toISOString() : prev.agent_last_seen_at,
-    };
+    const next: ThreadView = { ...prev };
     switch (ev.kind) {
       case 'comment_added':
         if (next.comments.some((c) => c.id === ev.comment.id)) return next;
@@ -224,10 +181,6 @@ function apply(
           ...next,
           comments: next.comments.filter((c) => c.id !== ev.comment_id),
         };
-      case 'agent_disconnected':
-        // CLI clean shutdown — null the presence so the UI flips to idle
-        // immediately instead of waiting for the 60s window to age out.
-        return { ...next, agent_last_seen_at: null };
       case 'discussion_message_posted': {
         if (next.discussion.messages.some((m) => m.id === ev.message.id)) return next;
         return {

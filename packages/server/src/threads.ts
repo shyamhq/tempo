@@ -17,6 +17,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { appendEvent } from './event-log';
 import { newPlanId, newThreadId } from './ids';
 import { deletePrefix } from './r2';
+import { arePresent } from './redis';
 
 export async function createThread(
   workspaceId: string,
@@ -69,20 +70,20 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     description: string;
     agent_type: 'local' | 'hosted';
     updated_at: Date | null;
-    agent_last_seen_at: Date | null;
   }>(sql`
-    SELECT t.id, t.title, t.description, t.agent_type, t.updated_at, t.agent_last_seen_at
+    SELECT t.id, t.title, t.description, t.agent_type, t.updated_at
     FROM threads t
     WHERE ${filter}
     ORDER BY t.updated_at DESC
   `);
+  const present = await arePresent(result.rows.map((r) => r.id));
   return result.rows.map((r) => ({
     id: r.id,
     title: r.title,
     description: r.description,
     agent_type: r.agent_type,
     updated_at: r.updated_at?.toISOString() ?? null,
-    agent_last_seen_at: r.agent_last_seen_at?.toISOString() ?? null,
+    agent_present: present.get(r.id) ?? false,
   }));
 }
 
@@ -186,33 +187,6 @@ export async function updateThread(
   }
 
   return result.thread;
-}
-
-// Bumped whenever the Agent (CLI or Hosted runner) touches any Worker route.
-// Console derives presence as `now() - agent_last_seen_at < 60s`. Conditional
-// update — skipped if the column was already touched in the last 10s — caps
-// write volume to ~6 per minute per active Thread regardless of tool-call
-// rate. No row, no sessions table, no in-memory map.
-export async function bumpAgentLastSeen(threadId: string): Promise<void> {
-  await db
-    .update(threads)
-    .set({ agent_last_seen_at: sql`now()` })
-    .where(
-      and(
-        eq(threads.id, threadId),
-        sql`(${threads.agent_last_seen_at} IS NULL OR ${threads.agent_last_seen_at} < now() - interval '10 seconds')`,
-      ),
-    );
-}
-
-// CLI shutdown signal handler called this — null the column so the Console
-// flips presence to idle immediately on the next SSE delivery, instead of
-// waiting for the 60s window to age out.
-export async function markAgentDisconnected(threadId: string): Promise<void> {
-  await db
-    .update(threads)
-    .set({ agent_last_seen_at: null })
-    .where(eq(threads.id, threadId));
 }
 
 // Dev pressed Stop on the Thread header. Thread-scoped — connected Agent

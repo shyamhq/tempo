@@ -1,44 +1,45 @@
-import { EventsQuery } from '@tempo/contracts/http';
-import { bumpAgentLastSeen, emptyCursor, longPoll, sseStream } from '@tempo/server';
+import { randomUUID } from 'node:crypto';
+import {
+  clearPresent,
+  publishPresence,
+  refreshPresent,
+  setPresent,
+  sseStream,
+} from '@tempo/server';
 import type { RequestHandler } from 'express';
-import { logger } from '../../logger';
 
-// GET /api/threads/:id/events
-//
-// Two modes, same route + auth chain:
-// - SSE stream (no `wait` param): Console activity feed.
-// - Long-poll (?cursor=X&wait=N): CLI event delivery. Returns EventsLongPollResponse
-//   JSON immediately with current events, or waits up to N seconds for new ones.
-// Each CLI hit bumps `threads.agent_last_seen_at`; Console derives presence as
-// `now() - agent_last_seen_at < 60s`. No registry, no Map.
-export const sseHandler: RequestHandler<{ id: string }> = async (req, res) => {
+// Keep the presence key comfortably inside its TTL (45s) so a live connection
+// never lets it lapse.
+const PRESENCE_REFRESH_MS = 15_000;
+
+// GET /api/threads/:id/events — Redis-backed SSE stream of new events. Browsers,
+// the local CLI, and the hosted runner all tail it. The agent's connection here
+// IS its presence: while a cli/hosted connection is open we keep the Redis
+// presence key fresh and push a `presence` frame so viewers flip instantly; the
+// TTL is the abrupt-disconnect safety net. Browser viewers don't count.
+export const sseHandler: RequestHandler<{ id: string }> = (req, res) => {
   const threadId = req.params.id;
+  const isAgent = req.caller.kind === 'cli' || req.caller.kind === 'hosted';
+  // Identifies THIS connection's ownership of the presence key, so a stale
+  // connection's close can't clear a newer one's presence.
+  const nonce = randomUUID();
 
-  if (typeof req.query.wait === 'string') {
-    const query = EventsQuery.safeParse(req.query);
-    if (!query.success) {
-      res.status(400).json({ error: 'bad_request', message: 'cursor required for long-poll' });
-      return;
-    }
-    if (req.caller.kind === 'cli') {
-      void bumpAgentLastSeen(threadId).catch((err) =>
-        logger.error({ err, threadId }, 'sse: bumpAgentLastSeen failed'),
-      );
-    }
-    const result = await longPoll(threadId, query.data.cursor, query.data.wait ?? 25);
-    res.json(result);
-    return;
+  let presenceTimer: ReturnType<typeof setInterval> | null = null;
+  if (isAgent) {
+    void setPresent(threadId, nonce).catch(() => {});
+    void publishPresence(threadId, true).catch(() => {});
+    presenceTimer = setInterval(() => {
+      void refreshPresent(threadId).catch(() => {});
+    }, PRESENCE_REFRESH_MS);
   }
 
-  const cursorParam = typeof req.query.cursor === 'string' ? req.query.cursor : null;
-  const cursor = cursorParam ?? (await emptyCursor(threadId));
-
-  logger.debug({ threadId, cursor, caller: req.caller.kind }, 'sse: starting stream');
-
   // sseStream returns a Web API Response; pipe its body to the Express response.
-  const webResponse = sseStream(threadId, cursor);
+  // Last-Event-ID (sent automatically by the client on reconnect) resumes the
+  // Redis stream from where it dropped instead of the live tail.
+  const webResponse = sseStream(threadId, req.header('Last-Event-ID'));
   const body = webResponse.body;
   if (!body) {
+    if (presenceTimer) clearInterval(presenceTimer);
     res.status(500).json({ error: 'internal_error' });
     return;
   }
@@ -64,6 +65,16 @@ export const sseHandler: RequestHandler<{ id: string }> = async (req, res) => {
     }
   };
 
-  req.on('close', () => reader.cancel());
+  req.on('close', () => {
+    reader.cancel();
+    if (isAgent) {
+      if (presenceTimer) clearInterval(presenceTimer);
+      // Only push the offline frame if we still owned the key — a reconnect may
+      // have already taken over presence on a fresher connection.
+      void clearPresent(threadId, nonce)
+        .then((wasOwner) => (wasOwner ? publishPresence(threadId, false) : undefined))
+        .catch(() => {});
+    }
+  });
   pump();
 };
