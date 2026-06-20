@@ -7,11 +7,13 @@ import { ForbiddenError } from '@tempo/errors';
 import type { Caller } from '../../src/auth';
 import { installTempoServerMock } from '../_mocks/tempo-server';
 
-// Shared @tempo/server mock; ../auth is mocked
-// locally so we control authorizeThread.
+// Shared @tempo/server mock; ../auth is mocked locally so we control
+// authorizeThread. `mock.module` is GLOBAL — every test that mocks ../auth must
+// register the SAME complete surface (authorizeThread + ForbiddenError), or the
+// first incomplete registration wins and breaks another file's import.
 installTempoServerMock();
 const authorizeThread = mock(async (_caller: Caller, _threadId: string) => 'ws_resolved');
-mock.module('../../src/auth', () => ({ authorizeThread }));
+mock.module('../../src/auth', () => ({ authorizeThread, ForbiddenError }));
 
 const { resolveThreadWorkspace } = await import('../../src/gateway/resolve');
 

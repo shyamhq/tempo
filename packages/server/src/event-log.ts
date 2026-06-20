@@ -5,7 +5,7 @@ import { newEventId } from '@tempo/db/ids';
 import { events, threads } from '@tempo/db/schema';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 import { listAttachmentsForParents } from './attachments';
-import { isHostedReadyToWake } from './mailbox';
+import { getHostedState } from './mailbox';
 import { appendToStream } from './redis';
 
 export type AppendPayload = Event extends infer E
@@ -40,7 +40,7 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
   void appendToStream(threadId, event).catch((err) =>
     console.error('appendToStream failed', { threadId, err }),
   );
-  if (shouldWake(event)) void routeWake(threadId);
+  if (shouldWake(event)) void routeWake(threadId, event.kind);
   return event;
 }
 
@@ -50,7 +50,7 @@ export async function appendEvent(threadId: string, payload: AppendPayload): Pro
 // covers the disconnected case.
 // ponytail: HTTP fire-and-forget. Upgrade to a `pending_wakes` table + worker
 // LISTEN/poll when multi-worker delivery guarantees matter.
-async function routeWake(threadId: string): Promise<void> {
+async function routeWake(threadId: string, eventKind: string): Promise<void> {
   try {
     const [thread] = await db
       .select({ agent_type: threads.agent_type })
@@ -58,8 +58,13 @@ async function routeWake(threadId: string): Promise<void> {
       .where(eq(threads.id, threadId))
       .limit(1);
     if (thread?.agent_type !== 'hosted') return;
-    const { live } = await isHostedReadyToWake(threadId);
-    if (live) return;
+    // repo_linked changes the Sandbox's inputs (its clone list). A live Sandbox
+    // has an immutable env, so it can't absorb a newly-attached repo — it must
+    // be re-provisioned. For every other wake a live Sandbox picks the event up
+    // on its own stream, so we skip the redundant spawn.
+    const reprovision = eventKind === 'repo_linked';
+    const { vm } = await getHostedState(threadId);
+    if (vm && !reprovision) return;
     const workerUrl = process.env.WORKER_URL ?? 'http://localhost:3001';
     const secret = process.env.WORKER_INTERNAL_TOKEN;
     if (!secret) {
@@ -70,7 +75,8 @@ async function routeWake(threadId: string): Promise<void> {
     }
     const resp = await fetch(`${workerUrl}/api/threads/${threadId}/hosted/wake`, {
       method: 'POST',
-      headers: { authorization: `Bearer int_${secret}` },
+      headers: { authorization: `Bearer int_${secret}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ reprovision }),
     });
     if (!resp.ok) {
       console.error('routeWake: worker rejected wake', { threadId, status: resp.status });

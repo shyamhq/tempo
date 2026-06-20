@@ -1,9 +1,10 @@
 import { db } from '@tempo/db/client';
 import { vm_runs } from '@tempo/db/schema';
-import { newVmRunId } from '@tempo/server';
-import { eq, sql } from 'drizzle-orm';
+import { failVmRun, newVmRunId, publishVmSignal, reapStaleVmRun } from '@tempo/server';
+import { eq } from 'drizzle-orm';
 import { Sandbox } from 'e2b';
 import { env } from '../env';
+import { sanitizeCloneError } from '../hosted/clone';
 import { logger } from '../logger';
 import { issueHostedToken } from '../server/cli-auth';
 
@@ -34,14 +35,28 @@ const EGRESS_ALLOWLIST = [
 export async function provision(opts: {
   threadId: string;
   workspaceId: string;
-  repoUrl?: string;
-  ghToken?: string;
+  repos: string[];
+  token?: string;
 }): Promise<VmRun> {
-  const { threadId, workspaceId, repoUrl, ghToken } = opts;
+  const { threadId, workspaceId, repos, token } = opts;
   const hosted = await issueHostedToken(threadId);
+
+  // Close any open row whose heartbeat has lapsed BEFORE inserting the new one,
+  // so the partial unique index `vm_runs(thread_id) WHERE ended_at IS NULL`
+  // can't reject a fresh spawn on a corpse row. The reap is freshness-scoped in
+  // @tempo/server — a live sibling's row stays open.
+  await reapStaleVmRun(threadId);
 
   const vmRunId = newVmRunId();
   await db.insert(vm_runs).values({ id: vmRunId, thread_id: threadId });
+  // The row's existence IS the "provisioning" phase (no sandbox_id yet). Push it
+  // so the Console checklist lights up step 1 while the Sandbox boots.
+  const startedAt = new Date().toISOString();
+  await publishVmSignal(threadId, {
+    sandbox_id: null,
+    started_at: startedAt,
+    phase: 'provisioning',
+  });
 
   let sandbox: Sandbox;
   try {
@@ -63,8 +78,10 @@ export async function provision(opts: {
         ...(process.env.HOSTED_AGENT_MODEL
           ? { HOSTED_AGENT_MODEL: process.env.HOSTED_AGENT_MODEL }
           : {}),
-        ...(repoUrl ? { REPO_URL: repoUrl } : {}),
-        ...(ghToken ? { GITHUB_APP_TOKEN: ghToken } : {}),
+        // Clone contract the runner (T6) reads: a JSON array of `owner/name`,
+        // cloned into /workspace/<name>. Reaches here only with repos present.
+        TEMPO_REPOS: JSON.stringify(repos),
+        ...(token ? { GITHUB_APP_TOKEN: token } : {}),
       },
       network: {
         allowOut: [...EGRESS_ALLOWLIST, new URL(env.WORKER_PUBLIC_URL).hostname],
@@ -75,15 +92,22 @@ export async function provision(opts: {
       metadata: { tempo_thread_id: threadId, tempo_vm_run_id: vmRunId },
     });
   } catch (err) {
-    // Close the orphan row so cost / open-runs queries don't accumulate it.
-    await db
-      .update(vm_runs)
-      .set({ ended_at: sql`now()`, exit_reason: 'provision_failed' })
-      .where(eq(vm_runs.id, vmRunId));
+    // Surface the failure to the Console checklist as a `failed` frame (sanitized
+    // — a Sandbox.create error can wrap a token-bearing clone URL) and close the
+    // orphan row so a retry can spawn past the partial unique index.
+    const reason = sanitizeCloneError(err instanceof Error ? err.message : String(err));
+    await failVmRun(threadId, reason);
     throw err;
   }
 
+  // Sandbox is up → phase advances to `cloning` (the runner clones next). Persist
+  // sandbox_id first so the pushed frame and a late hydrate agree.
   await db.update(vm_runs).set({ sandbox_id: sandbox.sandboxId }).where(eq(vm_runs.id, vmRunId));
+  await publishVmSignal(threadId, {
+    sandbox_id: sandbox.sandboxId,
+    started_at: startedAt,
+    phase: 'cloning',
+  });
 
   // background: true returns a handle, not a result — runner.js startup
   // errors are invisible here. Task 2.6 owns runner.js; surface boot

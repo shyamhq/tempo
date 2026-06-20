@@ -3,7 +3,7 @@
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AgentTodo } from '@tempo/contracts';
-import { Event, PresenceSignal } from '@tempo/contracts/events';
+import { Event, PresenceSignal, VmSignal } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { subscribeToEvents } from '@tempo/sse-client';
 import { useEffect, useRef } from 'react';
@@ -98,6 +98,15 @@ export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => vo
         if (presence.success) {
           qc.setQueryData<ThreadView>(['thread', threadId], (prev) =>
             prev ? { ...prev, agent_present: presence.data.online } : prev,
+          );
+          return;
+        }
+        // vm is an SSE-only signal (not in the Event union) — the VM provisioning
+        // lifecycle. Patch the thread view's `vm` exactly like presence above.
+        const vmSig = VmSignal.safeParse(data);
+        if (vmSig.success) {
+          qc.setQueryData<ThreadView>(['thread', threadId], (prev) =>
+            prev ? { ...prev, vm: vmSig.data.vm } : prev,
           );
           return;
         }
@@ -217,6 +226,13 @@ function apply(
   // avoids threading space_id through every event.
   if (ev.kind === 'thread_renamed') {
     qc.invalidateQueries({ queryKey: ['space-threads'] });
+  }
+
+  // repo_linked means the server has updated threads.repos — invalidate the
+  // composer's repo query so the thread-context bar reflects the new list
+  // immediately without a manual refetch.
+  if (ev.kind === 'repo_linked') {
+    qc.invalidateQueries({ queryKey: ['thread-repos', threadId] });
   }
 }
 

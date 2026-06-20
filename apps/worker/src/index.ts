@@ -5,7 +5,7 @@ import type { ErrorRequestHandler } from 'express';
 import express from 'express';
 import { bearerAuth, ensureCommentAccess, ensureThreadAccess, rejectWorkspaceAgent } from './auth';
 import { env } from './env';
-import { startSupervisor, stopSupervisor } from './hosted/supervisor';
+import { stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
 import { agentEventsHandler } from './routes/agent-events/index';
@@ -17,6 +17,7 @@ import {
   unresolveCommentHandler,
 } from './routes/browser/comments';
 import { createDiscussionMessageHandler } from './routes/browser/discussion';
+import { githubReposHandler } from './routes/browser/github-repos';
 import { writePlanHandler } from './routes/browser/plan';
 import { createReplyHandler } from './routes/browser/replies';
 import { cliExchangeHandler } from './routes/cli/exchange';
@@ -95,6 +96,10 @@ app.post('/api/comments/:id/resolve', bearerAuth, ensureCommentAccess, resolveCo
 app.post('/api/comments/:id/unresolve', bearerAuth, ensureCommentAccess, unresolveCommentHandler);
 app.post('/api/comments/:id/replies', bearerAuth, ensureCommentAccess, createReplyHandler);
 
+// Workspace-scoped (no thread): the Console repo picker. Browser-only; the
+// handler resolves the workspace from the caller's active Clerk org.
+app.get('/api/connectors/github/repos', bearerAuth, githubReposHandler);
+
 // MCP endpoint — bearerAuth identifies caller; tools call authorizeThread
 // per-thread inside the tool implementation.
 app.all('/mcp', bearerAuth, async (req, res) => {
@@ -118,12 +123,6 @@ app.use(errorHandler);
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'worker started');
-  // Fire-and-forget — orphans from a prior crash close out so the Console
-  // chip and vm_runs table line up with reality. Failure logs but doesn't
-  // block readiness; a stuck connected row is a UI nuisance, not a crash.
-  void startSupervisor().catch((err) =>
-    logger.warn({ err }, 'supervisor: boot sweep failed (continuing)'),
-  );
 });
 
 // Graceful shutdown — drain HTTP first, then end the pg pool. Reverse order

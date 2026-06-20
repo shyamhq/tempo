@@ -1,5 +1,5 @@
 import { AgentEventRequest } from '@tempo/contracts/http';
-import { type AppendPayload, appendEvent } from '@tempo/server';
+import { type AppendPayload, appendEvent, failVmRun, touchVmRun } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
 import { touch } from '../../hosted/supervisor';
@@ -35,8 +35,21 @@ export const agentEventsHandler: RequestHandler = async (req, res) => {
   }
 
   try {
-    await appendEvent(thread_id, event as AppendPayload);
-    if (req.caller.kind === 'hosted') touch(thread_id);
+    // vm_failed is a provisioning-failure report, not a thread event: close the
+    // run + push a `failed` frame (the runner already sanitized the reason)
+    // rather than persisting it to the event log.
+    if (event.kind === 'vm_failed') {
+      logger.warn({ thread_id, reason: event.reason }, 'agent-events: vm provisioning failed');
+      await failVmRun(thread_id, event.reason);
+    } else {
+      await appendEvent(thread_id, event as AppendPayload);
+    }
+    // Reset this container's inactivity timer (touch) AND bump the DB heartbeat
+    // (touchVmRun) so a sibling container sees the VM's row as fresh.
+    if (req.caller.kind === 'hosted') {
+      touch(thread_id);
+      await touchVmRun(thread_id);
+    }
     res.status(204).end();
   } catch (err) {
     logger.error({ err }, 'agent-events: append failed');

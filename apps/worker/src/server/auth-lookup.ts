@@ -28,6 +28,19 @@ export async function lookupWorkspaceByAgentKey(token: string): Promise<{ id: st
   return row ?? null;
 }
 
+// Resolves an active Clerk org id (from a browser session JWT) to its Tempo
+// workspace. Null when no workspace has been provisioned for the org yet —
+// callers degrade gracefully rather than 500. The org_id claim is Clerk's proof
+// of membership, so no extra membership check is needed here.
+export async function lookupWorkspaceByClerkOrg(clerkOrgId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: workspaces.id })
+    .from(workspaces)
+    .where(eq(workspaces.clerk_org_id, clerkOrgId))
+    .limit(1);
+  return row?.id ?? null;
+}
+
 // Resolves a CLI user token (sk_user_*) to its owning Clerk user id.
 // Filters out revoked and expired tokens at the DB level.
 export async function lookupUserByToken(plaintext: string): Promise<{ user_id: string } | null> {

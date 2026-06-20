@@ -5,10 +5,10 @@ import { sampleCtx, toolJson } from '../_utils';
 // Mock @tempo/server first, then load the gateway core so its imports bind to
 // the mock (the core is deliberately free of the auth/env/db chain).
 const server = installTempoServerMock();
-const { runConnectorCall, assertConnectorEnabled } = await import(
-  '../../src/gateway/connector-call'
-);
-const { ConnectorNotEnabledError } = await import('../../src/gateway/errors');
+const { runConnectorCall } = await import('../../src/gateway/connector-call');
+// assertConnectorEnabled + ConnectorNotEnabledError live in @tempo/server now;
+// import the single identity the gateway and in-process tools share.
+const { assertConnectorEnabled, ConnectorNotEnabledError } = await import('@tempo/server');
 
 beforeEach(() => server.reset());
 
@@ -52,7 +52,6 @@ describe('runConnectorCall', () => {
 
   test('a thrown TempoError is reported by its code (not the generic connector_error)', async () => {
     server.setEnabled(true);
-    const { ConnectorNotEnabledError } = await import('../../src/gateway/errors');
     const result = await runConnectorCall(
       sampleCtx,
       { connectorId: 'linear', toolName: 'tempo_use_integration', request: {} },

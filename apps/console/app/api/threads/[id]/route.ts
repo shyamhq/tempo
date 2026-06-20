@@ -1,11 +1,13 @@
 import { UpdateThreadRequest } from '@tempo/contracts/http';
 import {
   deleteThread,
+  getHostedState,
   getPlan,
   getThread,
   isPresent,
   listCommentsForThread,
   listMessagesForThread,
+  resolveAgentPresent,
   threadBelongsToWorkspace,
   updateThread,
 } from '@tempo/server';
@@ -54,12 +56,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
   const thread = await getThread(id);
   if (!thread) return err('thread_not_found', 404);
-  const [plan, comments, messages, agent_present] = await Promise.all([
+  const [plan, comments, messages, redisPresent, hosted] = await Promise.all([
     getPlan(id),
     listCommentsForThread(id),
     listMessagesForThread(id),
     isPresent(id),
+    getHostedState(id),
   ]);
+  // A repo-less Hosted Thread runs in-process (no SSE connection, no Redis
+  // presence key) but is always reachable — see resolveAgentPresent.
+  const agent_present = resolveAgentPresent(thread.agent_type, thread.repos, redisPresent);
   return ok({
     thread: {
       id: thread.id,
@@ -72,5 +78,6 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     comments,
     discussion: { messages },
     agent_present,
+    vm: hosted.vm,
   });
 }

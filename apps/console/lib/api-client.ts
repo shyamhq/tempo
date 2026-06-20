@@ -16,7 +16,7 @@ import {
   GetConnectTokenResponse,
   GetThreadResponse,
   GetTrailsResponse,
-  HostedStateResponse,
+  GithubReposResponse,
   type InitAttachmentInput,
   InitAttachmentResult,
   ListSpacesResponse,
@@ -38,6 +38,10 @@ import { z } from 'zod';
 
 const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 const OkResponse = z.object({ ok: z.literal(true) });
+
+export type { GithubRepo } from '@tempo/contracts/http';
+
+const ThreadReposResponse = z.object({ repos: z.array(z.string()) });
 
 // Workspace identity is read client-side from Clerk's hooks
 // (`useOrganization`, `useOrganizationList`). Schemas below cover routes that
@@ -201,9 +205,6 @@ export const api = {
   getConnectToken: (threadId: string) =>
     request('GET', `/api/threads/${threadId}/connect-token`, undefined, GetConnectTokenResponse),
 
-  getHostedState: (threadId: string) =>
-    request('GET', `/api/threads/${threadId}/hosted/state`, undefined, HostedStateResponse),
-
   deleteThread: (threadId: string) =>
     request('DELETE', `/api/threads/${threadId}`, undefined, DeleteThreadResponse),
 
@@ -257,6 +258,15 @@ export const api = {
 
   disconnectConnector: (id: string) =>
     request('DELETE', `/api/connectors/${encodeURIComponent(id)}`, undefined, ConnectorOkResponse),
+
+  // Returns the thread's current attached repos (["owner/name", ...]).
+  getThreadRepos: (threadId: string) =>
+    request(
+      'GET',
+      `/api/threads/${encodeURIComponent(threadId)}/repos`,
+      undefined,
+      ThreadReposResponse,
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -305,6 +315,10 @@ export function workerApi(getToken: () => Promise<string | null>) {
 
     wakeHosted: (threadId: string) =>
       w('POST', `/api/threads/${threadId}/hosted/wake`, {}, WakeHostedResponse),
+
+    // GitHub repo picker. Worker-bound so the GitHub App private key stays on
+    // the Worker. Returns { repos: [] } when GitHub is not connected.
+    listGithubRepos: () => w('GET', '/api/connectors/github/repos', undefined, GithubReposResponse),
   };
 }
 

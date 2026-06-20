@@ -1,6 +1,7 @@
 import type { ConnectorId, ConnectorTier } from '@tempo/contracts/connectors';
 import { db } from '@tempo/db/client';
 import { auditLog, workspaceConnectors } from '@tempo/db/schema';
+import { TempoError } from '@tempo/errors';
 import { and, eq, sql } from 'drizzle-orm';
 import { newAuditLogId, newWorkspaceConnectorId } from '../ids';
 
@@ -28,6 +29,31 @@ export async function isConnectorEnabled(
     )
     .limit(1);
   return row?.enabled === true;
+}
+
+// The connector is not enabled for this workspace — the allowlist gate said no.
+// Surfaces to the Agent as an error result (not an HTTP status; connector tool
+// errors travel in the MCP tool response body), keyed by `code`.
+export class ConnectorNotEnabledError extends TempoError {
+  constructor(connectorId: string) {
+    super(
+      'connector_not_enabled',
+      403,
+      `connector "${connectorId}" is not enabled for this workspace`,
+    );
+  }
+}
+
+// The allowlist assertion shared by the Worker gateway (MCP tool path) and the
+// in-process hosted tools: throw if the connector is off, so both runtimes gate
+// identically before hitting a connector.
+export async function assertConnectorEnabled(
+  workspaceId: string,
+  connectorId: string,
+): Promise<void> {
+  if (!(await isConnectorEnabled(workspaceId, connectorId))) {
+    throw new ConnectorNotEnabledError(connectorId);
+  }
 }
 
 // Tier-specific binding the clients need to act: GitHub stores

@@ -38,6 +38,10 @@ export async function postMessage(
   if (body.text === undefined && body.questions === undefined && body.attachments.length === 0) {
     throw new Error('invalid_input');
   }
+  // `repos` is Dev-only, enforced here (not in the schema) exactly as `questions`
+  // is Agent-only above: only a Dev author may attach repos to the Thread. The
+  // Agent's `body.repos`, if any, is ignored.
+  const repos = author_user_id !== null ? body.repos : undefined;
   const questions: Question[] | null = body.questions
     ? body.questions.map((q) => ({ ...q, id: `q_${ulid()}` }))
     : null;
@@ -46,13 +50,19 @@ export async function postMessage(
 
   const heads = await verifyAttachmentsInR2(threadId, body.attachments);
 
-  const message = await db.transaction(async (tx) => {
+  const { message, reposLinked } = await db.transaction(async (tx) => {
     const [t] = await tx
-      .select({ id: threads.id })
+      .select({ id: threads.id, repos: threads.repos })
       .from(threads)
       .where(eq(threads.id, threadId))
       .limit(1);
     if (!t) throw new Error('thread_not_found');
+
+    // Diff the Dev-sent repo list against the Thread's current list; on a change,
+    // update the column inside this transaction so the message and the new repo
+    // set commit atomically. The `repo_linked` event is appended after commit.
+    const reposLinked = repos !== undefined && !sameRepos(t.repos, repos);
+    if (reposLinked) await tx.update(threads).set({ repos }).where(eq(threads.id, threadId));
 
     const id = newMessageId();
     const created_at = new Date();
@@ -60,8 +70,12 @@ export async function postMessage(
       .insert(discussion_messages)
       .values({ id, thread_id: threadId, author_user_id, text, questions, mentions, created_at });
     await insertAttachmentRows(tx, threadId, heads, { kind: 'message', messageId: id });
-    return { id, created_at_iso: created_at.toISOString() };
+    return { message: { id, created_at_iso: created_at.toISOString() }, reposLinked };
   });
+
+  if (reposLinked && repos !== undefined) {
+    await appendEvent(threadId, { kind: 'repo_linked', repos });
+  }
 
   const attsByMessage = await listAttachmentsForParents({ message_ids: [message.id] });
   const shaped: DiscussionMessage = {
@@ -76,6 +90,16 @@ export async function postMessage(
   };
   await appendEvent(threadId, { kind: 'discussion_message_posted', message: shaped });
   return shaped;
+}
+
+// Order-independent set comparison: the Dev sends the full updated repo list,
+// so a reorder of the same repos is not a change and must not re-emit
+// `repo_linked` (which would wake the Agent for nothing). Compares de-duplicated
+// sets so a list with repeats (e.g. ["x","x"] vs ["x","y"]) isn't a false match.
+export function sameRepos(a: string[], b: string[]): boolean {
+  const setA = new Set(a);
+  const setB = new Set(b);
+  return setA.size === setB.size && [...setA].every((r) => setB.has(r));
 }
 
 function shapeMessage(

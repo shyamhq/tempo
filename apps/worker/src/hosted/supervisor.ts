@@ -1,15 +1,16 @@
-import { db } from '@tempo/db/client';
-import { vm_runs } from '@tempo/db/schema';
-import { appendEvent } from '@tempo/server';
-import { isNull, sql } from 'drizzle-orm';
+import { getInstallationToken, publishVmSignal } from '@tempo/server';
 import { logger } from '../logger';
 import { provision, type VmRun } from '../vm/provision';
 import { teardown } from '../vm/teardown';
 
 // Single-process Hosted lifecycle manager. No NOTIFY, no LISTEN, no
-// auto-spawn — VMs are created by an explicit user click on the Console
-// (POST /api/hosted/wake). This module only tracks live Sandboxes, arms
-// the wallclock timer, and reaps on shutdown.
+// auto-spawn — VMs are created by a wake POST (/api/hosted/wake). This module
+// tracks the Sandboxes THIS process spawned, refreshes their E2B wallclock on
+// activity, and reaps them on inactivity or shutdown. There is deliberately no
+// boot orphan-sweep: in multi-container it would close sibling containers' live
+// vm_runs on every deploy. Cross-container liveness is the DB heartbeat
+// (touchVmRun) + lazy reapStaleVmRun before spawn, with E2B's wallclock as the
+// backstop that actually kills the sandbox.
 
 const log = logger.child({ module: 'supervisor' });
 
@@ -53,8 +54,12 @@ export type WakeResult =
 export async function spawnHosted(opts: {
   threadId: string;
   workspaceId: string;
+  // The attached repos, read once by the wake handler. Passing them in (rather
+  // than re-reading threads.repos here) closes a race with a concurrent
+  // repo_linked: the handler's gate and this spawn act on the same snapshot.
+  repos: string[];
 }): Promise<WakeResult> {
-  const { threadId, workspaceId } = opts;
+  const { threadId, workspaceId, repos } = opts;
   if (stopped) throw new Error('supervisor: stopped');
 
   const existing = live.get(threadId);
@@ -69,7 +74,13 @@ export async function spawnHosted(opts: {
   spawning.add(threadId);
 
   try {
-    const run = await provision({ threadId, workspaceId });
+    // Mint the GitHub App installation token right before Sandbox.create (token
+    // is ~1h TTL — decision 6 / "Cloning"). Only mint when there's something to
+    // clone; a repo-less Thread never reaches here (the wake handler routes it
+    // to the in-process conversation).
+    const token = repos.length > 0 ? (await getInstallationToken(workspaceId)).token : undefined;
+
+    const run = await provision({ threadId, workspaceId, repos, token });
     live.set(threadId, { run, expiresTimer: armReapTimer(threadId) });
     log.info(
       {
@@ -89,7 +100,10 @@ export async function spawnHosted(opts: {
   }
 }
 
-async function reap(threadId: string, reason: string): Promise<void> {
+// Tear down the live Sandbox for a thread (if this process owns it). Public so
+// the wake route can reap on a repo change before re-provisioning against the
+// new repo list — a live VM's env is immutable.
+export async function reap(threadId: string, reason: string): Promise<void> {
   const entry = live.get(threadId);
   if (!entry) return;
   clearTimeout(entry.expiresTimer);
@@ -99,30 +113,12 @@ async function reap(threadId: string, reason: string): Promise<void> {
     vm_run_id: entry.run.vm_run_id,
     exit_reason: reason,
   });
+  // Clear the Console checklist — the row is closed; no Sandbox is live. A
+  // repo-change reap is immediately followed by a fresh `provisioning` push.
+  await publishVmSignal(threadId, null);
 }
 
 export async function stopSupervisor(): Promise<void> {
   stopped = true;
   await Promise.all(Array.from(live.keys()).map((tid) => reap(tid, 'worker_shutdown')));
-}
-
-// Boot-time sweep. The `live` Map only knows about Sandboxes this process
-// spawned, so a hard-killed previous Worker leaves `vm_runs` rows with
-// `ended_at IS NULL` plus DB session state stuck at `connected`. We can't
-// touch the actual E2B Sandbox — its handle died with the previous process
-// — but E2B's own wallclock will reap it within a few minutes. Closing the
-// DB row + emitting `session_disconnected` keeps the Console in sync.
-export async function startSupervisor(): Promise<void> {
-  const orphans = await db
-    .select({ id: vm_runs.id, thread_id: vm_runs.thread_id })
-    .from(vm_runs)
-    .where(isNull(vm_runs.ended_at));
-  if (orphans.length === 0) return;
-  log.info({ count: orphans.length }, 'sweeping orphaned vm_runs at boot');
-  for (const row of orphans) {
-    await db
-      .update(vm_runs)
-      .set({ ended_at: sql`now()`, exit_reason: 'orphaned_by_restart' })
-      .where(sql`${vm_runs.id} = ${row.id}`);
-  }
 }

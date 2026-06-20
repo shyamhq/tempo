@@ -5,7 +5,7 @@
 // connection live." Old events live in Postgres and load on page open — the
 // stream only needs enough recent entries to bridge a reconnect, so it's capped.
 
-import type { Event, PresenceSignal } from '@tempo/contracts';
+import type { Event, PresenceSignal, VmSignal, VmState } from '@tempo/contracts';
 import Redis from 'ioredis';
 
 const STREAM_PREFIX = 'tempo:t:';
@@ -57,10 +57,21 @@ export async function publishPresence(threadId: string, online: boolean): Promis
   await pushFrame(threadId, { kind: 'presence', online });
 }
 
+// Ephemeral VM-status frame — same stream, never persisted. Pushed by the
+// provisioner and the agent-events failure path so the Console's checklist
+// tracks the Sandbox lifecycle live (sibling of publishPresence). `vm` is null
+// on teardown.
+export async function publishVmSignal(threadId: string, vm: VmState | null): Promise<void> {
+  await pushFrame(threadId, { kind: 'vm', vm });
+}
+
 // MAXLEN ~ caps the stream in the same round-trip (lazy, macro-node granularity).
 // Auto-id (*) never rejects on concurrent writes; consumers order by the event's
 // own evt_<seq> id, so stream order isn't authoritative.
-async function pushFrame(threadId: string, frame: Event | PresenceSignal): Promise<void> {
+async function pushFrame(
+  threadId: string,
+  frame: Event | PresenceSignal | VmSignal,
+): Promise<void> {
   await redis().xadd(
     streamKey(threadId),
     'MAXLEN',
@@ -74,11 +85,11 @@ async function pushFrame(threadId: string, frame: Event | PresenceSignal): Promi
 
 // Pull the JSON frame back out of a stream entry's flat [field, value, ...]
 // array. Returns null on a missing or unparseable payload. Pure.
-export function parseStreamEvent(fields: string[]): Event | PresenceSignal | null {
+export function parseStreamEvent(fields: string[]): Event | PresenceSignal | VmSignal | null {
   for (let i = 0; i + 1 < fields.length; i += 2) {
     if (fields[i] === 'payload') {
       try {
-        return JSON.parse(fields[i + 1] as string) as Event | PresenceSignal;
+        return JSON.parse(fields[i + 1] as string) as Event | PresenceSignal | VmSignal;
       } catch {
         return null;
       }
@@ -122,6 +133,38 @@ export async function clearPresent(threadId: string, nonce: string): Promise<boo
 
 export async function isPresent(threadId: string): Promise<boolean> {
   return (await redis().exists(presenceKey(threadId))) === 1;
+}
+
+// --- Turn lock: "is an in-process conversation turn running for this thread" --
+// One in-process planning turn at a time, globally. A repo-less Hosted Thread
+// has no Sandbox and no supervisor spawn-guard, so the serialization that the
+// supervisor's `spawning` Set gives the VM path lives in Redis here instead —
+// the same `SET NX EX` + owner-nonce CAS shape as presence above, so a crashed
+// container's lock self-expires (TTL) and only the owner releases it.
+const TURN_LOCK_PREFIX = 'tempo:turnlock:';
+// Floor above the longest plausible single turn; the TTL is the crash safety
+// net (a container that dies mid-turn must not wedge the thread forever). Sized
+// for the worst case — MAX_STEPS_PER_TURN (50) steps fanning out to web search /
+// fetch tools — so a slow-but-live turn never has its lock expire under it,
+// which would let a second container start a duplicate turn.
+const TURN_LOCK_TTL_SEC = 300;
+function turnLockKey(threadId: string): string {
+  return `${TURN_LOCK_PREFIX}${threadId}`;
+}
+
+// SET NX EX: claims the lock only if no other container holds it. Returns true
+// iff we acquired it. A null reply means another container is already running a
+// turn (and will re-drain), so the caller no-ops.
+export async function acquireTurnLock(threadId: string, nonce: string): Promise<boolean> {
+  const ok = await redis().set(turnLockKey(threadId), nonce, 'EX', TURN_LOCK_TTL_SEC, 'NX');
+  return ok === 'OK';
+}
+
+// Compare-and-delete — releases only if the key still holds our nonce, so an
+// expired-then-reacquired lock owned by another container is never evicted by
+// our late release. Reuses the presence CAS script.
+export async function releaseTurnLock(threadId: string, nonce: string): Promise<void> {
+  await redis().eval(CLEAR_IF_OWNER, 1, turnLockKey(threadId), nonce);
 }
 
 // Batch presence read for the threads list — one MGET, present iff non-null.

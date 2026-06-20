@@ -1,9 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { Readable, Writable } from 'node:stream';
-import type { ThreadId } from '@tempo/contracts';
-import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
-import type { AgentEventRequest } from '@tempo/contracts/http';
 import {
   type Client,
   ClientSideConnection,
@@ -16,6 +13,7 @@ import {
   type SessionNotification,
 } from '@agentclientprotocol/sdk';
 import type { ThreadId } from '@tempo/contracts';
+import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
 import type { AgentEventRequest } from '@tempo/contracts/http';
 import { postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';

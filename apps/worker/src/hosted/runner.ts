@@ -13,13 +13,15 @@ import type { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Event as TempoEvent } from '@tempo/contracts/events';
 import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
+import type { Event as TempoEvent } from '@tempo/contracts/events';
 import type { TurnHydration } from '@tempo/contracts/http';
-import type { ModelMessage } from 'ai';
+import type { ModelMessage, ToolSet } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
+import { emitStepEvents, webToolsForModel } from './agent-tools';
+import { parseRepos, sanitizeCloneError } from './clone';
 import { runWakeSubscriber } from './event-source';
 import { buildAnthropicProvider, turnPath } from './helicone';
 
@@ -45,7 +47,9 @@ const env = {
   anthropicKey: required('ANTHROPIC_API_KEY'),
   heliconeKey: process.env.HELICONE_API_KEY,
   modelId: process.env.HOSTED_AGENT_MODEL ?? 'claude-haiku-4-5-20251001',
-  repoUrl: process.env.REPO_URL,
+  // Multi-repo: TEMPO_REPOS is a JSON array of "owner/name" strings.
+  // GITHUB_APP_TOKEN is the ephemeral install token minted by provision.
+  tempoRepos: process.env.TEMPO_REPOS,
   ghToken: process.env.GITHUB_APP_TOKEN,
 };
 
@@ -72,7 +76,7 @@ async function postAgentEvent(event: unknown): Promise<void> {
 // Turn-1 bootstrap — the SAME /access endpoint the local CLI uses. Returns the
 // full snapshot (`context`) + wake events since the last turn (catch-up for a
 // freshly-spawned runner). Subsequent turns arrive via the SSE stream.
-async function hydrate(): Promise<{ events: unknown[]; context: TurnHydration } | null> {
+async function hydrate(): Promise<{ events: TempoEvent[]; context: TurnHydration } | null> {
   try {
     const res = await fetch(`${env.workerMcpUrl}/api/threads/${env.threadId}/access`, {
       headers: { Authorization: `Bearer ${env.hostedToken}` },
@@ -81,7 +85,7 @@ async function hydrate(): Promise<{ events: unknown[]; context: TurnHydration } 
       logger.error({ status: res.status, body: await res.text() }, 'runner: hydrate');
       return null;
     }
-    const json = (await res.json()) as { events: unknown[]; context: TurnHydration };
+    const json = (await res.json()) as { events: TempoEvent[]; context: TurnHydration };
     return { events: json.events ?? [], context: json.context };
   } catch (err) {
     logger.error({ err }, 'runner: hydrate failed');
@@ -140,24 +144,30 @@ const Grep = tool({
   },
 });
 
-async function maybeCloneRepo(): Promise<void> {
-  // /workspace is pre-created in the template (owned by `user`), so the
-  // no-repo path is a no-op — the MCP filesystem server and Bash both
-  // happily target an empty dir.
-  if (!env.repoUrl || !env.ghToken) return;
-  const authedUrl = env.repoUrl.replace('https://', `https://x-access-token:${env.ghToken}@`);
-  execSync(`git clone --depth 1 --filter=blob:none ${authedUrl} /workspace`, {
-    stdio: 'pipe',
-  });
-  execSync(`git -C /workspace remote set-url origin ${env.repoUrl}`, {
-    stdio: 'pipe',
-  });
+async function cloneRepos(): Promise<void> {
+  // /workspace is pre-created in the template (owned by `user`). An empty
+  // repos list is a no-op — the MCP filesystem server and Bash both happily
+  // target an empty dir; the conversation runs without code access.
+  const repos = parseRepos(env.tempoRepos, env.ghToken);
+  for (const repo of repos) {
+    // Shallow blobless clone keeps the initial fetch fast inside the sandbox.
+    execSync(`git clone --depth 1 --filter=blob:none ${repo.cloneUrl} ${repo.dir}`, {
+      stdio: 'pipe',
+    });
+    // Scrub the ephemeral token from the remote so it doesn't linger in
+    // `git remote -v` output or git's credential store.
+    execSync(
+      `git -C ${repo.dir} remote set-url origin https://github.com/${repo.owner}/${repo.name}.git`,
+      { stdio: 'pipe' },
+    );
+    logger.info({ repo: `${repo.owner}/${repo.name}`, dir: repo.dir }, 'runner: cloned');
+  }
 }
 
 type SafeMCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 
 async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Promise<{
-  tools: Record<string, unknown>;
+  tools: ToolSet;
   close: () => Promise<void>;
 }> {
   const fs: SafeMCPClient = await experimental_createMCPClient({
@@ -181,25 +191,9 @@ async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Prom
 
   const fsTools = await fs.tools();
   const tempoTools = await tempo.tools();
-  // Web search + web fetch — Anthropic-hosted server tools. Version picked
-  // by model capability:
-  //   Sonnet 4.6+ / Opus 4.6+ → 20260209 versions with *dynamic filtering*
-  //     (Claude writes code to filter results, cutting tokens). Per
-  //     platform.claude.com/docs/.../web-search-tool and .../web-fetch-tool
-  //     these are the only models supported by the new versions.
-  //   Everything else (Haiku) → previous 20250305 / 20250910 versions, no
-  //     dynamic filtering but broad model support.
-  const dynamicFilteringModels =
-    env.modelId.startsWith('claude-sonnet-') || env.modelId.startsWith('claude-opus-');
-  const webSearch = dynamicFilteringModels
-    ? anthropic.tools.webSearch_20260209({ maxUses: 5 })
-    : anthropic.tools.webSearch_20250305({ maxUses: 5 });
-  const webFetch = dynamicFilteringModels
-    ? anthropic.tools.webFetch_20260209({ maxUses: 5 })
-    : anthropic.tools.webFetch_20250910({ maxUses: 5 });
 
   return {
-    tools: { ...fsTools, ...tempoTools, Bash, Grep, webSearch, webFetch },
+    tools: { ...fsTools, ...tempoTools, Bash, Grep, ...webToolsForModel(anthropic, env.modelId) },
     close: async () => {
       await fs.close().catch(() => {});
       await tempo.close().catch(() => {});
@@ -210,7 +204,7 @@ async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Prom
 const history: ModelMessage[] = [];
 
 type TurnInput = {
-  events: unknown[];
+  events: TempoEvent[];
   context?: TurnHydration | null;
 };
 
@@ -218,7 +212,7 @@ type TurnInput = {
 // completed-step history either way.
 async function runTurn(
   input: TurnInput,
-  tools: Record<string, unknown>,
+  tools: ToolSet,
   anthropic: ReturnType<typeof createAnthropic>,
   // abortController is created per turn by the main loop and shared with the
   // SSE listener — the listener calls controller.abort() on a wake event.
@@ -238,7 +232,7 @@ async function runTurn(
 
   const result = streamText({
     model: anthropic(env.modelId),
-    tools: tools as Parameters<typeof streamText>[0]['tools'],
+    tools,
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages: history,
@@ -260,31 +254,9 @@ async function runTurn(
       // read-only tools, which are safe to re-issue.
       history.push(...steps.flatMap((s) => s.response.messages as ModelMessage[]));
     },
-    onStepFinish: async ({ text, toolCalls, reasoning }) => {
-      // Reasoning (Anthropic extended-thinking) is captured here too —
-      // emitted under agent_narration for now. Follow-up: introduce
-      // dedicated agent_thinking event kind via judge gate.
-      const reasoningText = Array.isArray(reasoning)
-        ? reasoning.map((r) => (r as { text?: string }).text ?? '').join('')
-        : '';
-      if (reasoningText) {
-        await postAgentEvent({
-          kind: 'agent_narration',
-          text: `[thinking] ${reasoningText}`,
-        });
-      }
-      if (text) {
-        await postAgentEvent({ kind: 'agent_narration', text });
-      }
-      for (const c of toolCalls) {
-        const summary = JSON.stringify((c as { input?: unknown }).input ?? {}).slice(0, 200);
-        await postAgentEvent({
-          kind: 'agent_tool_use',
-          tool: (c as { toolName: string }).toolName,
-          summary,
-        });
-      }
-    },
+    // Reasoning (Anthropic extended-thinking) is projected under agent_narration
+    // for now. Follow-up: introduce a dedicated agent_thinking event via judge.
+    onStepFinish: (step) => emitStepEvents(step, postAgentEvent),
   });
 
   // consumeStream() resolves cleanly whether the turn completes normally or
@@ -328,11 +300,21 @@ async function runTurn(
 
 async function main(): Promise<void> {
   try {
-    await maybeCloneRepo();
+    await cloneRepos();
   } catch (err) {
-    logger.error({ err, threadId: env.threadId }, 'runner: repo_clone_failed');
-    throw err;
+    // git puts the token-bearing clone URL in both `message` and `stderr`, so
+    // every string derived from a clone error is sanitized before it can reach
+    // a log line, the vm_failed payload, or the browser.
+    const e = err as { stderr?: Buffer | string; message?: string };
+    const raw = e.stderr?.toString().trim() || e.message || String(err);
+    const reason = sanitizeCloneError(raw);
+    logger.error({ reason, threadId: env.threadId }, 'runner: repo_clone_failed');
+    await postAgentEvent({ kind: 'vm_failed', reason }).catch(() => {});
+    process.exit(1);
   }
+  // Happy-path provisioning phases are owned by the Worker (provision.ts) and by
+  // agent presence — the runner reports nothing on success. Its only provisioning
+  // signal is a failure (above / the fatal handler).
 
   // Initial provider (path: /init) — only used for buildToolset, which reads
   // tool definitions and doesn't actually make a request. Every Turn rebuilds
@@ -408,6 +390,7 @@ async function main(): Promise<void> {
       logger.warn('runner: turn-1 hydrate failed; exiting');
       return;
     }
+
     await runTurnOnce(first);
 
     // Subsequent turns: process buffered wakes; self-exit after MAX_IDLE_MS idle.
@@ -429,6 +412,7 @@ async function main(): Promise<void> {
         wakeNotify = null;
         if (bufferedWakeEvents.length === 0) continue; // idle timeout — re-check deadline
       }
+
       await runTurnOnce({ events: bufferedWakeEvents.splice(0) });
     }
   } finally {
@@ -439,7 +423,12 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main().catch((err) => {
-  logger.error({ err }, 'runner: fatal');
+main().catch(async (err) => {
+  // Sanitize before logging AND before the event payload: a fatal that wraps a
+  // clone error would otherwise leak the token-bearing URL to both sinks.
+  const reason = sanitizeCloneError(err instanceof Error ? err.message : String(err));
+  logger.error({ reason }, 'runner: fatal');
+  // Best-effort: if the Worker is reachable, surface the failure in the UI.
+  await postAgentEvent({ kind: 'vm_failed', reason }).catch(() => {});
   process.exit(1);
 });

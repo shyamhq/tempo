@@ -56,6 +56,9 @@ export const threads = pgTable('threads', {
   description: text('description').notNull().default(''),
   connect_token: text('connect_token').notNull(),
   agent_type: text('agent_type', { enum: ['local', 'hosted'] }).notNull(),
+  // GitHub repos attached to this thread in `owner/name` format. Non-empty
+  // triggers VM provisioning; empty means in-process conversation turns.
+  repos: text('repos').array().notNull().default(sql`'{}'::text[]`),
   sort_order: doublePrecision('sort_order').notNull().default(0),
   created_at: timestampDate('created_at'),
   updated_at: timestampDate('updated_at'),
@@ -184,8 +187,19 @@ export const vm_runs = pgTable(
     // E2B's sandbox ID — populated right after Sandbox.create succeeds, so
     // "find this row in E2B's dashboard" is one indexed lookup.
     sandbox_id: text('sandbox_id'),
+    // Heartbeat: touched by any container on VM activity. A row whose
+    // last_seen_at has lapsed beyond ~2× the E2B idle window is treated as
+    // dead by getHostedState (lazy reap path).
+    last_seen_at: nullableTimestamp('last_seen_at'),
   },
-  (t) => [index('idx_vm_runs_thread_started').on(t.thread_id, t.started_at)],
+  (t) => [
+    index('idx_vm_runs_thread_started').on(t.thread_id, t.started_at),
+    // One live VM per thread — blocks genuine concurrent spawns. The spawn
+    // path lazily reaps any stale-heartbeat open row first (WHERE ended_at IS
+    // NULL AND last_seen_at < threshold) so this index never permanently
+    // wedges a thread after a phantom row is reaped.
+    uniqueIndex('uq_vm_runs_thread_live').on(t.thread_id).where(sql`ended_at IS NULL`),
+  ],
 );
 
 // CLI user tokens — issued via the /api/cli/exchange OAuth-code flow.
