@@ -46,13 +46,11 @@ import { type ModelMessage, stepCountIs, streamText, type ToolSet, tool } from '
 import { nanoid } from 'nanoid';
 import { env } from '../env';
 import { logger } from '../logger';
-import { emitStepEvents, webToolsForModel } from './agent-tools';
-import { buildAnthropicProvider, turnPath } from './helicone';
+import { buildModel, emitStepEvents, MODEL_ID, webTools } from './agent-tools';
 
 const log = logger.child({ module: 'conversation' });
 
-// Mirror runner.ts: same default model, same per-turn step cap.
-const MODEL_ID = process.env.HOSTED_AGENT_MODEL ?? 'claude-haiku-4-5-20251001';
+const model = buildModel({ apiKey: env.MOONSHOT_API_KEY, baseURL: env.MOONSHOT_BASE_URL });
 const MAX_STEPS_PER_TURN = 50;
 
 // Entry point for a repo-less Hosted wake. Acquires the per-thread turn lock,
@@ -77,7 +75,6 @@ export async function runConversationTurn(threadId: string): Promise<void> {
     }
     const tools = buildToolset(threadId, thread.workspace_id);
 
-    let turnCounter = 0;
     // Coalescing re-drain loop: events that arrive (on any container) mid-turn
     // are visible in the DB after this turn ends, so we loop until empty.
     while (true) {
@@ -85,15 +82,7 @@ export async function runConversationTurn(threadId: string): Promise<void> {
       if (events.length === 0) break;
 
       const context = await getTurnHydration(threadId);
-      turnCounter += 1;
-      await runStreamTurn({
-        threadId,
-        workspaceId: thread.workspace_id,
-        turnNumber: turnCounter,
-        events,
-        context,
-        tools,
-      });
+      await runStreamTurn({ threadId, events, context, tools });
     }
   } catch (err) {
     log.error({ err, threadId, event: 'conversation:failed' }, 'in-process turn failed');
@@ -106,8 +95,6 @@ export async function runConversationTurn(threadId: string): Promise<void> {
 
 type StreamTurnInput = {
   threadId: string;
-  workspaceId: string;
-  turnNumber: number;
   events: TempoEvent[];
   context: TurnHydration | null;
   tools: ToolSet;
@@ -128,23 +115,12 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
   });
   const messages: ModelMessage[] = [{ role: 'user', content: userMessage }];
 
-  const anthropic = buildAnthropicProvider({
-    anthropicKey: env.ANTHROPIC_API_KEY,
-    heliconeKey: env.HELICONE_API_KEY,
-    threadId: input.threadId,
-    workspaceId: input.workspaceId,
-    sessionPath: turnPath(input.turnNumber),
-  });
-
   const result = streamText({
-    model: anthropic(MODEL_ID),
-    tools: { ...input.tools, ...webToolsForModel(anthropic, MODEL_ID) },
+    model,
+    tools: { ...input.tools, ...webTools() },
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages,
-    // Anthropic ephemeral prompt cache on the static prefix (system + tool
-    // defs). Per-wake turns within the 5-min TTL read the warm cache.
-    providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
     onStepFinish: (step) =>
       emitStepEvents(step, async (event) => {
         await appendEvent(input.threadId, event);
@@ -161,7 +137,6 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
       inputTokens: usage.inputTokens ?? 0,
       outputTokens: usage.outputTokens ?? 0,
       cacheReadTokens: usage.inputTokenDetails.cacheReadTokens ?? 0,
-      cacheWriteTokens: usage.inputTokenDetails.cacheWriteTokens ?? 0,
       elapsedMs: Date.now() - startedAt,
       event: 'conversation:turn',
     },

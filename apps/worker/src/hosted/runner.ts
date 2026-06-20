@@ -9,7 +9,6 @@
 
 import { execFile, execSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import type { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -20,10 +19,9 @@ import type { ModelMessage, ToolSet } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
-import { emitStepEvents, webToolsForModel } from './agent-tools';
+import { buildModel, emitStepEvents, MODEL_ID, webTools } from './agent-tools';
 import { parseRepos, sanitizeCloneError } from './clone';
 import { runWakeSubscriber } from './event-source';
-import { buildAnthropicProvider, turnPath } from './helicone';
 
 // Sandbox-local logger. Worker captures stdout/stderr per line via E2B's
 // onStdout/onStderr hooks (see vm/provision.ts) — pino's JSON lines flow
@@ -40,18 +38,20 @@ function required(name: string): string {
 
 const env = {
   threadId: required('TEMPO_THREAD_ID'),
-  workspaceId: required('TEMPO_WORKSPACE_ID'),
   hostedToken: required('TEMPO_HOSTED_TOKEN'),
   workerMcpUrl: required('WORKER_MCP_URL'),
   sessionId: required('TEMPO_SESSION_ID'),
-  anthropicKey: required('ANTHROPIC_API_KEY'),
-  heliconeKey: process.env.HELICONE_API_KEY,
-  modelId: process.env.HOSTED_AGENT_MODEL ?? 'claude-haiku-4-5-20251001',
+  moonshotKey: required('MOONSHOT_API_KEY'),
+  moonshotBaseUrl: process.env.MOONSHOT_BASE_URL ?? 'https://api.moonshot.ai/v1',
   // Multi-repo: TEMPO_REPOS is a JSON array of "owner/name" strings.
   // GITHUB_APP_TOKEN is the ephemeral install token minted by provision.
   tempoRepos: process.env.TEMPO_REPOS,
   ghToken: process.env.GITHUB_APP_TOKEN,
 };
+
+const model = buildModel({ apiKey: env.moonshotKey, baseURL: env.moonshotBaseUrl });
+// Fail fast — webTools() reads TAVILY_API_KEY from process.env at call time.
+required('TAVILY_API_KEY');
 
 // Match the supervisor's inactivity budget (apps/worker/src/hosted/supervisor.ts).
 // Runner self-exits at this gap; supervisor reaps slightly later as backstop.
@@ -166,7 +166,7 @@ async function cloneRepos(): Promise<void> {
 
 type SafeMCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 
-async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Promise<{
+async function buildToolset(): Promise<{
   tools: ToolSet;
   close: () => Promise<void>;
 }> {
@@ -193,7 +193,7 @@ async function buildToolset(anthropic: ReturnType<typeof createAnthropic>): Prom
   const tempoTools = await tempo.tools();
 
   return {
-    tools: { ...fsTools, ...tempoTools, Bash, Grep, ...webToolsForModel(anthropic, env.modelId) },
+    tools: { ...fsTools, ...tempoTools, Bash, Grep, ...webTools() },
     close: async () => {
       await fs.close().catch(() => {});
       await tempo.close().catch(() => {});
@@ -213,7 +213,6 @@ type TurnInput = {
 async function runTurn(
   input: TurnInput,
   tools: ToolSet,
-  anthropic: ReturnType<typeof createAnthropic>,
   // abortController is created per turn by the main loop and shared with the
   // SSE listener — the listener calls controller.abort() on a wake event.
   abortController: AbortController,
@@ -231,21 +230,11 @@ async function runTurn(
   const signal = abortController.signal;
 
   const result = streamText({
-    model: anthropic(env.modelId),
+    model,
     tools,
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages: history,
-    // Per-step decision point. No-op today (every tool allowed).
-    prepareStep: async () => ({}),
-    // Anthropic ephemeral prompt cache: 5-min TTL on system prompt + tool
-    // defs (the static, big chunk). First step of a Turn writes the cache
-    // (~25% premium), every subsequent step inside the Turn AND any Turn
-    // that fires within 5 min reads it (~10% of normal). Big net win for
-    // multi-step Turns and back-and-forth sessions.
-    providerOptions: {
-      anthropic: { cacheControl: { type: 'ephemeral' } },
-    },
     abortSignal: signal,
     onAbort: ({ steps }) => {
       // Only fully-completed steps are available here; the in-progress step's
@@ -275,22 +264,15 @@ async function runTurn(
   const response = await result.response;
   history.push(...response.messages);
 
-  // Token / cost line. stdout → onStdout → worker INFO log. Cost numbers
-  // are Anthropic's published Haiku 4.5 rates ($1/$5 per MTok) and won't
-  // be right if HOSTED_AGENT_MODEL is overridden — switch to a model
-  // factory once we add a second provider.
+  // Token line. stdout → onStdout → worker INFO log.
   const u = await result.totalUsage;
-  const ms = Date.now() - startedAt;
-  const cost = ((u.inputTokens ?? 0) * 1 + (u.outputTokens ?? 0) * 5) / 1_000_000;
   logger.info(
     {
-      model: env.modelId,
+      model: MODEL_ID,
       inputTokens: u.inputTokens ?? 0,
       outputTokens: u.outputTokens ?? 0,
       cacheReadTokens: u.inputTokenDetails.cacheReadTokens ?? 0,
-      cacheWriteTokens: u.inputTokenDetails.cacheWriteTokens ?? 0,
-      cost: Number(cost.toFixed(4)),
-      elapsedMs: ms,
+      elapsedMs: Date.now() - startedAt,
     },
     'runner: usage',
   );
@@ -316,19 +298,7 @@ async function main(): Promise<void> {
   // agent presence — the runner reports nothing on success. Its only provisioning
   // signal is a failure (above / the fatal handler).
 
-  // Initial provider (path: /init) — only used for buildToolset, which reads
-  // tool definitions and doesn't actually make a request. Every Turn rebuilds
-  // its own provider with a fresh `/turn/<n>` path so Helicone groups the
-  // Turn's requests into their own sub-trace.
-  if (env.heliconeKey) logger.info('runner: routing Anthropic via Helicone');
-  const initialAnthropic = buildAnthropicProvider({
-    anthropicKey: env.anthropicKey,
-    heliconeKey: env.heliconeKey,
-    threadId: env.threadId,
-    workspaceId: env.workspaceId,
-    sessionPath: '/init',
-  });
-  const toolset = await buildToolset(initialAnthropic);
+  const toolset = await buildToolset();
 
   // One AbortController for the whole SSE connection lifetime. Aborted when the
   // runner exits so the open fetch is cleaned up.
@@ -366,20 +336,11 @@ async function main(): Promise<void> {
     },
   });
 
-  let turnCounter = 0;
   let lastActivity = Date.now();
 
   const runTurnOnce = async (input: TurnInput): Promise<void> => {
-    turnCounter += 1;
     turnController = new AbortController();
-    const turnAnthropic = buildAnthropicProvider({
-      anthropicKey: env.anthropicKey,
-      heliconeKey: env.heliconeKey,
-      threadId: env.threadId,
-      workspaceId: env.workspaceId,
-      sessionPath: turnPath(turnCounter),
-    });
-    await runTurn(input, toolset.tools, turnAnthropic, turnController);
+    await runTurn(input, toolset.tools, turnController);
     lastActivity = Date.now();
   };
 

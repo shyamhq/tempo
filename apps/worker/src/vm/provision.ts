@@ -21,12 +21,12 @@ export type VmRun = {
 const SANDBOX_INITIAL_TIMEOUT_MS = 10 * 60 * 1000;
 const TEMPLATE_NAME = 'tempo-hosted-runner';
 
-// Egress allowlist — non-negotiable per agent-harness.md §6. Anthropic for
-// the SDK call, GitHub for repo clone, Worker for MCP. Everything else
-// denied by the absence of a wildcard.
+// Egress allowlist — non-negotiable per agent-harness.md §6. Moonshot for the
+// model call, Tavily for web search/fetch, GitHub for repo clone, Worker for
+// MCP. Everything else denied by the absence of a wildcard.
 const EGRESS_ALLOWLIST = [
-  'api.anthropic.com',
-  'anthropic.helicone.ai',
+  'api.moonshot.ai',
+  'api.tavily.com',
   'api.github.com',
   'github.com',
   'codeload.github.com',
@@ -73,11 +73,9 @@ export async function provision(opts: {
         // what it's used for inside the runner) even though the Worker env
         // var is `WORKER_PUBLIC_URL`.
         WORKER_MCP_URL: env.WORKER_PUBLIC_URL,
-        ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY,
-        ...(env.HELICONE_API_KEY ? { HELICONE_API_KEY: env.HELICONE_API_KEY } : {}),
-        ...(process.env.HOSTED_AGENT_MODEL
-          ? { HOSTED_AGENT_MODEL: process.env.HOSTED_AGENT_MODEL }
-          : {}),
+        MOONSHOT_API_KEY: env.MOONSHOT_API_KEY,
+        MOONSHOT_BASE_URL: env.MOONSHOT_BASE_URL,
+        TAVILY_API_KEY: env.TAVILY_API_KEY,
         // Clone contract the runner (T6) reads: a JSON array of `owner/name`,
         // cloned into /workspace/<name>. Reaches here only with repos present.
         TEMPO_REPOS: JSON.stringify(repos),
