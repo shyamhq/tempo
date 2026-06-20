@@ -118,11 +118,11 @@ app.use(errorHandler);
 
 const server = app.listen(env.PORT, () => {
   logger.info({ port: env.PORT, env: env.NODE_ENV }, 'worker started');
-  // Fire-and-forget — orphans from a prior crash close out so the Console
-  // chip and vm_runs table line up with reality. Failure logs but doesn't
-  // block readiness; a stuck connected row is a UI nuisance, not a crash.
+  // Boot orphan-sweep removed (multi-container — heartbeat + lazy reap handle
+  // orphans now). Kept as a fire-and-forget hook so future boot-time supervisor
+  // setup has a home; failure logs but doesn't block readiness.
   void startSupervisor().catch((err) =>
-    logger.warn({ err }, 'supervisor: boot sweep failed (continuing)'),
+    logger.warn({ err }, 'supervisor: boot init failed (continuing)'),
   );
 });
 

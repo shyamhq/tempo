@@ -124,6 +124,35 @@ export async function isPresent(threadId: string): Promise<boolean> {
   return (await redis().exists(presenceKey(threadId))) === 1;
 }
 
+// --- Turn lock: "is an in-process conversation turn running for this thread" --
+// One in-process planning turn at a time, globally. A repo-less Hosted Thread
+// has no Sandbox and no supervisor spawn-guard, so the serialization that the
+// supervisor's `spawning` Set gives the VM path lives in Redis here instead —
+// the same `SET NX EX` + owner-nonce CAS shape as presence above, so a crashed
+// container's lock self-expires (TTL) and only the owner releases it.
+const TURN_LOCK_PREFIX = 'tempo:turnlock:';
+// Floor above the longest plausible single turn; the TTL is the crash safety
+// net (a container that dies mid-turn must not wedge the thread forever).
+export const TURN_LOCK_TTL_SEC = 120;
+function turnLockKey(threadId: string): string {
+  return `${TURN_LOCK_PREFIX}${threadId}`;
+}
+
+// SET NX EX: claims the lock only if no other container holds it. Returns true
+// iff we acquired it. A null reply means another container is already running a
+// turn (and will re-drain), so the caller no-ops.
+export async function acquireTurnLock(threadId: string, nonce: string): Promise<boolean> {
+  const ok = await redis().set(turnLockKey(threadId), nonce, 'EX', TURN_LOCK_TTL_SEC, 'NX');
+  return ok === 'OK';
+}
+
+// Compare-and-delete — releases only if the key still holds our nonce, so an
+// expired-then-reacquired lock owned by another container is never evicted by
+// our late release. Reuses the presence CAS script.
+export async function releaseTurnLock(threadId: string, nonce: string): Promise<void> {
+  await redis().eval(CLEAR_IF_OWNER, 1, turnLockKey(threadId), nonce);
+}
+
 // Batch presence read for the threads list — one MGET, present iff non-null.
 export async function arePresent(threadIds: string[]): Promise<Map<string, boolean>> {
   if (threadIds.length === 0) return new Map();

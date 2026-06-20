@@ -20,6 +20,7 @@ import type { ModelMessage } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
+import { type RepoEntry, hasRepoLinked, parseRepos } from './clone';
 import { runWakeSubscriber } from './event-source';
 import { buildAnthropicProvider, turnPath } from './helicone';
 
@@ -45,7 +46,9 @@ const env = {
   anthropicKey: required('ANTHROPIC_API_KEY'),
   heliconeKey: process.env.HELICONE_API_KEY,
   modelId: process.env.HOSTED_AGENT_MODEL ?? 'claude-haiku-4-5-20251001',
-  repoUrl: process.env.REPO_URL,
+  // Multi-repo: TEMPO_REPOS is a JSON array of "owner/name" strings.
+  // GITHUB_APP_TOKEN is the ephemeral install token minted by provision.
+  tempoRepos: process.env.TEMPO_REPOS,
   ghToken: process.env.GITHUB_APP_TOKEN,
 };
 
@@ -140,18 +143,24 @@ const Grep = tool({
   },
 });
 
-async function maybeCloneRepo(): Promise<void> {
-  // /workspace is pre-created in the template (owned by `user`), so the
-  // no-repo path is a no-op — the MCP filesystem server and Bash both
-  // happily target an empty dir.
-  if (!env.repoUrl || !env.ghToken) return;
-  const authedUrl = env.repoUrl.replace('https://', `https://x-access-token:${env.ghToken}@`);
-  execSync(`git clone --depth 1 --filter=blob:none ${authedUrl} /workspace`, {
-    stdio: 'pipe',
-  });
-  execSync(`git -C /workspace remote set-url origin ${env.repoUrl}`, {
-    stdio: 'pipe',
-  });
+async function cloneRepos(): Promise<void> {
+  // /workspace is pre-created in the template (owned by `user`). An empty
+  // repos list is a no-op — the MCP filesystem server and Bash both happily
+  // target an empty dir; the conversation runs without code access.
+  const repos = parseRepos(env.tempoRepos, env.ghToken);
+  for (const repo of repos) {
+    // Shallow blobless clone keeps the initial fetch fast inside the sandbox.
+    execSync(`git clone --depth 1 --filter=blob:none ${repo.cloneUrl} ${repo.dir}`, {
+      stdio: 'pipe',
+    });
+    // Scrub the ephemeral token from the remote so it doesn't linger in
+    // `git remote -v` output or git's credential store.
+    execSync(
+      `git -C ${repo.dir} remote set-url origin https://github.com/${repo.owner}/${repo.name}.git`,
+      { stdio: 'pipe' },
+    );
+    logger.info({ repo: `${repo.owner}/${repo.name}`, dir: repo.dir }, 'runner: cloned');
+  }
 }
 
 type SafeMCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
@@ -328,11 +337,15 @@ async function runTurn(
 
 async function main(): Promise<void> {
   try {
-    await maybeCloneRepo();
+    await cloneRepos();
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
     logger.error({ err, threadId: env.threadId }, 'runner: repo_clone_failed');
-    throw err;
+    await postAgentEvent({ kind: 'vm_progress', step: 'failed', reason }).catch(() => {});
+    process.exit(1);
   }
+
+  await postAgentEvent({ kind: 'vm_progress', step: 'repos_cloned' });
 
   // Initial provider (path: /init) — only used for buildToolset, which reads
   // tool definitions and doesn't actually make a request. Every Turn rebuilds
@@ -408,6 +421,16 @@ async function main(): Promise<void> {
       logger.warn('runner: turn-1 hydrate failed; exiting');
       return;
     }
+
+    // Check for a repo_linked in the Turn-1 catch-up events BEFORE running any
+    // turn. A repo was attached while this sandbox was booting; its env is
+    // immutable, so self-exit so the next wake re-provisions with the full list.
+    if (hasRepoLinked(first.events as TempoEvent[])) {
+      logger.info('runner: repo_linked in turn-1 catch-up; self-exiting for re-provision');
+      return;
+    }
+
+    await postAgentEvent({ kind: 'vm_progress', step: 'agent_started' });
     await runTurnOnce(first);
 
     // Subsequent turns: process buffered wakes; self-exit after MAX_IDLE_MS idle.
@@ -429,6 +452,15 @@ async function main(): Promise<void> {
         wakeNotify = null;
         if (bufferedWakeEvents.length === 0) continue; // idle timeout — re-check deadline
       }
+
+      // A repo_linked in the buffered events means the Dev attached a new repo
+      // while this VM was live. Env is immutable — self-exit cleanly so the
+      // next wake provisions a fresh sandbox with the complete repo list.
+      if (hasRepoLinked(bufferedWakeEvents)) {
+        logger.info('runner: repo_linked received; self-exiting for re-provision');
+        return;
+      }
+
       await runTurnOnce({ events: bufferedWakeEvents.splice(0) });
     }
   } finally {
@@ -439,7 +471,10 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   logger.error({ err }, 'runner: fatal');
+  const reason = err instanceof Error ? err.message : String(err);
+  // Best-effort: if the Worker is reachable, surface the failure in the UI.
+  await postAgentEvent({ kind: 'vm_progress', step: 'failed', reason }).catch(() => {});
   process.exit(1);
 });

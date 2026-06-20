@@ -1,6 +1,6 @@
 import { db } from '@tempo/db/client';
 import { threads, workspaces } from '@tempo/db/schema';
-import { getEventsSinceLastTurn, getTurnHydration } from '@tempo/server';
+import { getEventsSinceLastTurn, getTurnHydration, touchVmRun } from '@tempo/server';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
@@ -69,7 +69,11 @@ export const threadAccessHandler: RequestHandler<{ id: string }> = async (req, r
     return;
   }
   // A freshly-spawned hosted runner hydrates here before its first MCP call —
-  // reset the supervisor's inactivity timer so it isn't reaped mid-turn-1.
-  if (req.caller.kind === 'hosted') touch(threadId);
+  // reset this container's inactivity timer (touch) AND bump the DB heartbeat
+  // (touchVmRun) so a sibling container sees the row as fresh.
+  if (req.caller.kind === 'hosted') {
+    touch(threadId);
+    await touchVmRun(threadId);
+  }
   res.json({ ...row, context, events });
 };

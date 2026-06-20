@@ -1,6 +1,6 @@
 import { db } from '@tempo/db/client';
 import { vm_runs } from '@tempo/db/schema';
-import { newVmRunId } from '@tempo/server';
+import { appendEvent, newVmRunId, reapStaleVmRun } from '@tempo/server';
 import { eq, sql } from 'drizzle-orm';
 import { Sandbox } from 'e2b';
 import { env } from '../env';
@@ -34,11 +34,17 @@ const EGRESS_ALLOWLIST = [
 export async function provision(opts: {
   threadId: string;
   workspaceId: string;
-  repoUrl?: string;
-  ghToken?: string;
+  repos: string[];
+  token?: string;
 }): Promise<VmRun> {
-  const { threadId, workspaceId, repoUrl, ghToken } = opts;
+  const { threadId, workspaceId, repos, token } = opts;
   const hosted = await issueHostedToken(threadId);
+
+  // Close any open row whose heartbeat has lapsed BEFORE inserting the new one,
+  // so the partial unique index `vm_runs(thread_id) WHERE ended_at IS NULL`
+  // can't reject a fresh spawn on a corpse row. The reap is freshness-scoped in
+  // @tempo/server — a live sibling's row stays open.
+  await reapStaleVmRun(threadId);
 
   const vmRunId = newVmRunId();
   await db.insert(vm_runs).values({ id: vmRunId, thread_id: threadId });
@@ -63,8 +69,10 @@ export async function provision(opts: {
         ...(process.env.HOSTED_AGENT_MODEL
           ? { HOSTED_AGENT_MODEL: process.env.HOSTED_AGENT_MODEL }
           : {}),
-        ...(repoUrl ? { REPO_URL: repoUrl } : {}),
-        ...(ghToken ? { GITHUB_APP_TOKEN: ghToken } : {}),
+        // Clone contract the runner (T6) reads: a JSON array of `owner/name`,
+        // cloned into /workspace/<name>. Reaches here only with repos present.
+        TEMPO_REPOS: JSON.stringify(repos),
+        ...(token ? { GITHUB_APP_TOKEN: token } : {}),
       },
       network: {
         allowOut: [...EGRESS_ALLOWLIST, new URL(env.WORKER_PUBLIC_URL).hostname],
@@ -75,6 +83,10 @@ export async function provision(opts: {
       metadata: { tempo_thread_id: threadId, tempo_vm_run_id: vmRunId },
     });
   } catch (err) {
+    // Surface the provisioning failure to the Console checklist (decision 3) —
+    // a `failed` step on vm_progress instead of a stuck "Provisioning…" spinner.
+    const reason = err instanceof Error ? err.message : String(err);
+    await appendEvent(threadId, { kind: 'vm_progress', step: 'failed', reason });
     // Close the orphan row so cost / open-runs queries don't accumulate it.
     await db
       .update(vm_runs)
@@ -82,6 +94,8 @@ export async function provision(opts: {
       .where(eq(vm_runs.id, vmRunId));
     throw err;
   }
+
+  await appendEvent(threadId, { kind: 'vm_progress', step: 'sandbox_ready' });
 
   await db.update(vm_runs).set({ sandbox_id: sandbox.sandboxId }).where(eq(vm_runs.id, vmRunId));
 

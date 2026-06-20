@@ -56,11 +56,13 @@ export const HostedStateResponse = z.object({
     .nullable(),
 });
 
-// POST /api/threads/:id/hosted/wake — Sandbox spawn (user-triggered button
-// or server-side post-hook on Dev wake-events). Rejects with 400 for
-// agent_type='local' Threads.
-// `spawned`: a new Sandbox is provisioning.
+// POST /api/threads/:id/hosted/wake — Hosted wake (user-triggered button or
+// server-side post-hook on Dev wake-events). Rejects with 400 for
+// agent_type='local' Threads. The runtime is gated on threads.repos:
+// `spawned`: a new Sandbox is provisioning (repos attached).
 // `already_running`: a Sandbox is alive (or mid-spawn) for this thread.
+// `conversation`: repo-less Thread — one in-process planning turn was kicked off
+//   in the Worker (no Sandbox); the turn runs in the background.
 export const WakeHostedResponse = z.union([
   z.object({
     status: z.literal('spawned'),
@@ -70,6 +72,9 @@ export const WakeHostedResponse = z.union([
   z.object({
     status: z.literal('already_running'),
     sandbox_id: z.string(),
+  }),
+  z.object({
+    status: z.literal('conversation'),
   }),
 ]);
 

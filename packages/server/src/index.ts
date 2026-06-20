@@ -10,14 +10,18 @@ export * from './ids';
 export * from './mailbox';
 export * from './plan';
 export * from './r2';
-// Presence helpers from redis.ts (the rest of redis.ts is server-internal).
+// Presence + turn-lock helpers from redis.ts (the rest of redis.ts is
+// server-internal — the shared client never leaves the package).
 export {
+  acquireTurnLock,
   arePresent,
   clearPresent,
   isPresent,
   publishPresence,
   refreshPresent,
+  releaseTurnLock,
   setPresent,
+  TURN_LOCK_TTL_SEC,
 } from './redis';
 export * from './replies';
 export * from './threads';

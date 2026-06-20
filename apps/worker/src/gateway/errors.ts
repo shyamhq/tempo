@@ -1,17 +1,9 @@
 import { TempoError } from '@tempo/errors';
 
-// The connector is not enabled for this workspace — the allowlist gate said no.
-// Surfaces to the Agent as an error result (not an HTTP status; connector tool
-// errors travel in the MCP tool response body).
-export class ConnectorNotEnabledError extends TempoError {
-  constructor(connectorId: string) {
-    super(
-      'connector_not_enabled',
-      403,
-      `connector "${connectorId}" is not enabled for this workspace`,
-    );
-  }
-}
+// ConnectorNotEnabledError now lives in @tempo/server (shared by the MCP path
+// and the in-process hosted tools); re-export it here so this barrel's surface
+// is unchanged and there's a single class identity for `instanceof` checks.
+export { ConnectorNotEnabledError } from '@tempo/server';
 
 // The dispatcher refused a non-read action before it reached Pipedream.
 export class WriteActionRejectedError extends TempoError {

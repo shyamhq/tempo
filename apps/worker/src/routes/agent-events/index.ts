@@ -1,5 +1,5 @@
 import { AgentEventRequest } from '@tempo/contracts/http';
-import { type AppendPayload, appendEvent } from '@tempo/server';
+import { type AppendPayload, appendEvent, touchVmRun } from '@tempo/server';
 import type { RequestHandler } from 'express';
 import { authorizeThread, ForbiddenError } from '../../auth';
 import { touch } from '../../hosted/supervisor';
@@ -36,7 +36,12 @@ export const agentEventsHandler: RequestHandler = async (req, res) => {
 
   try {
     await appendEvent(thread_id, event as AppendPayload);
-    if (req.caller.kind === 'hosted') touch(thread_id);
+    // Reset this container's inactivity timer (touch) AND bump the DB heartbeat
+    // (touchVmRun) so a sibling container sees the VM's row as fresh.
+    if (req.caller.kind === 'hosted') {
+      touch(thread_id);
+      await touchVmRun(thread_id);
+    }
     res.status(204).end();
   } catch (err) {
     logger.error({ err }, 'agent-events: append failed');
