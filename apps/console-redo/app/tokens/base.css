@@ -75,10 +75,11 @@ body {
     linear-gradient(to bottom, rgba(236, 231, 220, 0.035) 1px, transparent 1px);
 }
 
+/* One focus treatment: the kit's soft box-shadow ring (respects each element's
+   own radius). Components re-declare the same shadow, so there is no doubling. */
 :focus-visible {
-  outline: 2px solid var(--tp-accent);
-  outline-offset: 2px;
-  border-radius: 4px;
+  outline: none;
+  box-shadow: var(--tp-focus-ring);
 }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -92,6 +93,13 @@ body {
   background: var(--tp-ink-3);
   background-clip: padding-box;
 }
+
+/* live status dot — the agent "thinking" pulse (readme: allowed motion) */
+@keyframes tp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.tp-pulse { animation: tp-pulse 1.1s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

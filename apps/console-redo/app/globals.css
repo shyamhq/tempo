@@ -176,10 +176,13 @@
 
   /* shadcn `accent` = the subtle hover/active surface (ghost buttons, menu-item
      hover), mapped to the kit's inset well — NOT the brand. Brand terracotta is
-     `primary` (= --tp-accent); the kit's brand tints --tp-accent-soft/-press stay
-     raw vars and get utilities when a component needs them. --color-sidebar
-     (surface) stays owned by the kit mapping above; only sidebar sub-roles here. */
+     `primary` (= --tp-accent); the kit's brand tints --tp-accent-soft/-press get
+     utilities (bg-primary-soft for ghost hover / accent washes, bg-primary-press
+     for the primary button's pressed background). --color-sidebar (surface) stays
+     owned by the kit mapping above; only sidebar sub-roles here. */
   --color-accent: var(--accent);
+  --color-primary-soft: var(--tp-accent-soft);
+  --color-primary-press: var(--tp-accent-press);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
