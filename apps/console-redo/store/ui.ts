@@ -28,6 +28,12 @@ export interface UiSlice {
   // Per-thread / per-comment last-seen ISO timestamps; absent key = never seen.
   discussionSeenAt: Record<string, string>;
   commentSeenAt: Record<string, string>;
+  // The agent-activity drawer's open flag. Transient (NOT persisted) — a drawer
+  // shouldn't reopen on reload; the status strip's activity chip toggles it.
+  activityOpen: boolean;
+  // Per-thread "drafted plan" banner dismissals (absent key = not dismissed).
+  // Persisted so a dismiss sticks across reloads.
+  draftedBannerDismissed: Record<string, boolean>;
 
   setRailOpen: (open: boolean) => void;
   toggleRail: () => void;
@@ -36,6 +42,8 @@ export interface UiSlice {
   setDiscussionWidth: (px: number) => void;
   markDiscussionSeen: (threadId: string) => void;
   markCommentSeen: (commentId: string) => void;
+  setActivityOpen: (open: boolean) => void;
+  dismissDraftedBanner: (threadId: string) => void;
 }
 
 export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) => ({
@@ -44,6 +52,8 @@ export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) =
   discussionWidth: DEFAULT_DISCUSSION_WIDTH,
   discussionSeenAt: {},
   commentSeenAt: {},
+  activityOpen: false,
+  draftedBannerDismissed: {},
 
   setRailOpen: (open) => set({ railOpen: open }),
   toggleRail: () => set((s) => ({ railOpen: !s.railOpen })),
@@ -59,11 +69,23 @@ export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) =
     set((s) => ({
       commentSeenAt: { ...s.commentSeenAt, [commentId]: new Date().toISOString() },
     })),
+  setActivityOpen: (open) => set({ activityOpen: open }),
+  dismissDraftedBanner: (threadId) =>
+    set((s) => ({
+      draftedBannerDismissed: { ...s.draftedBannerDismissed, [threadId]: true },
+    })),
 });
 
 // The persisted projection — store/index.ts partializes to exactly this so live
 // thread state (comments, discussion, plan, agent) never leaks into localStorage.
+// activityOpen is deliberately excluded: a transient drawer flag, not a saved
+// preference.
 export type PersistedUiState = Pick<
   UiSlice,
-  'railOpen' | 'dockOpen' | 'discussionWidth' | 'discussionSeenAt' | 'commentSeenAt'
+  | 'railOpen'
+  | 'dockOpen'
+  | 'discussionWidth'
+  | 'discussionSeenAt'
+  | 'commentSeenAt'
+  | 'draftedBannerDismissed'
 >;

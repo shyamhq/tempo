@@ -48,6 +48,7 @@ export const useThreadStore = create<ThreadStore>()(
         discussionWidth: s.discussionWidth,
         discussionSeenAt: s.discussionSeenAt,
         commentSeenAt: s.commentSeenAt,
+        draftedBannerDismissed: s.draftedBannerDismissed,
       }),
     },
   ),
@@ -76,9 +77,25 @@ export const useSpaceExpanded = (spaceId: string) =>
 // caller ever needs more than presence.
 export const useAgentPresent = () => useThreadStore((s) => s.agentPresent);
 
+// The VM provisioning snapshot (null when no Sandbox is provisioning) — the
+// status strip's VM pill reads it. Single-value select: the object reference is
+// stable until the gateway writes a new vm frame.
+export const useVm = () => useThreadStore((s) => s.vm);
+
+// Whether a turn is streaming right now: the gateway holds the in-progress
+// message in agentLive while a turn runs and clears it on agent_turn_ended, so
+// its presence is the authoritative "live" signal (vs. heuristically reading
+// part states). The status strip's pulsing ring + the drawer's progress bar use
+// it.
+export const useAgentTurnLive = (threadId: string) =>
+  useThreadStore((s) => s.agentLive[threadId] !== undefined);
+
 export const useRailOpen = () => useThreadStore((s) => s.railOpen);
 export const useDockOpen = () => useThreadStore((s) => s.dockOpen);
 export const useDiscussionWidth = () => useThreadStore((s) => s.discussionWidth);
+export const useActivityOpen = () => useThreadStore((s) => s.activityOpen);
+export const useDraftedBannerDismissed = (threadId: string) =>
+  useThreadStore((s) => s.draftedBannerDismissed[threadId] ?? false);
 
 // The breadcrumb space name. ThreadSummary carries no space_id, so resolve it
 // from the already-hydrated sidebar tree: the space whose thread list contains
