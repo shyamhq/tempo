@@ -17,6 +17,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useThreadSession } from '@/hooks/useThreadSession';
 import { useDiscussionWidth, useDockOpen, useThreadStore } from '@/store';
 import { MAX_DISCUSSION_WIDTH, MIN_DISCUSSION_WIDTH } from '@/store/ui';
+import { ActivityDrawer } from '../../agent/components/activity-drawer';
+import { DraftedBanner } from '../../agent/components/drafted-banner';
+import { StatusStrip } from '../../agent/components/status-strip';
 import { DiscussionDock } from '../../discussion/components/discussion-dock';
 import { ThreadTopBar } from './thread-topbar';
 
@@ -45,6 +48,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="min-w-0 flex-1 overflow-y-auto">
+          <DraftedBanner threadId={threadId} />
           <PlanEditor threadId={threadId} registerGetMarkdown={registerGetMarkdown} />
         </div>
 
@@ -58,7 +62,8 @@ export function ThreadView({ threadId }: { threadId: string }) {
         ) : null}
       </div>
 
-      {/* T5.2 status strip slots in here. */}
+      <StatusStrip threadId={threadId} />
+      <ActivityDrawer threadId={threadId} />
     </div>
   );
 }

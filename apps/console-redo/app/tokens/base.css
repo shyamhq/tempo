@@ -101,6 +101,38 @@ body {
 }
 .tp-pulse { animation: tp-pulse 1.1s ease-in-out infinite; }
 
+/* activity-chip ring pulse while a turn streams (kit .actring.live, workbench
+   index.html line 307-308). The expanding box-shadow ring is a partial-alpha
+   spread of the brand terracotta — no --tp-* token maps to a spread color, so
+   the kit's literal rgba is used here, the one place the kit itself hardcodes. */
+@keyframes tp-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(194, 86, 47, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(194, 86, 47, 0); }
+}
+.tp-ring-pulse { animation: tp-ring-pulse 1.2s ease-in-out infinite; }
+
+/* indeterminate progress sweep — the agent-activity drawer's bar while a turn
+   streams (no progress fraction exists to fill honestly, so it sweeps). */
+@keyframes tp-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.tp-indeterminate { animation: tp-indeterminate 1.1s ease-in-out infinite; }
+
+/* agent-activity drawer entry (kit .actpanel slide-in). The drawer mounts only
+   while open (Radix unmounts it on close — no forceMount, so no stale scrim),
+   so the entry plays as a mount animation rather than a state transition. */
+@keyframes tp-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.tp-fade-in { animation: tp-fade-in 180ms ease; }
+@keyframes tp-slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.tp-slide-in-right { animation: tp-slide-in-right 240ms var(--tp-ease); }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
