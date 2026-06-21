@@ -1,8 +1,9 @@
 'use client';
 
-// Discussion slice: the ordered DiscussionMessage[]. Mirrors apply()'s
-// dedup-by-id append so an optimistic local post and the server's echoed
-// discussion_message_posted event reconcile to a single message.
+// Discussion slice: the ordered DiscussionMessage[]. The composer sends without
+// an optimistic row, so the only append path is the server's echoed
+// discussion_message_posted event; the dedup-by-id keeps a re-delivered event
+// from doubling a message.
 
 import type { DiscussionMessage } from '@tempo/contracts';
 import type { DiscussionMessagePostedEvent } from '@tempo/contracts/events';
@@ -15,14 +16,6 @@ export interface DiscussionSlice {
 
   setDiscussion: (messages: DiscussionMessage[]) => void;
   applyDiscussionMessagePosted: (e: z.infer<typeof DiscussionMessagePostedEvent>) => void;
-  addMessageLocal: (message: DiscussionMessage) => void;
-}
-
-function upsertMessage(
-  messages: DiscussionMessage[],
-  message: DiscussionMessage,
-): DiscussionMessage[] {
-  return messages.some((m) => m.id === message.id) ? messages : [...messages, message];
 }
 
 export const createDiscussionSlice: StateCreator<ThreadStore, [], [], DiscussionSlice> = (set) => ({
@@ -31,7 +24,9 @@ export const createDiscussionSlice: StateCreator<ThreadStore, [], [], Discussion
   setDiscussion: (messages) => set({ discussion: messages }),
 
   applyDiscussionMessagePosted: (e) =>
-    set((s) => ({ discussion: upsertMessage(s.discussion, e.message) })),
-
-  addMessageLocal: (message) => set((s) => ({ discussion: upsertMessage(s.discussion, message) })),
+    set((s) => ({
+      discussion: s.discussion.some((m) => m.id === e.message.id)
+        ? s.discussion
+        : [...s.discussion, e.message],
+    })),
 });

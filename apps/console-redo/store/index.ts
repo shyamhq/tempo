@@ -10,7 +10,6 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { useShallow } from 'zustand/react/shallow';
 import { type AgentSlice, createAgentSlice, mergeAgentMessages } from '../features/agent/store';
 import { type CommentsSlice, createCommentsSlice } from '../features/comments/store';
 import { createDiscussionSlice, type DiscussionSlice } from '../features/discussion/store';
@@ -45,9 +44,8 @@ export const useThreadStore = create<ThreadStore>()(
       // plan, agent, sidebar tree) is hydrated/streamed, never cached to disk.
       partialize: (s): PersistedUiState => ({
         railOpen: s.railOpen,
-        railTab: s.railTab,
         dockOpen: s.dockOpen,
-        density: s.density,
+        discussionWidth: s.discussionWidth,
         discussionSeenAt: s.discussionSeenAt,
         commentSeenAt: s.commentSeenAt,
       }),
@@ -58,9 +56,9 @@ export const useThreadStore = create<ThreadStore>()(
 // ---- Selectors ------------------------------------------------------------
 //
 // Single-value selects (e.g. useThread()) return a stable reference and are
-// safe as-is. Multi-value selects must wrap the object literal in useShallow,
-// otherwise the new object identity on every store write forces a re-render —
-// see useThreadStatus below.
+// safe as-is. A multi-value select would need useShallow (or a useMemo over a
+// tuple, as useAgentMessages does), otherwise a fresh object identity on every
+// store write forces a re-render.
 
 export const useThread = () => useThreadStore((s) => s.thread);
 export const useComments = () => useThreadStore((s) => s.comments);
@@ -72,16 +70,31 @@ export const useSpaceThreads = (spaceId: string) =>
 export const useSpaceExpanded = (spaceId: string) =>
   useThreadStore((s) => s.expanded[spaceId] ?? false);
 
-export const useThreadStatus = () =>
-  useThreadStore(useShallow((s) => ({ agentPresent: s.agentPresent, vm: s.vm, repos: s.repos })));
+// The only thread-status fact any current surface reads is agent presence (the
+// dock's live/idle dot, the sidebar's badge). A single-value select keeps both
+// from re-rendering on vm/repos churn; widen to a useShallow object select if a
+// caller ever needs more than presence.
+export const useAgentPresent = () => useThreadStore((s) => s.agentPresent);
 
 export const useRailOpen = () => useThreadStore((s) => s.railOpen);
 export const useDockOpen = () => useThreadStore((s) => s.dockOpen);
+export const useDiscussionWidth = () => useThreadStore((s) => s.discussionWidth);
+
+// The breadcrumb space name. ThreadSummary carries no space_id, so resolve it
+// from the already-hydrated sidebar tree: the space whose thread list contains
+// this thread. Null while the tree is still loading or the thread isn't in it.
+export const useThreadSpaceName = (threadId: string): string | null =>
+  useThreadStore((s) => {
+    for (const space of s.spaces) {
+      if ((s.threadsBySpace[space.id] ?? []).some((t) => t.id === threadId)) return space.name;
+    }
+    return null;
+  });
 
 // Agent messages: select the two raw slices for this thread separately (each
 // only changes when its own data does), then merge — the merge dedups the live
 // turn against the persisted list so the live→persisted handoff never
-// double-renders. useShallow guards the [persisted, live] tuple identity.
+// double-renders. useMemo guards the [persisted, live] tuple identity.
 export const useAgentMessages = (threadId: string) => {
   const persisted = useThreadStore((s) => s.agentPersisted[threadId]);
   const live = useThreadStore((s) => s.agentLive[threadId]);
