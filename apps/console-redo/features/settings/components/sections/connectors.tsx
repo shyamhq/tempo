@@ -64,6 +64,11 @@ export function ConnectorsSection() {
   // mid-mutation-refetch) is a no-op leak; this gate skips those writes.
   const mountedRef = useRef(true);
   useEffect(() => {
+    // Reset on (re)mount, not just cleanup on unmount: React StrictMode's dev
+    // double-invoke runs mount→cleanup→mount, and without re-setting true here
+    // the ref stays false after the remount and every fetch result is discarded
+    // (stuck on "Loading…"). Set true on mount, false only on real unmount.
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
     };
