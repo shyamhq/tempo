@@ -12,7 +12,9 @@
 
 import type { CommentData } from '@blocknote/core/comments';
 import { useUser } from '@blocknote/react';
+import type { Mention } from '@tempo/contracts';
 import { Avatar } from '@/components/ui/avatar';
+import { MarkdownText } from '@/features/mentions/markdown-text';
 import { commentText, formatTime } from '../comment-text';
 import { AGENT_AUTHOR_ID } from '../comment-thread-store';
 
@@ -31,6 +33,10 @@ function CommentMessageRow({ comment }: { comment: CommentData }) {
   const user = useUser(comment.userId);
   const name = isAgent ? 'Agent' : (user?.username ?? comment.userId);
   const text = commentText(comment.body);
+  // The CommentThreadStore stamps a reply's Mention[] onto metadata; the rendered
+  // body highlights those tokens (markdown + @mentions).
+  const mentions =
+    (comment.metadata as { mentions?: Mention[] } | null | undefined)?.mentions ?? null;
 
   return (
     <div className="mb-3 flex flex-col gap-[5px]">
@@ -42,9 +48,11 @@ function CommentMessageRow({ comment }: { comment: CommentData }) {
         </span>
       </div>
       {text.length > 0 ? (
-        <p className="whitespace-pre-wrap break-words pl-[27px] font-sans text-sm leading-body text-ink-2">
-          {text}
-        </p>
+        <MarkdownText
+          text={text}
+          mentions={mentions}
+          className="break-words pl-[27px] font-sans text-sm leading-body text-ink-2"
+        />
       ) : (
         <p className="pl-[27px] font-sans text-sm italic text-ink-3">(deleted)</p>
       )}
