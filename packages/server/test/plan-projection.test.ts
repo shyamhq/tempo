@@ -11,7 +11,8 @@ type PmNode = { type: string; marks?: unknown[]; content?: PmNode[] };
 function stampCommentMark(pmDoc: unknown): unknown {
   const clone = structuredClone(pmDoc) as PmNode;
   const walk = (n: PmNode): void => {
-    if (n.type === 'text') n.marks = [...(n.marks ?? []), { type: 'comment', attrs: { orphan: false } }];
+    if (n.type === 'text')
+      n.marks = [...(n.marks ?? []), { type: 'comment', attrs: { orphan: false } }];
     n.content?.forEach(walk);
   };
   walk(clone);

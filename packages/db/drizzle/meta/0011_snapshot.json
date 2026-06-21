@@ -89,12 +89,8 @@
           "name": "attachments_thread_id_threads_id_fk",
           "tableFrom": "attachments",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -102,12 +98,8 @@
           "name": "attachments_message_id_discussion_messages_id_fk",
           "tableFrom": "attachments",
           "tableTo": "discussion_messages",
-          "columnsFrom": [
-            "message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["message_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -115,12 +107,8 @@
           "name": "attachments_reply_id_replies_id_fk",
           "tableFrom": "attachments",
           "tableTo": "replies",
-          "columnsFrom": [
-            "reply_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["reply_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -196,12 +184,8 @@
           "name": "comments_thread_id_threads_id_fk",
           "tableFrom": "comments",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -294,12 +278,8 @@
           "name": "discussion_messages_thread_id_threads_id_fk",
           "tableFrom": "discussion_messages",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -358,12 +338,8 @@
           "name": "events_thread_id_threads_id_fk",
           "tableFrom": "events",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -371,10 +347,7 @@
       "compositePrimaryKeys": {
         "events_thread_id_id_pk": {
           "name": "events_thread_id_id_pk",
-          "columns": [
-            "thread_id",
-            "id"
-          ]
+          "columns": ["thread_id", "id"]
         }
       },
       "uniqueConstraints": {},
@@ -430,12 +403,8 @@
           "name": "plans_thread_id_threads_id_fk",
           "tableFrom": "plans",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -445,9 +414,7 @@
         "plans_thread_id_unique": {
           "name": "plans_thread_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "thread_id"
-          ]
+          "columns": ["thread_id"]
         }
       },
       "policies": {},
@@ -502,12 +469,8 @@
           "name": "replies_comment_id_comments_id_fk",
           "tableFrom": "replies",
           "tableTo": "comments",
-          "columnsFrom": [
-            "comment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["comment_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -561,12 +524,8 @@
           "name": "spaces_workspace_id_workspaces_id_fk",
           "tableFrom": "spaces",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -658,12 +617,8 @@
           "name": "threads_workspace_id_workspaces_id_fk",
           "tableFrom": "threads",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -671,12 +626,8 @@
           "name": "threads_space_id_spaces_id_fk",
           "tableFrom": "threads",
           "tableTo": "spaces",
-          "columnsFrom": [
-            "space_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["space_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -780,16 +731,12 @@
         "user_tokens_token_hash_unique": {
           "name": "user_tokens_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
+          "columns": ["token_hash"]
         },
         "user_tokens_refresh_token_hash_unique": {
           "name": "user_tokens_refresh_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "refresh_token_hash"
-          ]
+          "columns": ["refresh_token_hash"]
         }
       },
       "policies": {},
@@ -872,12 +819,8 @@
           "name": "vm_runs_thread_id_threads_id_fk",
           "tableFrom": "vm_runs",
           "tableTo": "threads",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -931,16 +874,12 @@
         "workspaces_clerk_org_id_unique": {
           "name": "workspaces_clerk_org_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "clerk_org_id"
-          ]
+          "columns": ["clerk_org_id"]
         },
         "workspaces_agent_api_key_unique": {
           "name": "workspaces_agent_api_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "agent_api_key"
-          ]
+          "columns": ["agent_api_key"]
         }
       },
       "policies": {},
