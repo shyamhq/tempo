@@ -18,6 +18,7 @@ import type { DiscussionMessage } from '@tempo/contracts';
 import { Avatar } from '@/components/ui/avatar';
 import { AttachmentStrip } from '@/features/attachments/components/attachment-strip';
 import { MarkdownText } from '@/features/mentions/markdown-text';
+import { formatTime } from '../format';
 
 type Members = NonNullable<ReturnType<typeof useOrganization>['memberships']>['data'];
 
@@ -53,10 +54,7 @@ export function DiscussionMessageRow({ message }: { message: DiscussionMessage }
           suppressHydrationWarning
           className="ml-auto font-mono text-[10px] text-ink-3 tabular-nums"
         >
-          {new Date(message.created_at).toLocaleTimeString(undefined, {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
+          {formatTime(message.created_at)}
         </time>
       </div>
       {text.length > 0 || message.attachments.length > 0 ? (
