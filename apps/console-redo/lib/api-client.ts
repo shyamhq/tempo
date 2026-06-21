@@ -83,3 +83,31 @@ export async function workerRequest<T>(
   const json = await res.json();
   return responseSchema.parse(json);
 }
+
+// ---------------------------------------------------------------------------
+// Worker-side unload beacon (Bearer Clerk JWT, absolute Worker URL). A
+// fire-and-forget `keepalive` POST for page-unload flushes: the token is passed
+// in synchronously because a `beforeunload` handler cannot await getToken(). No
+// response is read — the page is going away. Chrome caps keepalive bodies at
+// ~64KB per origin and silently drops oversized ones, so the payload is checked
+// and skipped (best-effort) rather than failing loudly.
+// ---------------------------------------------------------------------------
+
+const KEEPALIVE_MAX_BYTES = 60_000;
+
+export function workerBeacon(path: string, body: unknown, token: string): void {
+  const serialized = JSON.stringify(body);
+  // The cap is a byte budget, so measure UTF-8 bytes — not `.length` (UTF-16
+  // code units), which undercounts any non-ASCII prose and would let an
+  // over-budget body through to a silent browser drop.
+  if (new TextEncoder().encode(serialized).byteLength > KEEPALIVE_MAX_BYTES) return;
+  fetch(`${WORKER_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: serialized,
+    keepalive: true,
+  }).catch(() => {});
+}
