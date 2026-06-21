@@ -303,6 +303,14 @@
   user-select: all;
 }
 
+/* The mention input always sits inside a container that owns the focus ring
+   (the composer card / reply box, via focus-within). Opt it out of the global
+   `:focus-visible { box-shadow }` treatment so it doesn't draw a second ring as
+   an inner box on top of its container's. */
+[data-mention-input]:focus-visible {
+  box-shadow: none;
+}
+
 /* Placeholder for the contenteditable mention input — hidden once the field has
    content or is focused. */
 [data-mention-input]:empty:not(:focus-within)::before {
