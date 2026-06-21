@@ -14,6 +14,7 @@ const badgeVariants = cva(
         danger: 'bg-danger-bg text-danger',
         actor: 'bg-actor-bg text-actor',
         neutral: 'bg-inset text-ink-2',
+        muted: 'bg-inset text-ink-3',
       },
       mono: {
         true: 'font-mono',
