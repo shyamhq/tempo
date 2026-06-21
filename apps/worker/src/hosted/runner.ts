@@ -8,6 +8,7 @@
 // wake events. Exits after MAX_IDLE_MS of no activity.
 
 import { execFile, execSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { experimental_createMCPClient } from '@ai-sdk/mcp';
 import { Experimental_StdioMCPTransport } from '@ai-sdk/mcp/mcp-stdio';
@@ -15,11 +16,11 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
 import type { Event as TempoEvent } from '@tempo/contracts/events';
 import type { TurnHydration } from '@tempo/contracts/http';
-import type { ModelMessage, ToolSet } from 'ai';
+import type { ModelMessage, ToolSet, UIMessageChunk } from 'ai';
 import { stepCountIs, streamText, tool } from 'ai';
 import pino from 'pino';
 import { z } from 'zod';
-import { buildModel, emitStepEvents, MODEL_ID, webTools } from './agent-tools';
+import { buildModel, MODEL_ID, pumpChunks, webTools } from './agent-tools';
 import { parseRepos, sanitizeCloneError } from './clone';
 import { runWakeSubscriber } from './event-source';
 
@@ -70,6 +71,27 @@ async function postAgentEvent(event: unknown): Promise<void> {
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`agent-event POST ${res.status}: ${body}`);
+  }
+}
+
+// Best-effort: a dropped activity batch must not kill the turn (the live frame is
+// lost, the persisted message may be incomplete — but the turn proceeds). `done`
+// triggers terminal persistence on the Worker.
+async function postAgentChunks(
+  turn: string,
+  chunks: UIMessageChunk[],
+  done: boolean,
+): Promise<void> {
+  try {
+    const res = await fetch(`${env.workerMcpUrl}/api/threads/${env.threadId}/agent-stream`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.hostedToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ turn, chunks, done }),
+    });
+    // A non-ok here (esp. on done) means the turn isn't persisted — surface it.
+    if (!res.ok) logger.warn({ status: res.status, done }, 'runner: agent-stream POST non-ok');
+  } catch (err) {
+    logger.warn({ err, done }, 'runner: agent-stream POST failed');
   }
 }
 
@@ -228,6 +250,7 @@ async function runTurn(
   history.push({ role: 'user', content: userMessage });
 
   const signal = abortController.signal;
+  const turn = `amsg_${randomUUID()}`;
 
   const result = streamText({
     model,
@@ -243,19 +266,25 @@ async function runTurn(
       // read-only tools, which are safe to re-issue.
       history.push(...steps.flatMap((s) => s.response.messages as ModelMessage[]));
     },
-    // Reasoning (Anthropic extended-thinking) is projected under agent_narration
-    // for now. Follow-up: introduce a dedicated agent_thinking event via judge.
-    onStepFinish: (step) => emitStepEvents(step, postAgentEvent),
   });
 
-  // consumeStream() resolves cleanly whether the turn completes normally or
-  // is aborted — the stream just closes. Do not await result.response or
-  // result.steps after an abort: they reject when zero steps completed.
-  await result.consumeStream();
+  // Stream UIMessageChunks to the Worker live; finalize (done) persists the
+  // assembled message, including completed parts on abort. An abort ends the UI
+  // stream — tolerate the interruption; rethrow anything that isn't the abort.
+  try {
+    await pumpChunks(
+      result.toUIMessageStream({ sendSources: true, generateMessageId: () => turn }),
+      (chunks) => postAgentChunks(turn, chunks, false),
+    );
+  } catch (err) {
+    if (!signal.aborted) throw err;
+  }
+  await postAgentChunks(turn, [], true);
 
   if (signal.aborted) {
     // onAbort already pushed completed-step messages. Still emit turn-ended so
     // the Console closes the activity indicator — a new turn starts right after.
+    // Do not await result.response after an abort: it rejects when zero steps completed.
     await postAgentEvent({ kind: 'agent_turn_ended' });
     return;
   }

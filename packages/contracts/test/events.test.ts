@@ -134,9 +134,9 @@ describe('VmSignal', () => {
 });
 
 // ---------------------------------------------------------------------------
-// AgentEventRequest — the hosted runner posts a vm_failed report through this
-// schema; it must accept it alongside the agent_* kinds (the handler routes it
-// to failVmRun instead of the event log).
+// AgentEventRequest — the only two things an agent runtime posts to
+// /agent-events: the agent_turn_ended boundary and a vm_failed report (the
+// handler routes the latter to failVmRun instead of the event log).
 // ---------------------------------------------------------------------------
 
 describe('AgentEventRequest', () => {
@@ -150,10 +150,10 @@ describe('AgentEventRequest', () => {
     expect(r.success).toBe(true);
   });
 
-  test('still accepts an agent_* kind', () => {
+  test('accepts the agent_turn_ended boundary event', () => {
     const r = AgentEventRequest.safeParse({
       thread_id: THREAD_ID,
-      event: { kind: 'agent_narration', text: 'hello' },
+      event: { kind: 'agent_turn_ended' },
     });
     expect(r.success).toBe(true);
   });

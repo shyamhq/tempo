@@ -1,3 +1,4 @@
+import type { TempoUIMessage } from '@tempo/contracts/agent-message';
 import {
   ConnectorOkResponse,
   ConnectorStatusResponse,
@@ -15,7 +16,6 @@ import {
   DeleteThreadResponse,
   GetConnectTokenResponse,
   GetThreadResponse,
-  GetTrailsResponse,
   GithubReposResponse,
   type InitAttachmentInput,
   InitAttachmentResult,
@@ -38,6 +38,10 @@ import { z } from 'zod';
 
 const DeleteCommentResponse = z.object({ ok: z.literal(true) });
 const OkResponse = z.object({ ok: z.literal(true) });
+// Agent messages are AI SDK UIMessage objects — Zod cannot express the full
+// union. Parse as unknown[] and let the call site cast; the route already
+// runs validateTempoMessages so the wire shape is guaranteed.
+const AgentMessagesResponse = z.object({ messages: z.array(z.unknown()) });
 
 export type { GithubRepo } from '@tempo/contracts/http';
 
@@ -199,8 +203,11 @@ export const api = {
     ),
 
   getThread: (id: string) => request('GET', `/api/threads/${id}`, undefined, GetThreadResponse),
-  getTrails: (id: string) =>
-    request('GET', `/api/threads/${id}/trails`, undefined, GetTrailsResponse),
+
+  getAgentMessages: (id: string): Promise<TempoUIMessage[]> =>
+    request('GET', `/api/threads/${id}/agent-messages`, undefined, AgentMessagesResponse).then(
+      (res) => res.messages as TempoUIMessage[],
+    ),
 
   getConnectToken: (threadId: string) =>
     request('GET', `/api/threads/${threadId}/connect-token`, undefined, GetConnectTokenResponse),

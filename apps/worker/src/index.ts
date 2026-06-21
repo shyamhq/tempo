@@ -9,6 +9,7 @@ import { stopSupervisor } from './hosted/supervisor';
 import { logger } from './logger';
 import { handleMcpRequest } from './mcp/transport';
 import { agentEventsHandler } from './routes/agent-events/index';
+import { agentStreamHandler } from './routes/agent-stream/index';
 import { initAttachmentHandler } from './routes/browser/attachments';
 import {
   createCommentHandler,
@@ -40,7 +41,10 @@ app.use(
   }),
 );
 
-app.use(express.json());
+// Global JSON parser. The limit lives here, not per-route: body-parser sets
+// req._body on first parse, so a later route-level express.json() never runs.
+// 4mb covers a single large tool-output UIMessageChunk on /agent-stream.
+app.use(express.json({ limit: '4mb' }));
 
 // Health check — unauthenticated, used by Fly's HTTP health probe.
 app.get('/health', healthHandler);
@@ -57,6 +61,9 @@ app.get('/api/threads/:id/access', bearerAuth, threadAccessHandler);
 // Agent event ingestion — sk_user_* only. Membership check happens inside the
 // handler (the threadId arrives in the body, not the URL).
 app.post('/api/agent-events', bearerAuth, express.json({ limit: '1mb' }), agentEventsHandler);
+
+// UIMessageChunk ingest — CLI + hosted VM stream a turn's parts here.
+app.post('/api/threads/:id/agent-stream', bearerAuth, ensureThreadAccess, agentStreamHandler);
 
 // Hosted Agent spawn — browser button OR internal Console server-to-server
 // auto-wake. Handler enforces the per-kind allowlist; the `internal` caller can

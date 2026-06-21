@@ -23,7 +23,7 @@ describe('dispatch', () => {
 
   it("ignores the agent's own echoed activity", () => {
     const h = handlers();
-    dispatch({ kind: 'agent_narration', text: 'hi' }, h);
+    dispatch({ kind: 'agent_turn_ended' }, h);
     expect(h.onWake).not.toHaveBeenCalled();
     expect(h.onCancel).not.toHaveBeenCalled();
   });

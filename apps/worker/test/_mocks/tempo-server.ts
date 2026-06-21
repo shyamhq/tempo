@@ -48,6 +48,8 @@ const getThread = mock(
 );
 const getTurnHydration = mock(async (_threadId: string): Promise<unknown> => null);
 const appendEvent = mock(async (_threadId: string, _payload: unknown): Promise<void> => {});
+const ingestChunks = mock(async (): Promise<void> => {});
+const finalizeTurn = mock(async (): Promise<void> => {});
 const postMessage = mock(async (): Promise<{ id: string }> => ({ id: 'msg_test' }));
 const getPlanBlocks = mock(async (): Promise<unknown> => ({ blocks: [] }));
 const updatePlan = mock(async (): Promise<unknown> => ({ ids: [] }));
@@ -97,6 +99,8 @@ export type ServerMock = {
   getThread: ReturnType<typeof mock>;
   getTurnHydration: ReturnType<typeof mock>;
   appendEvent: ReturnType<typeof mock>;
+  ingestChunks: ReturnType<typeof mock>;
+  finalizeTurn: ReturnType<typeof mock>;
   // VM provisioning handles.
   newVmRunId: ReturnType<typeof mock>;
   reapStaleVmRun: ReturnType<typeof mock>;
@@ -128,6 +132,8 @@ const handle: ServerMock = {
       getThread,
       getTurnHydration,
       appendEvent,
+      ingestChunks,
+      finalizeTurn,
       postMessage,
       getPlanBlocks,
       updatePlan,
@@ -158,6 +164,8 @@ const handle: ServerMock = {
   getThread,
   getTurnHydration,
   appendEvent,
+  ingestChunks,
+  finalizeTurn,
   newVmRunId,
   reapStaleVmRun,
   touchVmRun,
@@ -180,6 +188,8 @@ function register(): void {
     getThread,
     getTurnHydration,
     appendEvent,
+    ingestChunks,
+    finalizeTurn,
     postMessage,
     getPlanBlocks,
     updatePlan,

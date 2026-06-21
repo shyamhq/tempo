@@ -1,57 +1,23 @@
 'use client';
 
 import { useAuth, useUser } from '@clerk/nextjs';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AgentTodo } from '@tempo/contracts';
+import { useQueryClient } from '@tanstack/react-query';
+import { stripEmptyAgentText } from '@tempo/contracts';
+import type {
+  AgentChunkFrame,
+  TempoUIMessage,
+  UIMessageChunk,
+} from '@tempo/contracts/agent-message';
 import { Event, PresenceSignal, VmSignal } from '@tempo/contracts/events';
 import type { GetThreadResponse } from '@tempo/contracts/http';
 import { subscribeToEvents } from '@tempo/sse-client';
+import { readUIMessageStream } from 'ai';
 import { useEffect, useRef } from 'react';
 import type { z } from 'zod';
 import { workerEventsUrl } from '../lib/api-client';
+import { useAgentMessagesStore } from '../store/agent-messages';
 
 type ThreadView = z.infer<typeof GetThreadResponse>;
-
-export type ActivityEntry =
-  | { kind: 'tool'; id: string; tool: string; summary: string }
-  | { kind: 'tool_failed'; id: string; tool: string }
-  | { kind: 'narration'; id: string; text: string }
-  | { kind: 'thought'; id: string; text: string };
-
-export type LiveActivity = {
-  todos: AgentTodo[] | null;
-  entries: ActivityEntry[];
-  // True while Claude is mid-turn (a tool call has fired and no Stop hook has
-  // landed since). The widget shows a spinner on the latest tool while
-  // turnActive; on Stop it becomes a dot — the rest of the card stays.
-  turnActive: boolean;
-};
-
-// Activity stream cap — keeps the in-memory list bounded if Claude bursts
-// hundreds of tool calls or narration blocks between Dev messages.
-const ACTIVITY_ENTRIES_MAX = 100;
-const EMPTY_ACTIVITY: LiveActivity = {
-  todos: null,
-  entries: [],
-  turnActive: false,
-};
-
-export const liveActivityKey = (threadId: string) => ['thread', threadId, 'live-activity'] as const;
-
-// Cache-only read of the current "Agent activity" group: latest TodoWrite plus
-// the activity entries (tool calls + narration) accumulated since the most
-// recent Dev Discussion Message. SSE writes the value via `setQueryData`;
-// this hook never fetches.
-export function useLiveActivityGroup(threadId: string): LiveActivity {
-  const { data } = useQuery<LiveActivity>({
-    queryKey: liveActivityKey(threadId),
-    queryFn: () => EMPTY_ACTIVITY,
-    initialData: EMPTY_ACTIVITY,
-    staleTime: Infinity,
-    enabled: false,
-  });
-  return data ?? EMPTY_ACTIVITY;
-}
 
 // SSE consumer for a single Thread. Mutates the cached Thread view via
 // setQueryData so a single network stream feeds every Plan/Comment/Modal
@@ -77,8 +43,27 @@ export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => vo
   const userIdRef = useRef<string | null>(user?.id ?? null);
   userIdRef.current = user?.id ?? null;
 
+  // Live chunk-stream bridge. One live turn streams at a time (the producer holds
+  // a per-thread turn lock), so a single ReadableStream controller suffices:
+  // agent_chunk frames enqueue here and readUIMessageStream assembles successive
+  // UIMessage snapshots into the zustand store.
+  const liveTurnRef = useRef<{
+    turn: string;
+    controller: ReadableStreamDefaultController<UIMessageChunk>;
+  } | null>(null);
+
   useEffect(() => {
     if (!threadId) return;
+    const { setLiveMessage, clearLiveMessage } = useAgentMessagesStore.getState();
+    const closeLiveTurn = () => {
+      if (!liveTurnRef.current) return;
+      try {
+        liveTurnRef.current.controller.close();
+      } catch {
+        /* already closed */
+      }
+      liveTurnRef.current = null;
+    };
 
     const sub = subscribeToEvents({
       url: workerEventsUrl(threadId),
@@ -92,6 +77,42 @@ export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => vo
         if (reconnected) qc.invalidateQueries({ queryKey: ['thread', threadId] });
       },
       onMessage: (data) => {
+        // agent_chunk is an SSE-only frame (not in the Event union). Bridge the
+        // chunk into a per-turn ReadableStream so readUIMessageStream assembles
+        // a live UIMessage snapshot written directly to the zustand store.
+        if (
+          data !== null &&
+          typeof data === 'object' &&
+          (data as Record<string, unknown>).kind === 'agent_chunk'
+        ) {
+          const { turn, chunk } = data as AgentChunkFrame;
+          if (liveTurnRef.current?.turn !== turn) {
+            closeLiveTurn(); // a new turn id replaces any prior live stream
+            let ctrl!: ReadableStreamDefaultController<UIMessageChunk>;
+            const stream = new ReadableStream<UIMessageChunk>({
+              start(c) {
+                ctrl = c;
+              },
+            });
+            liveTurnRef.current = { turn, controller: ctrl };
+            // Drive the async iterator in the background — each new UIMessage
+            // snapshot overwrites the live slot in the store.
+            void (async () => {
+              try {
+                for await (const msg of readUIMessageStream({ stream })) {
+                  setLiveMessage(threadId, stripEmptyAgentText(msg as TempoUIMessage));
+                }
+              } catch (streamErr) {
+                if (process.env.NODE_ENV !== 'production') {
+                  console.warn('agent-chunk: readUIMessageStream error', turn, streamErr);
+                }
+              }
+            })();
+          }
+          liveTurnRef.current?.controller.enqueue(chunk);
+          return;
+        }
+
         // presence is an SSE-only signal (not in the Event union) — try it first
         // so it isn't dropped by the Event guard.
         const presence = PresenceSignal.safeParse(data);
@@ -115,15 +136,21 @@ export function useThreadEvents(threadId: string, onPlanEditedByAgent?: () => vo
         const ev = parsed.data;
         apply(qc, threadId, ev, userIdRef.current);
         if (ev.kind === 'plan_edited_by_agent') planEditedByAgentRef.current?.();
+
+        // A finished turn: close the live stream and refetch. The persisted
+        // message carries the same id, so the merge dedupes the live slot away —
+        // gapless, no timer. The live slot is overwritten on the next turn.
+        if (ev.kind === 'agent_turn_ended') {
+          closeLiveTurn();
+          qc.invalidateQueries({ queryKey: ['agent-messages', threadId] });
+        }
       },
     });
 
     return () => {
       sub.close();
-      // Drop the live activity entry so a remount or thread-switch doesn't
-      // flash the previous Agent run's last todos or tool calls before fresh
-      // events arrive.
-      qc.removeQueries({ queryKey: liveActivityKey(threadId), exact: true });
+      closeLiveTurn();
+      clearLiveMessage(threadId);
     };
   }, [threadId, qc, getToken]);
 }
@@ -134,8 +161,6 @@ function apply(
   ev: z.infer<typeof Event>,
   currentUserId: string | null,
 ): void {
-  applyLiveActivity(qc, threadId, ev);
-
   const key = ['thread', threadId];
   qc.setQueryData<ThreadView>(key, (prev) => {
     if (!prev) return prev;
@@ -210,17 +235,6 @@ function apply(
     qc.invalidateQueries({ queryKey: ['thread', threadId] });
   }
 
-  // Trails are derived from the event log. Refetch when an Agent output
-  // closes a trail; live in-flight steps render from `liveActivityKey`.
-  if (
-    ev.kind === 'reply_added' ||
-    ev.kind === 'plan_edited_by_agent' ||
-    ev.kind === 'discussion_message_posted' ||
-    ev.kind === 'agent_turn_ended'
-  ) {
-    qc.invalidateQueries({ queryKey: ['trails', threadId] });
-  }
-
   // Sidebar reads `['space-threads', spaceId]` independently of the Thread
   // view's cache — a rename has to ping it explicitly. Broad prefix match
   // avoids threading space_id through every event.
@@ -234,98 +248,4 @@ function apply(
   if (ev.kind === 'repo_linked') {
     qc.invalidateQueries({ queryKey: ['thread-repos', threadId] });
   }
-}
-
-// Append one activity entry and mark the turn active. Used by every
-// agent_* event that adds a row — narration, thought, tool_failed.
-// agent_tool_use stays inline because it ALSO flips turnActive distinctly
-// (the initial tool call marks turn-start), kept separate for clarity.
-function pushEntry(
-  qc: ReturnType<typeof useQueryClient>,
-  threadId: string,
-  entry: ActivityEntry,
-): void {
-  qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
-    const base = prev ?? EMPTY_ACTIVITY;
-    return {
-      ...base,
-      entries: [entry, ...base.entries].slice(0, ACTIVITY_ENTRIES_MAX),
-      turnActive: true,
-    };
-  });
-}
-
-function applyLiveActivity(
-  qc: ReturnType<typeof useQueryClient>,
-  threadId: string,
-  ev: z.infer<typeof Event>,
-): void {
-  switch (ev.kind) {
-    case 'agent_tool_use':
-      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => {
-        const base = prev ?? EMPTY_ACTIVITY;
-        const entry: ActivityEntry = {
-          kind: 'tool',
-          id: ev.id,
-          tool: ev.tool,
-          summary: ev.summary,
-        };
-        return {
-          ...base,
-          entries: [entry, ...base.entries].slice(0, ACTIVITY_ENTRIES_MAX),
-          turnActive: true,
-        };
-      });
-      return;
-    case 'agent_narration':
-      pushEntry(qc, threadId, { kind: 'narration', id: ev.id, text: ev.text });
-      return;
-    case 'agent_thought':
-      pushEntry(qc, threadId, { kind: 'thought', id: ev.id, text: ev.text });
-      return;
-    case 'agent_tool_failed':
-      pushEntry(qc, threadId, { kind: 'tool_failed', id: ev.id, tool: ev.tool });
-      return;
-    case 'agent_todos_updated':
-      // Empty array means Claude cleared its list — normalize to `null` so the
-      // type's "no todos" branch is the single source of truth for the UI.
-      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
-        ...(prev ?? EMPTY_ACTIVITY),
-        todos: ev.todos.length > 0 ? ev.todos : null,
-      }));
-      return;
-    case 'agent_turn_ended':
-      // Claude stopped — keep the last todos + tool stream visible (final
-      // state context) but flip the spinner off.
-      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), (prev) => ({
-        ...(prev ?? EMPTY_ACTIVITY),
-        turnActive: false,
-      }));
-      return;
-    case 'discussion_message_posted':
-      // Dev message starts a fresh Agent turn — drop the previous turn's todos
-      // and tool stream, then flip turnActive so the widget mounts immediately
-      // with "Agent working…" instead of waiting on the Agent's first event.
-      if (ev.message.author_user_id !== null) {
-        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
-      }
-      return;
-    case 'comment_added':
-      qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
-      return;
-    case 'reply_added':
-      if (ev.reply.author_user_id !== null) {
-        qc.setQueryData<LiveActivity>(liveActivityKey(threadId), devTriggered);
-      }
-      return;
-  }
-}
-
-// Dev-side trigger: clear stale Agent state and mount the widget right away.
-function devTriggered(): LiveActivity {
-  return {
-    todos: null,
-    entries: [],
-    turnActive: true,
-  };
 }

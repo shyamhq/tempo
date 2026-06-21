@@ -1,12 +1,11 @@
 // Shared agent-turn helpers used by BOTH hosted runtimes — the in-Sandbox
-// runner.ts (emits via /agent-events HTTP) and the in-process conversation.ts
-// (emits via appendEvent). Keeping the model factory, the web tools, and the
-// onStepFinish → event projection in one place stops the two runtimes from
-// drifting apart.
+// runner.ts (sink = /agent-stream HTTP) and the in-process conversation.ts (sink
+// = ingestChunks directly). The model factory, web tools, and chunk pump live
+// here so the two runtimes can't drift apart.
 
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { tavilyExtract, tavilySearch } from '@tavily/ai-sdk';
-import type { LanguageModel, StepResult, ToolSet } from 'ai';
+import type { LanguageModel, ToolSet, UIMessageChunk } from 'ai';
 
 // Kimi (Moonshot's OpenAI-compatible endpoint). One model, hardcoded — switching
 // the variant is a one-line edit; switching providers means wrapping this in
@@ -35,28 +34,22 @@ export function webTools(): ToolSet {
   };
 }
 
-// The agent events one completed step projects to. Same shape on both runtimes;
-// the only difference is the sink (HTTP POST vs direct appendEvent), supplied as
-// the `emit` callback.
-export type StepEvent =
-  | { kind: 'agent_narration'; text: string }
-  | { kind: 'agent_tool_use'; tool: string; summary: string };
-
-// Project one completed streamText step into agent events, in order: reasoning
-// (extended-thinking) → narration text → one tool_use per tool call. `reasoning`
-// and `toolCalls` come typed off StepResult, so no casts are needed.
-export async function emitStepEvents(
-  step: Pick<StepResult<ToolSet>, 'text' | 'reasoningText' | 'toolCalls'>,
-  emit: (event: StepEvent) => Promise<void> | void,
+// Drive a turn's UIMessageChunk stream to a sink in small ordered batches (live,
+// not buffer-and-flush). Awaiting each batch serializes posts and backpressures
+// the model to the sink's pace. The caller owns the turn id and the finalize.
+const CHUNK_BATCH = 16;
+export async function pumpChunks(
+  uiStream: AsyncIterable<UIMessageChunk>,
+  ingest: (chunks: UIMessageChunk[]) => Promise<void>,
 ): Promise<void> {
-  if (step.reasoningText) {
-    await emit({ kind: 'agent_narration', text: `[thinking] ${step.reasoningText}` });
+  let batch: UIMessageChunk[] = [];
+  for await (const chunk of uiStream) {
+    batch.push(chunk);
+    if (batch.length >= CHUNK_BATCH) {
+      const full = batch;
+      batch = [];
+      await ingest(full);
+    }
   }
-  if (step.text) {
-    await emit({ kind: 'agent_narration', text: step.text });
-  }
-  for (const call of step.toolCalls) {
-    const summary = JSON.stringify(call.input ?? {}).slice(0, 200);
-    await emit({ kind: 'agent_tool_use', tool: call.toolName, summary });
-  }
+  if (batch.length > 0) await ingest(batch);
 }

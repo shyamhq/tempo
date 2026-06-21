@@ -13,8 +13,8 @@ import { installTempoServerMock } from '../_mocks/tempo-server';
 const server = installTempoServerMock();
 
 // Stub `ai.streamText` so no LLM call is made. `tool` / `stepCountIs` stay real
-// (buildToolset uses tool()). Each call records, then resolves consumeStream and
-// totalUsage so runStreamTurn completes deterministically.
+// (buildToolset uses tool()). Each call records, then yields an empty UI stream
+// and resolves totalUsage so runStreamTurn completes deterministically.
 const streamTextCalls: unknown[] = [];
 mock.module('ai', () => {
   const real = require('ai');
@@ -23,7 +23,10 @@ mock.module('ai', () => {
     streamText: (opts: unknown) => {
       streamTextCalls.push(opts);
       return {
-        consumeStream: async () => {},
+        toUIMessageStream: () =>
+          (async function* () {
+            yield { type: 'text-delta', id: 't0', delta: 'x' };
+          })(),
         totalUsage: Promise.resolve({
           inputTokens: 0,
           outputTokens: 0,
@@ -99,6 +102,8 @@ describe('runConversationTurn — coalescing re-drain loop', () => {
 
     expect(server.getEventsSinceLastTurn).toHaveBeenCalledTimes(4); // 3 with events + 1 empty
     expect(streamTextCalls).toHaveLength(3);
+    expect(server.ingestChunks).toHaveBeenCalledTimes(3); // one chunk batch per turn
+    expect(server.finalizeTurn).toHaveBeenCalledTimes(3); // terminal persist per turn
     expect(server.appendEvent).toHaveBeenCalled(); // agent_turn_ended per turn
   });
 

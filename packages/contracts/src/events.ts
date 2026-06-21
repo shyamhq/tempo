@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AgentChunkFrame } from './agent-message';
 import { Comment, CommentId, DiscussionMessage, EventId, IsoTimestamp, Reply } from './primitives';
 
 const eventBase = z.object({
@@ -42,46 +43,13 @@ export const CommentDeletedEvent = eventBase.extend({
   comment_id: CommentId,
 });
 
-export const AgentToolUseEvent = eventBase.extend({
-  kind: z.literal('agent_tool_use'),
-  tool: z.string().max(64),
-  summary: z.string().max(200),
-});
-
-export const AgentNarrationEvent = eventBase.extend({
-  kind: z.literal('agent_narration'),
-  text: z.string().min(1).max(8000),
-});
-
-export const AgentTodo = z.object({
-  content: z.string().max(500),
-  status: z.enum(['pending', 'in_progress', 'completed']),
-  activeForm: z.string().max(500).optional(),
-});
-export type AgentTodo = z.infer<typeof AgentTodo>;
-
-export const AgentTodosUpdatedEvent = eventBase.extend({
-  kind: z.literal('agent_todos_updated'),
-  todos: z.array(AgentTodo).max(50),
-});
-
+// Agent activity (reasoning, tool calls, prose) is now the AI SDK
+// UIMessage.parts representation (persisted as agent_messages, streamed as
+// agent_chunk SSE frames), not bespoke events. The only agent-emitted event
+// left is the turn boundary below — it's the event-log floor that
+// getEventsSinceLastTurn reads to scope the next turn.
 export const AgentTurnEndedEvent = eventBase.extend({
   kind: z.literal('agent_turn_ended'),
-});
-
-export const AgentThoughtEvent = eventBase.extend({
-  kind: z.literal('agent_thought'),
-  text: z.string().min(1).max(8000),
-});
-
-export const AgentToolFailedEvent = eventBase.extend({
-  kind: z.literal('agent_tool_failed'),
-  tool: z.string().max(64),
-});
-
-export const AgentModeChangedEvent = eventBase.extend({
-  kind: z.literal('agent_mode_changed'),
-  mode_id: z.string().max(64),
 });
 
 export const DiscussionMessagePostedEvent = eventBase.extend({
@@ -151,12 +119,6 @@ export const Event = z.discriminatedUnion('kind', [
   CommentResolvedEvent,
   CommentUnresolvedEvent,
   CommentDeletedEvent,
-  AgentToolUseEvent,
-  AgentToolFailedEvent,
-  AgentNarrationEvent,
-  AgentThoughtEvent,
-  AgentTodosUpdatedEvent,
-  AgentModeChangedEvent,
   AgentTurnEndedEvent,
   DiscussionMessagePostedEvent,
   ThreadRenamedEvent,
@@ -173,12 +135,6 @@ export const EventKind = z.enum([
   'comment_resolved',
   'comment_unresolved',
   'comment_deleted',
-  'agent_tool_use',
-  'agent_tool_failed',
-  'agent_narration',
-  'agent_thought',
-  'agent_todos_updated',
-  'agent_mode_changed',
   'agent_turn_ended',
   'discussion_message_posted',
   'thread_renamed',
@@ -227,9 +183,13 @@ export function shouldWake(event: Event): boolean {
 // signal. The Worker filters Agent connections with this so plan edits,
 // presence, the Agent's own echoes, and browser-only provisioning frames
 // never ship; browsers get everything.
-export function shouldDeliverToAgent(event: Event | PresenceSignal | VmSignal): boolean {
+export function shouldDeliverToAgent(
+  event: Event | PresenceSignal | VmSignal | AgentChunkFrame,
+): boolean {
   if (event.kind === 'presence') return false;
   // vm is browser-only: provisioning status for the UI checklist.
   if (event.kind === 'vm') return false;
+  // agent_chunk is the agent's own activity echo — browser-only, never fed back.
+  if (event.kind === 'agent_chunk') return false;
   return shouldWake(event) || event.kind === 'agent_cancel_requested';
 }

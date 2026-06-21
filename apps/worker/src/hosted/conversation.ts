@@ -6,8 +6,9 @@
 // This runtime is STATELESS and per-wake: each call rebuilds context from the
 // persisted Discussion via getTurnHydration (no kept-alive RAM history), runs
 // ONE streamText turn against a small toolset that calls @tempo/server fns
-// directly (no MCP, no HTTP, no filesystem/Bash), emits agent events via
-// appendEvent, and returns. It is the no-VM analog of one runner.ts turn:
+// directly (no MCP, no HTTP, no filesystem/Bash), streams its UIMessageChunks to
+// ingestChunks/finalizeTurn in-process, and returns. It is the no-VM analog of
+// one runner.ts turn:
 //   - serialization: a Redis SET-NX-EX lock per thread (the in-process analog of
 //     the supervisor's `spawning` Set) — one turn at a time, globally.
 //   - coalescing: re-drain getEventsSinceLastTurn after each turn so events that
@@ -32,11 +33,13 @@ import {
   appendEvent,
   assertConnectorEnabled,
   deleteBlock,
+  finalizeTurn,
   getEventsSinceLastTurn,
   getPlanBlocks,
   getThread,
   getTurnHydration,
   githubListRepos,
+  ingestChunks,
   postMessage,
   releaseTurnLock,
   updateBlock,
@@ -46,7 +49,7 @@ import { type ModelMessage, stepCountIs, streamText, type ToolSet, tool } from '
 import { nanoid } from 'nanoid';
 import { env } from '../env';
 import { logger } from '../logger';
-import { buildModel, emitStepEvents, MODEL_ID, webTools } from './agent-tools';
+import { buildModel, MODEL_ID, pumpChunks, webTools } from './agent-tools';
 
 const log = logger.child({ module: 'conversation' });
 
@@ -114,6 +117,7 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
     context: input.context ?? undefined,
   });
   const messages: ModelMessage[] = [{ role: 'user', content: userMessage }];
+  const turn = `amsg_${nanoid()}`;
 
   const result = streamText({
     model,
@@ -121,13 +125,15 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages,
-    onStepFinish: (step) =>
-      emitStepEvents(step, async (event) => {
-        await appendEvent(input.threadId, event);
-      }),
   });
 
-  await result.consumeStream();
+  // In-process sink: call the server fns directly (no HTTP). finalize persists
+  // the assembled UIMessage; agent_turn_ended below is the event-log boundary.
+  await pumpChunks(
+    result.toUIMessageStream({ sendSources: true, generateMessageId: () => turn }),
+    (chunks) => ingestChunks(input.threadId, turn, chunks),
+  );
+  await finalizeTurn(input.threadId, turn);
 
   const usage = await result.totalUsage;
   log.info(
