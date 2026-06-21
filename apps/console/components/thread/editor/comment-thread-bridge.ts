@@ -86,7 +86,7 @@ export class CommentThreadBridge extends ThreadStore {
     const prev = this.getCommentsSnapshot();
     const next = prev.some((c) => c.id === created.id) ? prev : [...prev, created];
     this.commitComments(next);
-    return commentToThread(created, this.devUser.id);
+    return commentToThread(created);
   }
 
   async addComment(options: {
@@ -108,7 +108,7 @@ export class CommentThreadBridge extends ThreadStore {
       return { ...c, replies: [...c.replies, reply] };
     });
     this.commitComments(next);
-    return replyToComment(reply, this.devUser.id);
+    return replyToComment(reply);
   }
 
   async resolveThread(options: { threadId: string }): Promise<void> {
@@ -152,13 +152,13 @@ export class CommentThreadBridge extends ThreadStore {
   getThread(threadId: string): ThreadData {
     const comment = this.getCommentsSnapshot().find((c) => c.id === threadId);
     if (!comment) throw new Error(`unknown thread ${threadId}`);
-    return commentToThread(comment, this.devUser.id);
+    return commentToThread(comment);
   }
 
   getThreads(): Map<string, ThreadData> {
     const out = new Map<string, ThreadData>();
     for (const c of this.getCommentsSnapshot()) {
-      out.set(c.id, commentToThread(c, this.devUser.id));
+      out.set(c.id, commentToThread(c));
     }
     return out;
   }
@@ -188,9 +188,9 @@ export class CommentThreadBridge extends ThreadStore {
   }
 }
 
-function commentToThread(comment: Comment, devUserId: string): ThreadData {
-  const initial = makeInitialThreadComment(comment, devUserId);
-  const replies = comment.replies.map((r) => replyToComment(r, devUserId));
+function commentToThread(comment: Comment): ThreadData {
+  const initial = makeInitialThreadComment(comment);
+  const replies = comment.replies.map((r) => replyToComment(r));
   // BlockNote treats the first item of `comments[]` as the thread's anchor
   // message. Tempo doesn't model that separately — the Comment record itself
   // is just an anchor + metadata; the first Reply is the first message. We
@@ -211,11 +211,11 @@ function commentToThread(comment: Comment, devUserId: string): ThreadData {
   };
 }
 
-function makeInitialThreadComment(comment: Comment, devUserId: string): CommentData {
+function makeInitialThreadComment(comment: Comment): CommentData {
   return {
     type: 'comment',
     id: comment.id,
-    userId: devUserId,
+    userId: comment.author_user_id ?? AGENT_AUTHOR_ID,
     createdAt: new Date(comment.created_at),
     updatedAt: new Date(comment.created_at),
     reactions: [],
@@ -224,11 +224,17 @@ function makeInitialThreadComment(comment: Comment, devUserId: string): CommentD
   };
 }
 
-function replyToComment(reply: Reply, devUserId: string): CommentData {
+// BlockNote's CommentData.userId is a non-null string, but Tempo's
+// author_user_id is null for Agent-authored replies (contracts isAgent). Encode
+// that null as a sentinel id the card maps back to "Agent" — never collapse it
+// onto the Dev, or the Agent's replies render as the Dev.
+export const AGENT_AUTHOR_ID = 'tempo-agent';
+
+function replyToComment(reply: Reply): CommentData {
   return {
     type: 'comment',
     id: reply.id,
-    userId: reply.author_user_id ?? devUserId,
+    userId: reply.author_user_id ?? AGENT_AUTHOR_ID,
     createdAt: new Date(reply.created_at),
     updatedAt: new Date(reply.created_at),
     reactions: [],

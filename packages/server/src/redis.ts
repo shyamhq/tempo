@@ -173,11 +173,12 @@ export async function isPresent(threadId: string): Promise<boolean> {
 // the same `SET NX EX` + owner-nonce CAS shape as presence above, so a crashed
 // container's lock self-expires (TTL) and only the owner releases it.
 const TURN_LOCK_PREFIX = 'tempo:turnlock:';
-// Floor above the longest plausible single turn; the TTL is the crash safety
-// net (a container that dies mid-turn must not wedge the thread forever). Sized
-// for the worst case — MAX_STEPS_PER_TURN (50) steps fanning out to web search /
-// fetch tools — so a slow-but-live turn never has its lock expire under it,
-// which would let a second container start a duplicate turn.
+// The lock is a rolling lease: runConversationTurn's heartbeat calls
+// refreshTurnLock well within this window, so a slow-but-live turn keeps its
+// lock no matter how long planning runs. The TTL is therefore the crash safety
+// net (a container that dies mid-turn must not wedge the thread forever), not a
+// fixed turn-duration ceiling — it only needs to exceed the heartbeat interval
+// with margin.
 const TURN_LOCK_TTL_SEC = 300;
 function turnLockKey(threadId: string): string {
   return `${TURN_LOCK_PREFIX}${threadId}`;
@@ -196,6 +197,23 @@ export async function acquireTurnLock(threadId: string, nonce: string): Promise<
 // our late release. Reuses the presence CAS script.
 export async function releaseTurnLock(threadId: string, nonce: string): Promise<void> {
   await redis().eval(CLEAR_IF_OWNER, 1, turnLockKey(threadId), nonce);
+}
+
+// EXPIRE-if-owner: bump the TTL only while we still hold the lock, so a long but
+// live turn (planning can run tens of minutes) never lets its lease lapse under
+// it. Returns false when ownership is lost — the key expired and another
+// container reclaimed it — so the caller aborts rather than run a duplicate turn
+// alongside the new owner.
+const EXPIRE_IF_OWNER = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end`;
+export async function refreshTurnLock(threadId: string, nonce: string): Promise<boolean> {
+  const ok = (await redis().eval(
+    EXPIRE_IF_OWNER,
+    1,
+    turnLockKey(threadId),
+    nonce,
+    String(TURN_LOCK_TTL_SEC),
+  )) as number;
+  return ok === 1;
 }
 
 // Batch presence read for the threads list — one MGET, present iff non-null.

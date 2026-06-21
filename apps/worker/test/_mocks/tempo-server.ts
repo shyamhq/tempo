@@ -40,6 +40,7 @@ const getActionPolicy = mock(async (): Promise<'read' | 'write' | 'unknown'> => 
 // defaults to a single drain then empty (overridden per test).
 const acquireTurnLock = mock(async (_threadId: string, _nonce: string): Promise<boolean> => true);
 const releaseTurnLock = mock(async (_threadId: string, _nonce: string): Promise<void> => {});
+const refreshTurnLock = mock(async (_threadId: string, _nonce: string): Promise<boolean> => true);
 const getEventsSinceLastTurn = mock(async (_threadId: string): Promise<unknown[]> => []);
 const getThread = mock(
   async (_threadId: string): Promise<{ workspace_id: string } | null> => ({
@@ -51,6 +52,8 @@ const appendEvent = mock(async (_threadId: string, _payload: unknown): Promise<v
 const ingestChunks = mock(async (): Promise<void> => {});
 const finalizeTurn = mock(async (): Promise<void> => {});
 const postMessage = mock(async (): Promise<{ id: string }> => ({ id: 'msg_test' }));
+const postReply = mock(async (): Promise<{ id: string }> => ({ id: 'rpl_test' }));
+const updateThread = mock(async (): Promise<unknown> => ({ id: 'thr_test', title: 'Test' }));
 const getPlanBlocks = mock(async (): Promise<unknown> => ({ blocks: [] }));
 const updatePlan = mock(async (): Promise<unknown> => ({ ids: [] }));
 const addBlocks = mock(async (): Promise<unknown> => ({ ids: [] }));
@@ -128,6 +131,7 @@ const handle: ServerMock = {
     for (const m of [
       acquireTurnLock,
       releaseTurnLock,
+      refreshTurnLock,
       getEventsSinceLastTurn,
       getThread,
       getTurnHydration,
@@ -135,6 +139,8 @@ const handle: ServerMock = {
       ingestChunks,
       finalizeTurn,
       postMessage,
+      postReply,
+      updateThread,
       getPlanBlocks,
       updatePlan,
       addBlocks,
@@ -184,6 +190,7 @@ function register(): void {
     getActionPolicy,
     acquireTurnLock,
     releaseTurnLock,
+    refreshTurnLock,
     getEventsSinceLastTurn,
     getThread,
     getTurnHydration,
@@ -191,6 +198,8 @@ function register(): void {
     ingestChunks,
     finalizeTurn,
     postMessage,
+    postReply,
+    updateThread,
     getPlanBlocks,
     updatePlan,
     addBlocks,

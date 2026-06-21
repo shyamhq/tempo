@@ -23,7 +23,9 @@ import {
   DeleteBlockInput,
   GithubListReposInput,
   PostDiscussionMessageInput,
+  PostReplyInput,
   PullPlanInput,
+  SetThreadMetaInput,
   UpdateBlockInput,
   UpdatePlanInput,
 } from '@tempo/contracts/mcp';
@@ -41,20 +43,42 @@ import {
   githubListRepos,
   ingestChunks,
   postMessage,
+  postReply,
+  refreshTurnLock,
   releaseTurnLock,
   updateBlock,
   updatePlan,
+  updateThread,
 } from '@tempo/server';
 import { type ModelMessage, stepCountIs, streamText, type ToolSet, tool } from 'ai';
 import { nanoid } from 'nanoid';
+import { z } from 'zod';
 import { env } from '../env';
 import { logger } from '../logger';
+import { listSkills, loadSkill } from '../skills/loader';
 import { buildModel, MODEL_ID, pumpChunks, webTools } from './agent-tools';
 
 const log = logger.child({ module: 'conversation' });
 
 const model = buildModel({ apiKey: env.MOONSHOT_API_KEY, baseURL: env.MOONSHOT_BASE_URL });
 const MAX_STEPS_PER_TURN = 50;
+
+// Lock-lease maintenance. Planning turns can run tens of minutes, so the lock's
+// TTL can't be a fixed "max turn duration" — instead a heartbeat refreshes it
+// while the turn is alive, and a stall watchdog aborts a turn whose stream has
+// gone silent (a hung model would otherwise hold the now-immortal lease). Both
+// run on one timer. STALL_MS sits well above any healthy inter-chunk gap (model
+// reasoning, a web-search round-trip) and below the TTL; HEARTBEAT_MS gives a 5x
+// refresh margin under the TTL.
+const HEARTBEAT_MS = 60_000;
+const STALL_MS = 120_000;
+
+// Why the live turn was torn down. `lock-lost` means another container reclaimed
+// the lease (we persist nothing — the new owner produces the turn). `stalled`
+// (and, once a Stop button exists, a Dev cancel) ends the turn cleanly: persist
+// what streamed and close it so the cursor advances and a hung model isn't
+// retried in a loop.
+type AbortReason = 'stalled' | 'lock-lost';
 
 // Entry point for a repo-less Hosted wake. Acquires the per-thread turn lock,
 // then re-drains the Discussion until no events remain — running one streamText
@@ -69,6 +93,35 @@ export async function runConversationTurn(threadId: string): Promise<void> {
     log.info({ threadId, event: 'conversation:lock_held' }, 'turn already running elsewhere');
     return;
   }
+
+  // The live turn's controller; the heartbeat aborts it on stall or lock loss.
+  // `lastChunkAt` is reset at each turn's start and bumped per chunk by the pump.
+  let controller: AbortController | null = null;
+  let lastChunkAt = Date.now();
+  const heartbeat = setInterval(() => {
+    void (async () => {
+      if (Date.now() - lastChunkAt > STALL_MS) {
+        log.warn({ threadId, event: 'conversation:stalled' }, 'turn stream stalled — aborting');
+        controller?.abort('stalled');
+        return;
+      }
+      // A transient Redis error is not loss of ownership — the TTL has slack and
+      // the next tick retries. Only a definitive not-owner reply aborts.
+      let stillOurs = true;
+      try {
+        stillOurs = await refreshTurnLock(threadId, nonce);
+      } catch (err) {
+        log.debug(
+          { err, threadId, event: 'conversation:lock_refresh_failed' },
+          'lock refresh errored — retrying next tick',
+        );
+      }
+      if (!stillOurs) {
+        log.warn({ threadId, event: 'conversation:lock_lost' }, 'lost turn lease — aborting');
+        controller?.abort('lock-lost');
+      }
+    })().catch((err) => log.error({ err, threadId }, 'conversation: heartbeat tick failed'));
+  }, HEARTBEAT_MS);
 
   try {
     const thread = await getThread(threadId);
@@ -85,11 +138,29 @@ export async function runConversationTurn(threadId: string): Promise<void> {
       if (events.length === 0) break;
 
       const context = await getTurnHydration(threadId);
-      await runStreamTurn({ threadId, events, context, tools });
+      controller = new AbortController();
+      lastChunkAt = Date.now();
+      const outcome = await runStreamTurn({
+        threadId,
+        events,
+        context,
+        tools,
+        signal: controller.signal,
+        onProgress: () => {
+          lastChunkAt = Date.now();
+        },
+      });
+      // Lost the lease mid-turn → another container owns the thread now; stop
+      // before we re-drain against a lock we no longer hold.
+      if (outcome === 'lock-lost') break;
     }
   } catch (err) {
     log.error({ err, threadId, event: 'conversation:failed' }, 'in-process turn failed');
   } finally {
+    // Null first so a heartbeat tick already in-flight past clearInterval can't
+    // abort a finished turn or log a spurious lock-loss after we've exited.
+    controller = null;
+    clearInterval(heartbeat);
     await releaseTurnLock(threadId, nonce).catch((err) =>
       log.warn({ err, threadId }, 'conversation: release lock failed'),
     );
@@ -101,13 +172,16 @@ type StreamTurnInput = {
   events: TempoEvent[];
   context: TurnHydration | null;
   tools: ToolSet;
+  signal: AbortSignal;
+  onProgress: () => void;
 };
 
+type TurnOutcome = 'done' | 'stalled' | 'lock-lost';
+
 // One streamText turn. Same user-message shape and emission shapes as one
-// runner.ts turn; the only differences are direct appendEvent (no /agent-events
-// HTTP) and no AbortController (no mid-turn wake interrupt — a wake that lands
-// during the turn is caught by the outer re-drain loop instead).
-async function runStreamTurn(input: StreamTurnInput): Promise<void> {
+// runner.ts turn; the only difference is direct appendEvent (no /agent-events
+// HTTP). The caller's heartbeat may abort `signal` mid-turn — see AbortReason.
+async function runStreamTurn(input: StreamTurnInput): Promise<TurnOutcome> {
   const startedAt = Date.now();
   // context is the Turn-1 snapshot; null on the coalescing re-drain turns, where
   // it's omitted from the JSON so the Agent reads state from the events deltas.
@@ -125,14 +199,49 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
     stopWhen: stepCountIs(MAX_STEPS_PER_TURN),
     system: TEMPO_AGENT_SYSTEM_PROMPT,
     messages,
+    abortSignal: input.signal,
   });
 
   // In-process sink: call the server fns directly (no HTTP). finalize persists
   // the assembled UIMessage; agent_turn_ended below is the event-log boundary.
-  await pumpChunks(
-    result.toUIMessageStream({ sendSources: true, generateMessageId: () => turn }),
-    (chunks) => ingestChunks(input.threadId, turn, chunks),
-  );
+  try {
+    await pumpChunks(
+      result.toUIMessageStream({ sendSources: true, generateMessageId: () => turn }),
+      (chunks) => ingestChunks(input.threadId, turn, chunks),
+      input.onProgress,
+    );
+  } catch (err) {
+    // An abort ends the UI stream rather than throwing it, so a throw here is a
+    // genuine failure — re-raise it. The signal check below handles the abort.
+    if (!input.signal.aborted) throw err;
+  }
+
+  // An abort ends the stream without throwing, so detect it from the signal.
+  if (input.signal.aborted) {
+    const reason = (input.signal.reason as AbortReason) ?? 'stalled';
+    if (reason === 'lock-lost') {
+      // Another container reclaimed the lease and owns the turn now. We may have
+      // published+buffered live chunks already, but skip finalize so no partial
+      // message is persisted — the chunk buffer reaps via its TTL.
+      log.warn(
+        { threadId: input.threadId, turn, event: 'conversation:turn_lock_lost' },
+        'turn aborted: lock lost',
+      );
+      return 'lock-lost';
+    }
+    // Persist the partial message and close the turn so the cursor advances and
+    // a hung model isn't retried in a loop.
+    await finalizeTurn(input.threadId, turn).catch((err) =>
+      log.warn({ err, threadId: input.threadId, turn }, 'finalize on stall failed'),
+    );
+    await appendEvent(input.threadId, { kind: 'agent_turn_ended' });
+    log.warn(
+      { threadId: input.threadId, turn, event: 'conversation:turn_stalled' },
+      'turn aborted: stalled',
+    );
+    return 'stalled';
+  }
+
   await finalizeTurn(input.threadId, turn);
 
   const usage = await result.totalUsage;
@@ -150,6 +259,7 @@ async function runStreamTurn(input: StreamTurnInput): Promise<void> {
   );
 
   await appendEvent(input.threadId, { kind: 'agent_turn_ended' });
+  return 'done';
 }
 
 // --- Toolset --------------------------------------------------------------
@@ -169,6 +279,61 @@ function buildToolset(threadId: string, workspaceId: string): ToolSet {
     execute: async (args) => {
       const message = await postMessage(threadId, null, args);
       return { message_id: message.id };
+    },
+  });
+
+  const tempo_post_reply = tool({
+    description:
+      'Post a reply to a Dev comment. Be direct, action-oriented, and concise — match the tone of a senior engineer responding to a code review comment. Acknowledge the concern; state what you will do or have done.',
+    inputSchema: PostReplyInput,
+    execute: async ({ comment_id, payload, mentions, attachments }) => {
+      try {
+        const reply = await postReply(
+          comment_id,
+          payload,
+          null,
+          mentions ?? null,
+          attachments,
+          threadId,
+        );
+        return { reply_id: reply.id };
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === 'comment_not_found' || msg === 'forbidden') return { error: msg };
+        throw err;
+      }
+    },
+  });
+
+  const tempo_set_thread_meta = tool({
+    description:
+      "Update the Thread title and/or description. Call once on Turn 1 if thread.title === 'Untitled thread' — derive a 3–6-word title from the first Dev Discussion Message. Never overwrite a non-placeholder title.",
+    inputSchema: SetThreadMetaInput,
+    execute: async ({ title, description }) => {
+      try {
+        const thread = await updateThread(threadId, { title, description });
+        return { thread };
+      } catch (err) {
+        if ((err as Error).message === 'thread_not_found') return { error: 'thread_not_found' };
+        throw err;
+      }
+    },
+  });
+
+  const skills = listSkills();
+  const tempo_load_skill = tool({
+    description: `Load a bundled skill guide by name. Available skills: ${skills
+      .map((s) => `${s.name} — ${s.description}`)
+      .join('; ')}`,
+    inputSchema: z.object({ name: z.string().min(1) }),
+    // Return the raw guide text (not a wrapper object) so the model sees the
+    // same payload the MCP runtime delivers after its content envelope is
+    // unwrapped.
+    execute: async ({ name }) => {
+      const body = loadSkill(name);
+      if (!body)
+        return `unknown skill "${name}". Available: ${skills.map((s) => s.name).join(', ')}`;
+      return body;
     },
   });
 
@@ -229,6 +394,9 @@ function buildToolset(threadId: string, workspaceId: string): ToolSet {
 
   return {
     tempo_post_discussion_message,
+    tempo_post_reply,
+    tempo_set_thread_meta,
+    tempo_load_skill,
     tempo_pull_plan,
     tempo_update_plan,
     tempo_add_blocks,

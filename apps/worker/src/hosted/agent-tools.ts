@@ -41,9 +41,13 @@ const CHUNK_BATCH = 16;
 export async function pumpChunks(
   uiStream: AsyncIterable<UIMessageChunk>,
   ingest: (chunks: UIMessageChunk[]) => Promise<void>,
+  // Called as each chunk arrives — lets the caller track stream liveness (the
+  // conversation runtime's stall watchdog resets its timer on every chunk).
+  onProgress?: () => void,
 ): Promise<void> {
   let batch: UIMessageChunk[] = [];
   for await (const chunk of uiStream) {
+    onProgress?.();
     batch.push(chunk);
     if (batch.length >= CHUNK_BATCH) {
       const full = batch;

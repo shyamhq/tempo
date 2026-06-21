@@ -20,6 +20,7 @@ export {
   publishPresence,
   publishVmSignal,
   refreshPresent,
+  refreshTurnLock,
   releaseTurnLock,
   setPresent,
 } from './redis';
