@@ -11,15 +11,14 @@
 // Creating a thread goes through the CommentsExtension's createThread, which
 // delegates to the T4.2 CommentThreadStore (anchor capture + POST + optimistic
 // slice write). On success we select the new thread so its card opens in place
-// of the composer — the Dev keeps reading/replying instead of the card vanishing.
-// We don't call stopPendingComment (selecting a thread already clears
-// pendingComment in BlockNote's store), and we never refocus the editor (its
-// focus() scrolls the contenteditable to the top).
+// of the composer — selecting it also clears pendingComment in BlockNote's
+// store, so the Dev keeps reading/replying instead of the card vanishing. We
+// never refocus the editor (its focus() scrolls the contenteditable to the top).
 
 import { CommentsExtension } from '@blocknote/core/comments';
 import { useBlockNoteEditor } from '@blocknote/react';
 import { useState } from 'react';
-import { useThreadStore } from '@/store';
+import type { MentionDoc } from '@/features/mentions/mentionable-input';
 import { CommentReplyBox } from './comment-reply-box';
 
 export function CommentComposer() {
@@ -28,22 +27,27 @@ export function CommentComposer() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const create = async (text: string) => {
+  const create = async (doc: MentionDoc) => {
     if (!ext || sending) return;
     setSending(true);
     setError(null);
-    // The new Comment id isn't returned by BlockNote's createThread, but the
-    // store's createThread adds it to the slice synchronously before the await
-    // resolves; the new id is the one absent from this pre-create snapshot.
-    const before = new Set(useThreadStore.getState().comments.map((c) => c.id));
+    // The extension's createThread is typed (and resolves at runtime) to void —
+    // it stamps the comment mark but discards the ThreadData the threadStore
+    // returns. Diff the threadStore's own thread map (BlockNote's data layer,
+    // not our Zustand UI store) across the await to recover the new id, then
+    // select it so its card opens in place of the composer.
+    const before = new Set(ext.threadStore.getThreads().keys());
     try {
       await ext.createThread({
         initialComment: {
-          body: [{ type: 'paragraph', content: [{ type: 'text', text, styles: {} }] }],
+          body: [{ type: 'paragraph', content: [{ type: 'text', text: doc.text, styles: {} }] }],
+          // The CommentThreadStore reads mentions off metadata and forwards
+          // them to createComment's first_reply_mentions.
+          metadata: doc.mentions.length > 0 ? { mentions: doc.mentions } : undefined,
         },
       });
-      const created = useThreadStore.getState().comments.find((c) => !before.has(c.id));
-      if (created) ext.selectThread(created.id, false);
+      const createdId = [...ext.threadStore.getThreads().keys()].find((id) => !before.has(id));
+      if (createdId) ext.selectThread(createdId, false);
       else ext.stopPendingComment();
     } catch {
       setError('Could not create the comment. Try again.');

@@ -8,11 +8,13 @@
 //
 // Send flow mirrors apps/console's MessageComposer: the Worker mints the id, so
 // there's no optimistic row — we POST and let the discussion_message_posted echo
-// append the message (the slice dedups by id). Images attach via the shared
-// uploader (features/attachments): files upload eagerly on add/paste/drop, and
-// Send passes the resolved ids. Send accepts text-only, attachments-only, or
-// both, and is blocked while any upload is in flight. The field clears on
-// success.
+// append the message (the slice dedups by id). The field is the shared
+// MentionableInput (features/mentions) so the Dev can @mention members + the
+// Agent; it serialises to plain text + a Mention[] sidecar that Send threads
+// into postDiscussionMessage. Images attach via the shared uploader
+// (features/attachments): files upload eagerly on add/paste/drop, and Send passes
+// the resolved ids. Send accepts text-only, attachments-only, or both, and is
+// blocked while any upload is in flight. The field clears on success.
 //
 // ponytail: the Hosted repo-context bar (apps/console's MessageComposer shows
 // one) is deferred. console-redo's /api/threads/:id/repos route is GET-only and
@@ -35,11 +37,14 @@ import {
   skippedNotice,
   useAttachmentUploader,
 } from '@/features/attachments/use-attachment-uploader';
+import type { MentionableInputRef } from '@/features/mentions/mentionable-input';
+import { MentionableInput } from '@/features/mentions/mentionable-input';
+import { useMentionCandidates } from '@/features/mentions/use-mention-candidates';
 import { postDiscussionMessage } from '../api';
 
 export function DiscussionComposer({ threadId }: { threadId: string }) {
   const { getToken } = useAuth();
-  const [value, setValue] = useState('');
+  const [hasText, setHasText] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // The send chord differs by platform (⌘ on Mac, Ctrl elsewhere). navigator is
@@ -49,7 +54,8 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
   useEffect(() => setIsMac(/mac/i.test(navigator.platform)), []);
 
   const wrapRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<MentionableInputRef>(null);
+  const candidates = useMentionCandidates();
   const baseUploader = useAttachmentUploader(threadId, getToken);
   // Surface skipped files (wrong type / oversize / over the 8-file cap) inline:
   // wrap addFiles once so paste, drop, and the add button all set the notice.
@@ -67,27 +73,32 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
     () => ({ ...baseUploader, addFiles: addWithNotice }),
     [baseUploader, addWithNotice],
   );
-  const { rootProps, isDragActive } = useAttachmentSurface(uploader, textareaRef, sending);
+  // Paste binds to the outer card so an image pasted anywhere on the composer
+  // (not only over the contenteditable) is captured — the contenteditable still
+  // handles text/mention paste itself.
+  const { rootProps, isDragActive } = useAttachmentSurface(uploader, wrapRef, sending);
 
-  const text = value.trim();
   // Send with text OR ready attachments; never while an upload is mid-flight.
-  const canSend =
-    (text.length > 0 || uploader.readyIds.length > 0) && !sending && !uploader.hasUploading;
+  const canSend = (hasText || uploader.readyIds.length > 0) && !sending && !uploader.hasUploading;
 
   const submit = async () => {
-    if (!canSend) return;
+    if (!canSend || !inputRef.current) return;
+    const doc = inputRef.current.serialise();
+    if (doc.text.length === 0 && uploader.readyIds.length === 0) return;
     setSending(true);
     setError(null);
     try {
       await postDiscussionMessage(
         threadId,
         {
-          ...(text.length > 0 ? { text } : {}),
+          ...(doc.text.length > 0 ? { text: doc.text } : {}),
           attachments: uploader.readyIds,
+          ...(doc.mentions.length > 0 ? { mentions: doc.mentions } : {}),
         },
         getToken,
       );
-      setValue('');
+      inputRef.current.clear();
+      setHasText(false);
       uploader.reset();
       setNotice(null);
     } catch {
@@ -106,21 +117,15 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
       >
         <AttachmentDragOverlay active={isDragActive} />
         <AttachmentThumbnails uploader={uploader} />
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-          aria-label="Message"
+        <MentionableInput
+          ref={inputRef}
+          candidates={candidates}
           placeholder="Ask the Agent, or describe a change to the plan…"
-          rows={1}
-          disabled={sending}
-          className="min-h-[34px] w-full resize-none border-0 bg-transparent text-[12.5px] leading-[1.45] text-ink outline-none [field-sizing:content] placeholder:text-ink-3 disabled:opacity-60"
+          minHeight={34}
+          maxHeight={280}
+          className="text-[12.5px] leading-[1.45]"
+          onSubmit={() => void submit()}
+          onChange={(doc) => setHasText(doc.text.length > 0)}
         />
         <div className="flex items-center gap-2">
           <AttachmentAddButton uploader={uploader} disabled={sending} />

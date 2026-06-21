@@ -284,3 +284,29 @@
    and transition utilities already match the kit; the raw vars remain for exact
    use), and --tp-focus-ring (a box-shadow value, not a color — apply it via
    shadow-[var(--tp-focus-ring)]). */
+
+/* @mention tokens. Shared by the contenteditable MentionableInput (inserted
+   non-editable spans) and the rendered MarkdownText (the synthetic
+   tempo-mention element). The brand terracotta (--tp-accent) is the mention
+   colour, matching apps/console. */
+.mention-token {
+  color: var(--tp-accent);
+  font-weight: var(--tp-weight-medium);
+  border-radius: var(--tp-radius-xs);
+}
+
+/* Inside the contenteditable input only: the contentEditable=false token + this
+   user-select:all is what lets a single backspace delete the whole token. In
+   the rendered (read-only) MarkdownText, normal text selection is kept so
+   selecting prose around a mention isn't surprising. */
+[data-mention-input] .mention-token {
+  user-select: all;
+}
+
+/* Placeholder for the contenteditable mention input — hidden once the field has
+   content or is focused. */
+[data-mention-input]:empty:not(:focus-within)::before {
+  content: attr(data-placeholder);
+  color: var(--tp-ink-3);
+  pointer-events: none;
+}

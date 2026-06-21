@@ -17,6 +17,7 @@ import type { ThreadProps } from '@blocknote/react';
 import { useBlockNoteEditor } from '@blocknote/react';
 import { Check, Loader2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import type { MentionDoc } from '@/features/mentions/mentionable-input';
 import { CommentMessages } from './comment-messages';
 import { CommentReplyBox } from './comment-reply-box';
 
@@ -36,14 +37,19 @@ export function CommentCard({
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sendReply = async (text: string) => {
-    if (!threadStore || text.length === 0 || sending) return;
+  const sendReply = async (doc: MentionDoc) => {
+    if (!threadStore || doc.text.length === 0 || sending) return;
     setSending(true);
     setError(null);
     try {
       await threadStore.addComment({
         threadId: thread.id,
-        comment: { body: [{ type: 'paragraph', content: [{ type: 'text', text, styles: {} }] }] },
+        comment: {
+          body: [{ type: 'paragraph', content: [{ type: 'text', text: doc.text, styles: {} }] }],
+          // The CommentThreadStore reads mentions off metadata and forwards
+          // them to createReply's mentions.
+          metadata: doc.mentions.length > 0 ? { mentions: doc.mentions } : undefined,
+        },
       });
     } catch {
       setError('Reply failed. Try again.');
