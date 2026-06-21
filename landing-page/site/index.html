@@ -163,6 +163,14 @@
   .eq span:nth-child(3){ height:64%; animation:eq 1.1s ease-in-out -.8s infinite }
   @keyframes eq{ 0%,100%{transform:scaleY(.55)} 50%{transform:scaleY(1)} }
 
+  /* Click-time loader for slow cross-origin nav to the app (sign-in/up/dashboard) */
+  .cta-loader{ position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:var(--paper); opacity:0; visibility:hidden; transition:opacity .25s ease }
+  .cta-loader.is-on{ opacity:1; visibility:visible }
+  .cta-loader__inner{ display:flex; flex-direction:column; align-items:center; gap:1.1rem }
+  .eq--lg{ height:34px; gap:5px }
+  .eq--lg span{ width:6px }
+  .cta-loader__label{ font-family:var(--serif); color:var(--ink-2); font-size:1rem; letter-spacing:.01em }
+
   /* ============================== HEADER ============================== */
   .header{
     position:fixed; inset:0 0 auto 0; z-index:50;
@@ -608,7 +616,7 @@
         <a href="#faq">FAQ</a>
       </div>
       <div class="nav__right">
-        <a class="nav__login" href="#">Log in</a>
+        <a class="nav__login" href="#" data-cta="login">Log in</a>
         <button class="nav__toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false"><span></span></button>
       </div>
     </nav>
@@ -620,7 +628,7 @@
   <a href="#runtime">Runtime</a>
   <a href="#integrations">Integrations</a>
   <a href="#faq">FAQ</a>
-  <a href="#cta">Start planning</a>
+  <a href="#cta" data-cta="start">Start planning</a>
 </nav>
 
 <main id="top">
@@ -638,7 +646,7 @@
       <h1 class="cine-h1 fade-rise-1">The quiet <span class="accent">before the <span class="word-rotate" id="rotateWord">build</span>.</span></h1>
       <p class="cine-sub fade-rise-2"><b>Tempo is where you and your team plan with AI.</b> An agent asks the sharp questions, surfaces the tradeoffs, and drafts the plan with you — before a single line gets written.</p>
       <div class="cine-cta fade-rise-3">
-        <a class="btn lg lg--solid" href="#cta" data-magnetic>Start planning</a>
+        <a class="btn lg lg--solid" href="#cta" data-magnetic data-cta="start">Start planning</a>
         <a class="btn lg" href="#how">See how it works <span class="arr">→</span></a>
       </div>
       <p class="cine-note fade-rise-4">no setup · works with claude code, cursor &amp; your own pipeline</p>
@@ -903,7 +911,7 @@
       <span class="cta__tempo reveal-line"><span class="reveal-line__i">tempo.</span></span>
     </h2>
     <p class="cta__body" data-reveal>Plan the right thing before the agent runs. Save the three hours.</p>
-    <a class="btn btn--primary" href="#" data-magnetic data-reveal style="font-size:1rem;padding:.95em 1.7em">Start planning</a>
+    <a class="btn btn--primary" href="#" data-magnetic data-reveal data-cta="start" style="font-size:1rem;padding:.95em 1.7em">Start planning</a>
   </div>
 </section>
 
@@ -927,6 +935,41 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+/* ---------------- AUTH CTA — login/signup + signed-in dashboard swap ---------------- */
+(function(){
+  var onLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  var APP_URL = onLocalhost ? 'http://localhost:3000' : 'https://app.tempo.dev';
+  var login = document.querySelector('[data-cta="login"]');
+  var starts = document.querySelectorAll('[data-cta="start"]');
+  // Signed-out defaults: Log in -> sign-in, every "Start planning" -> sign-up.
+  if(login){ login.href = APP_URL + '/sign-in'; }
+  starts.forEach(function(a){ a.href = APP_URL + '/sign-up'; });
+
+  // The app (Clerk sign-in/up) is a separate origin and can be slow to first
+  // paint, so the landing sits frozen after a click. Show a brand loader the
+  // instant a CTA is clicked, and clear it on bfcache restore (browser Back).
+  var loader = document.createElement('div');
+  loader.className = 'cta-loader';
+  loader.setAttribute('role', 'status');
+  loader.setAttribute('aria-label', 'Opening Tempo');
+  loader.innerHTML = '<div class="cta-loader__inner"><span class="eq eq--lg" aria-hidden="true"><span></span><span></span><span></span></span><span class="cta-loader__label">Opening Tempo…</span></div>';
+  document.body.appendChild(loader);
+  function showLoader(){ loader.classList.add('is-on'); }
+  window.addEventListener('pageshow', function(){ loader.classList.remove('is-on'); });
+  if(login){ login.addEventListener('click', showLoader); }
+  starts.forEach(function(a){ a.addEventListener('click', showLoader); });
+  // If a Clerk session already lives on the app origin, flip CTAs to the dashboard.
+  fetch(APP_URL + '/api/me', { credentials:'include' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d){
+      if(!d || !d.signedIn) return;
+      if(login){ login.textContent = 'Dashboard'; login.href = APP_URL + '/'; }
+      starts.forEach(function(a){ a.textContent = 'Go to your dashboard'; a.href = APP_URL + '/'; });
+    })
+    .catch(function(){ /* signed-out defaults stand */ });
+})();
+</script>
 <script>
 (function(){
   "use strict";
