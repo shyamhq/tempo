@@ -17,6 +17,7 @@ import { useStickToBottom } from 'use-stick-to-bottom';
 import { useAgentPresent, useDiscussion, useThreadStore } from '@/store';
 import { DiscussionComposer } from './discussion-composer';
 import { DiscussionMessageRow } from './discussion-message';
+import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function DiscussionDock({ threadId }: { threadId: string }) {
   const messages = useDiscussion();
@@ -55,9 +56,25 @@ export function DiscussionDock({ threadId }: { threadId: string }) {
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pt-[2px] pb-2">
           <div ref={contentRef} className="flex flex-col">
-            {messages.map((m) => (
-              <DiscussionMessageRow key={m.id} message={m} />
-            ))}
+            {messages.map((m, i) => {
+              // A question-message that is the LAST message overall is the live
+              // (interactive) stepper; once the Dev's answer message appends via
+              // SSE it is no longer last and collapses to a summary. Every
+              // non-question message is the normal row. Mirrors apps/console's
+              // MessageList (`isLive = isQuestion && i === lastIdx`).
+              if (m.questions === null || m.questions.length === 0)
+                return <DiscussionMessageRow key={m.id} message={m} />;
+              if (i === messages.length - 1)
+                return (
+                  <LiveQuestionCard
+                    key={m.id}
+                    message={m}
+                    questions={m.questions}
+                    threadId={threadId}
+                  />
+                );
+              return <MinimizedQuestionCard key={m.id} message={m} questions={m.questions} />;
+            })}
           </div>
         </div>
       )}
