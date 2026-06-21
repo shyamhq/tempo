@@ -94,6 +94,8 @@ export const useRailOpen = () => useThreadStore((s) => s.railOpen);
 export const useDockOpen = () => useThreadStore((s) => s.dockOpen);
 export const useDiscussionWidth = () => useThreadStore((s) => s.discussionWidth);
 export const useActivityOpen = () => useThreadStore((s) => s.activityOpen);
+export const useSettingsOpen = () => useThreadStore((s) => s.settingsOpen);
+export const useSettingsSection = () => useThreadStore((s) => s.settingsSection);
 export const useDraftedBannerDismissed = (threadId: string) =>
   useThreadStore((s) => s.draftedBannerDismissed[threadId] ?? false);
 

@@ -11,6 +11,7 @@
 
 import { PanelLeft } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { SettingsModal } from '@/features/settings/components/settings-modal';
 import { Sidebar } from '@/features/sidebar/components/sidebar';
 import { useSidebarHydration } from '@/hooks/useSidebarHydration';
 import { useRailOpen, useThreadStore } from '@/store';
@@ -42,6 +43,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         )}
         {children}
       </main>
+
+      {/* Workspace-scoped, so mounted once here — available on every (app) route
+          (dashboard + threads). Renders nothing until the switcher opens it. */}
+      <SettingsModal />
     </div>
   );
 }

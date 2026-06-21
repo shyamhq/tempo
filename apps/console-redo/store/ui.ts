@@ -19,6 +19,11 @@ const DEFAULT_DISCUSSION_WIDTH = 400;
 const clampWidth = (w: number): number =>
   Math.max(MIN_DISCUSSION_WIDTH, Math.min(MAX_DISCUSSION_WIDTH, Math.round(w)));
 
+// The workspace-settings modal's section router. Connectors is a coming-soon
+// placeholder (the OAuth flow is out of scope for the kit); 'danger' groups the
+// leave/delete actions.
+export type SettingsSection = 'general' | 'members' | 'connectors' | 'danger';
+
 export interface UiSlice {
   railOpen: boolean;
   dockOpen: boolean;
@@ -31,6 +36,11 @@ export interface UiSlice {
   // The agent-activity drawer's open flag. Transient (NOT persisted) — a drawer
   // shouldn't reopen on reload; the status strip's activity chip toggles it.
   activityOpen: boolean;
+  // The workspace-settings modal's open flag + active section. Transient (NOT
+  // persisted) — a modal shouldn't reopen on reload; the workspace switcher's
+  // "Workspace settings" item opens it.
+  settingsOpen: boolean;
+  settingsSection: SettingsSection;
   // Per-thread "drafted plan" banner dismissals (absent key = not dismissed).
   // Persisted so a dismiss sticks across reloads.
   draftedBannerDismissed: Record<string, boolean>;
@@ -43,6 +53,8 @@ export interface UiSlice {
   markDiscussionSeen: (threadId: string) => void;
   markCommentSeen: (commentId: string) => void;
   setActivityOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
+  setSettingsSection: (section: SettingsSection) => void;
   dismissDraftedBanner: (threadId: string) => void;
 }
 
@@ -53,6 +65,8 @@ export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) =
   discussionSeenAt: {},
   commentSeenAt: {},
   activityOpen: false,
+  settingsOpen: false,
+  settingsSection: 'general',
   draftedBannerDismissed: {},
 
   setRailOpen: (open) => set({ railOpen: open }),
@@ -70,6 +84,8 @@ export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) =
       commentSeenAt: { ...s.commentSeenAt, [commentId]: new Date().toISOString() },
     })),
   setActivityOpen: (open) => set({ activityOpen: open }),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setSettingsSection: (section) => set({ settingsSection: section }),
   dismissDraftedBanner: (threadId) =>
     set((s) => ({
       draftedBannerDismissed: { ...s.draftedBannerDismissed, [threadId]: true },
@@ -78,8 +94,9 @@ export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) =
 
 // The persisted projection — store/index.ts partializes to exactly this so live
 // thread state (comments, discussion, plan, agent) never leaks into localStorage.
-// activityOpen is deliberately excluded: a transient drawer flag, not a saved
-// preference.
+// activityOpen, settingsOpen, and settingsSection are deliberately excluded:
+// transient drawer/modal flags, not saved preferences (a panel shouldn't reopen
+// on reload).
 export type PersistedUiState = Pick<
   UiSlice,
   | 'railOpen'

@@ -7,8 +7,9 @@
 
 import { useClerk, useOrganization, useOrganizationList, useUser } from '@clerk/nextjs';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronDown, LogOut, Plus } from 'lucide-react';
+import { Check, ChevronDown, LogOut, Plus, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useThreadStore } from '@/store';
 
 // Narrow view of a Clerk OrganizationMembership — only the fields this file
 // renders. `imageUrl` matches Clerk's actual return shape: a string when the org
@@ -25,6 +26,7 @@ export function WorkspaceSwitcher() {
   const { user } = useUser();
   const clerk = useClerk();
   const router = useRouter();
+  const setSettingsOpen = useThreadStore((s) => s.setSettingsOpen);
   const { organization: activeOrg } = useOrganization();
   const { userMemberships, setActive } = useOrganizationList({
     userMemberships: { infinite: true },
@@ -105,6 +107,11 @@ export function WorkspaceSwitcher() {
           </div>
 
           <Separator />
+          <ActionItem
+            icon={Settings}
+            label="Workspace settings"
+            onSelect={() => setSettingsOpen(true)}
+          />
           <ActionItem
             icon={Plus}
             label="Create workspace"

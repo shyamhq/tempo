@@ -133,6 +133,17 @@ body {
 }
 .tp-slide-in-right { animation: tp-slide-in-right 240ms var(--tp-ease); }
 
+/* centered-modal entry (settings dialog). Plays as a mount animation — the
+   Radix Dialog unmounts on close (no forceMount), so this never replays as a
+   state transition. Centering comes from the element's `translate` property
+   (Tailwind's -translate-x/y-1/2, a separate property in v4), so this keyframe
+   only scales + fades (via `transform`) — the two compose to scale in place. */
+@keyframes tp-scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.tp-scale-in { animation: tp-scale-in 180ms var(--tp-ease); }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
