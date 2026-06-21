@@ -34,8 +34,21 @@ export interface CommentsSlice {
 
   // Optimistic writes: the same dedup-by-id used by the apply* actions lets the
   // server's echoed event collapse onto the local copy instead of duplicating.
+  // resolve/unresolve/delete are idempotent over the entity id, so the echoed
+  // comment_resolved/unresolved/deleted event re-applies the same final state.
   addCommentLocal: (comment: Comment) => void;
   addReplyLocal: (commentId: Comment['id'], reply: Reply) => void;
+  resolveCommentLocal: (commentId: Comment['id'], resolvedBy: string | null) => void;
+  unresolveCommentLocal: (commentId: Comment['id']) => void;
+  deleteCommentLocal: (commentId: Comment['id']) => void;
+}
+
+function setResolved(
+  comments: Comment[],
+  commentId: Comment['id'],
+  resolvedBy: string | null,
+): Comment[] {
+  return comments.map((c) => (c.id === commentId ? { ...c, resolved_by_user_id: resolvedBy } : c));
 }
 
 function upsertComment(comments: Comment[], comment: Comment): Comment[] {
@@ -61,18 +74,10 @@ export const createCommentsSlice: StateCreator<ThreadStore, [], [], CommentsSlic
     set((s) => ({ comments: upsertReply(s.comments, e.comment_id, e.reply) })),
 
   applyCommentResolved: (e, resolvedBy) =>
-    set((s) => ({
-      comments: s.comments.map((c) =>
-        c.id === e.comment_id ? { ...c, resolved_by_user_id: resolvedBy } : c,
-      ),
-    })),
+    set((s) => ({ comments: setResolved(s.comments, e.comment_id, resolvedBy) })),
 
   applyCommentUnresolved: (e) =>
-    set((s) => ({
-      comments: s.comments.map((c) =>
-        c.id === e.comment_id ? { ...c, resolved_by_user_id: null } : c,
-      ),
-    })),
+    set((s) => ({ comments: setResolved(s.comments, e.comment_id, null) })),
 
   applyCommentDeleted: (e) =>
     set((s) => ({ comments: s.comments.filter((c) => c.id !== e.comment_id) })),
@@ -81,4 +86,13 @@ export const createCommentsSlice: StateCreator<ThreadStore, [], [], CommentsSlic
 
   addReplyLocal: (commentId, reply) =>
     set((s) => ({ comments: upsertReply(s.comments, commentId, reply) })),
+
+  resolveCommentLocal: (commentId, resolvedBy) =>
+    set((s) => ({ comments: setResolved(s.comments, commentId, resolvedBy) })),
+
+  unresolveCommentLocal: (commentId) =>
+    set((s) => ({ comments: setResolved(s.comments, commentId, null) })),
+
+  deleteCommentLocal: (commentId) =>
+    set((s) => ({ comments: s.comments.filter((c) => c.id !== commentId) })),
 });
