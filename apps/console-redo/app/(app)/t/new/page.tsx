@@ -18,17 +18,27 @@
 // wired here yet); the add-list captures the same `repos: string[]` the contract
 // wants. Swap in the autocomplete picker when the worker repos client lands.
 //
-// ponytail: attachments are deferred to the shared-uploader task (#3) — it builds
-// the uploader once and wires it into both this compose and the discussion
-// composer. We pass `attachments: []` for now.
+// Images attach via the shared uploader (features/attachments). Bytes stay in
+// the browser as blob: URLs until submit; the init+PUT pass runs inside submit()
+// AFTER createThread, since /init needs the thread id (uploadAll(thread.id)).
 
 import { useAuth } from '@clerk/nextjs';
 import type { AgentType } from '@tempo/contracts';
 import { Bug, Cloud, Command, GitBranch, RefreshCcw, Search, Sparkles, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { type KeyboardEvent, Suspense, useRef, useState } from 'react';
+import { type KeyboardEvent, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  AttachmentAddButton,
+  AttachmentDragOverlay,
+  AttachmentThumbnails,
+  useAttachmentSurface,
+} from '@/features/attachments/components/attachment-tray';
+import {
+  skippedNotice,
+  useAttachmentUploader,
+} from '@/features/attachments/use-attachment-uploader';
 import { postDiscussionMessage } from '@/features/discussion/api';
 import { createThread } from '@/features/thread/api';
 import { cn } from '@/lib/utils';
@@ -66,6 +76,26 @@ function NewThreadCompose() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // No Thread exists yet, so the uploader holds files (threadId=null, no upload);
+  // submit() drives init+PUT via uploadAll(thread.id) once createThread returns.
+  const baseUploader = useAttachmentUploader(null, getToken);
+  // Surface skipped files (wrong type / oversize / over the 8-file cap) inline:
+  // wrap addFiles once so paste, drop, and the add button all set the notice.
+  const [notice, setNotice] = useState<string | null>(null);
+  const { addFiles } = baseUploader;
+  const addWithNotice = useCallback(
+    async (files: File[]) => {
+      const res = await addFiles(files);
+      setNotice(skippedNotice(res.rejected));
+      return res;
+    },
+    [addFiles],
+  );
+  const uploader = useMemo(
+    () => ({ ...baseUploader, addFiles: addWithNotice }),
+    [baseUploader, addWithNotice],
+  );
+  const { rootProps, isDragActive } = useAttachmentSurface(uploader, textareaRef, submitting);
 
   // ponytail: default-to-first is a sensible creation-form default, NOT a band-aid
   // for a broken current-space lookup — the sidebar "New thread" link always passes
@@ -91,10 +121,18 @@ function NewThreadCompose() {
         repos: agentType === 'hosted' ? repos : [],
       });
       createdId = thread.id;
+      // Now that the Thread exists, /init can resolve its id: upload every held
+      // image (init + PUT) and collect the attachment ids. All-or-nothing — a
+      // failure here lands in the same catch as a failed message post (Thread
+      // already created, so the "open it and try again" branch applies).
+      const attachmentIds = await uploader.uploadAll(thread.id);
       // The first discussion message: what the Agent reads on turn 1, and what
       // triggers the Hosted VM auto-spawn via the discussion_message_posted event.
-      // ponytail: attachments deferred to the shared-uploader task (#3).
-      await postDiscussionMessage(thread.id, { text: trimmed, attachments: [] }, getToken);
+      await postDiscussionMessage(
+        thread.id,
+        { text: trimmed, attachments: attachmentIds },
+        getToken,
+      );
       // Re-seed the rail so the new Thread row + bumped count appear. Fire-and-
       // forget: refreshSidebar self-swallows+logs, and awaiting a rejection here
       // would surface as a false "create failed" after the Thread already landed.
@@ -103,12 +141,18 @@ function NewThreadCompose() {
       // Dev runs `npx tempo-agent connect`); Hosted route straight in (VM spawns).
       router.push(`/t/${thread.id}${agentType === 'local' ? '?connect=1' : ''}`);
     } catch (e) {
-      console.error('new thread: create/post failed', e);
-      setError(
-        createdId
-          ? "Thread created, but couldn't post your message — open it and try again."
-          : 'Could not create the thread. Try again.',
-      );
+      console.error('new thread: create/upload/post failed', e);
+      if (createdId) {
+        // The Thread already exists — the failure was the upload or the message
+        // post. Staying on /t/new and re-submitting would create a DUPLICATE
+        // Thread, so route into the one we made and let the Dev retry there.
+        setError(
+          "Thread created, but couldn't upload your images / post your message — opening it now.",
+        );
+        router.push(`/t/${createdId}`);
+        return;
+      }
+      setError("Couldn't create the thread. Try again.");
       setSubmitting(false);
     }
   };
@@ -151,7 +195,16 @@ function NewThreadCompose() {
           Tempo runs where you point it — can't switch mid-Thread.
         </p>
 
-        <div className="w-full overflow-hidden rounded-xl border border-border bg-canvas shadow-sm transition-colors focus-within:border-primary focus-within:shadow-[var(--tp-focus-ring)]">
+        <div
+          {...rootProps}
+          className="relative w-full overflow-hidden rounded-xl border border-border bg-canvas shadow-sm transition-colors focus-within:border-primary focus-within:shadow-[var(--tp-focus-ring)]"
+        >
+          <AttachmentDragOverlay active={isDragActive} />
+          {uploader.items.length > 0 ? (
+            <div className="px-5 pt-5">
+              <AttachmentThumbnails uploader={uploader} />
+            </div>
+          ) : null}
           <textarea
             ref={textareaRef}
             value={text}
@@ -162,7 +215,8 @@ function NewThreadCompose() {
             rows={5}
             className="block max-h-[280px] min-h-[132px] w-full resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-md leading-body text-ink outline-none placeholder:text-ink-3 disabled:cursor-not-allowed"
           />
-          <div className="flex items-center justify-end px-3 pb-3">
+          <div className="flex items-center justify-between px-3 pb-3">
+            <AttachmentAddButton uploader={uploader} disabled={submitting} />
             <Button variant="primary" kbd="↵" disabled={!canSubmit} onClick={() => void submit()}>
               {submitting ? 'Starting…' : 'Start thread'}
             </Button>
@@ -220,6 +274,11 @@ function NewThreadCompose() {
           <span>for newline</span>
         </p>
 
+        {notice ? (
+          <p className="mt-4 text-sm text-warning" role="status">
+            {notice}
+          </p>
+        ) : null}
         {error ? (
           <p className="mt-4 text-sm text-danger" role="alert">
             {error}

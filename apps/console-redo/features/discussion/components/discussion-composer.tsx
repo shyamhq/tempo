@@ -8,14 +8,33 @@
 //
 // Send flow mirrors apps/console's MessageComposer: the Worker mints the id, so
 // there's no optimistic row — we POST and let the discussion_message_posted echo
-// append the message (the slice dedups by id). Send is disabled in-flight; errors
-// surface inline; the field clears on success. T5.1 sends text-only (mentions /
-// attachments / repos are deferred).
+// append the message (the slice dedups by id). Images attach via the shared
+// uploader (features/attachments): files upload eagerly on add/paste/drop, and
+// Send passes the resolved ids. Send accepts text-only, attachments-only, or
+// both, and is blocked while any upload is in flight. The field clears on
+// success.
+//
+// ponytail: the Hosted repo-context bar (apps/console's MessageComposer shows
+// one) is deferred. console-redo's /api/threads/:id/repos route is GET-only and
+// the composer isn't threaded an agent_type / repos state — adding the bar means
+// new wiring (agentType prop, repos query+seed, ThreadContextBar) that the
+// attachments task isn't scoped for. Add it when the hosted-thread repo edit
+// surface lands.
 
 import { useAuth } from '@clerk/nextjs';
 import { Send } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  AttachmentAddButton,
+  AttachmentDragOverlay,
+  AttachmentThumbnails,
+  useAttachmentSurface,
+} from '@/features/attachments/components/attachment-tray';
+import {
+  skippedNotice,
+  useAttachmentUploader,
+} from '@/features/attachments/use-attachment-uploader';
 import { postDiscussionMessage } from '../api';
 
 export function DiscussionComposer({ threadId }: { threadId: string }) {
@@ -28,16 +47,49 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
   // (it's cosmetic — Cmd+Enter and Ctrl+Enter both submit regardless).
   const [isMac, setIsMac] = useState(true);
   useEffect(() => setIsMac(/mac/i.test(navigator.platform)), []);
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const baseUploader = useAttachmentUploader(threadId, getToken);
+  // Surface skipped files (wrong type / oversize / over the 8-file cap) inline:
+  // wrap addFiles once so paste, drop, and the add button all set the notice.
+  const [notice, setNotice] = useState<string | null>(null);
+  const { addFiles } = baseUploader;
+  const addWithNotice = useCallback(
+    async (files: File[]) => {
+      const res = await addFiles(files);
+      setNotice(skippedNotice(res.rejected));
+      return res;
+    },
+    [addFiles],
+  );
+  const uploader = useMemo(
+    () => ({ ...baseUploader, addFiles: addWithNotice }),
+    [baseUploader, addWithNotice],
+  );
+  const { rootProps, isDragActive } = useAttachmentSurface(uploader, textareaRef, sending);
+
   const text = value.trim();
-  const canSend = text.length > 0 && !sending;
+  // Send with text OR ready attachments; never while an upload is mid-flight.
+  const canSend =
+    (text.length > 0 || uploader.readyIds.length > 0) && !sending && !uploader.hasUploading;
 
   const submit = async () => {
     if (!canSend) return;
     setSending(true);
     setError(null);
     try {
-      await postDiscussionMessage(threadId, { text, attachments: [] }, getToken);
+      await postDiscussionMessage(
+        threadId,
+        {
+          ...(text.length > 0 ? { text } : {}),
+          attachments: uploader.readyIds,
+        },
+        getToken,
+      );
       setValue('');
+      uploader.reset();
+      setNotice(null);
     } catch {
       setError('Send failed. Try again.');
     } finally {
@@ -47,8 +99,15 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
 
   return (
     <div className="shrink-0 border-t border-border bg-panel p-[11px]">
-      <div className="rounded-[11px] border border-border-strong bg-canvas px-3 py-[10px] transition-colors focus-within:border-primary focus-within:shadow-[var(--tp-focus-ring)]">
+      <div
+        ref={wrapRef}
+        {...rootProps}
+        className="relative flex flex-col gap-2 rounded-[11px] border border-border-strong bg-canvas px-3 py-[10px] transition-colors focus-within:border-primary focus-within:shadow-[var(--tp-focus-ring)]"
+      >
+        <AttachmentDragOverlay active={isDragActive} />
+        <AttachmentThumbnails uploader={uploader} />
         <textarea
+          ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
@@ -63,7 +122,8 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
           disabled={sending}
           className="min-h-[34px] w-full resize-none border-0 bg-transparent text-[12.5px] leading-[1.45] text-ink outline-none [field-sizing:content] placeholder:text-ink-3 disabled:opacity-60"
         />
-        <div className="mt-[7px] flex items-center gap-2">
+        <div className="flex items-center gap-2">
+          <AttachmentAddButton uploader={uploader} disabled={sending} />
           <span className="font-mono text-[10px] text-ink-3">
             {isMac ? '⌘↵' : 'Ctrl+↵'} to send
           </span>
@@ -79,6 +139,7 @@ export function DiscussionComposer({ threadId }: { threadId: string }) {
           </Button>
         </div>
       </div>
+      {notice ? <p className="mt-2 px-1 text-xs text-warning">{notice}</p> : null}
       {error ? <p className="mt-2 px-1 text-xs text-danger">{error}</p> : null}
     </div>
   );
