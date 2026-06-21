@@ -9,7 +9,7 @@ import { PanelLeftClose, Plus, Search } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { useSidebarSpaces, useThreadStatus, useThreadStore } from '@/store';
+import { useAgentPresent, useSidebarSpaces, useThreadStore } from '@/store';
 import { SpaceRow } from './space-row';
 import { WorkspaceSwitcher } from './workspace-switcher';
 
@@ -18,7 +18,7 @@ export function Sidebar() {
   const activeThreadId = pathname?.startsWith('/t/') ? pathname.split('/')[2] : undefined;
 
   const spaces = useSidebarSpaces();
-  const { agentPresent } = useThreadStatus();
+  const agentPresent = useAgentPresent();
 
   const [search, setSearch] = useState('');
   const filtered = useMemo(() => {

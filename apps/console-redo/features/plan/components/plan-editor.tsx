@@ -45,6 +45,7 @@ import {
 } from '@blocknote/react';
 import { useAuth } from '@clerk/nextjs';
 import type { PlanBody } from '@tempo/contracts';
+import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useRef } from 'react';
 import { usePlan, useThreadStore } from '@/store';
 import { CommentControllers, CommentGutter } from '../../comments/components/comments-overlay';
@@ -55,8 +56,18 @@ import { htmlBlockTypeItem, htmlSlashItem } from '../blocks/html-block';
 import { planSchemaClient } from '../schema';
 import { usePlanAutoSave } from '../use-plan-auto-save';
 
-export function PlanEditor({ threadId }: { threadId: string }) {
+export function PlanEditor({
+  threadId,
+  registerGetMarkdown,
+}: {
+  threadId: string;
+  // Lets the thread-view's Copy plan / Execute read the live plan as markdown
+  // without a cross-feature import. Optional so the editor stands alone in tests
+  // / other mounts.
+  registerGetMarkdown?: (fn: (() => Promise<string>) | null) => void;
+}) {
   const { getToken } = useAuth();
+  const { resolvedTheme } = useTheme();
   const plan = usePlan();
   const body = plan.body;
 
@@ -131,6 +142,15 @@ export function PlanEditor({ threadId }: { threadId: string }) {
     seededRef.current = true;
   }, [editor, body]);
 
+  // Expose the live plan as markdown for the thread-view's Copy plan / Execute
+  // handoff. blocksToMarkdownLossy is BlockNote's documented (lossy) markdown
+  // export; the full document defaults in when no blocks are passed.
+  useEffect(() => {
+    if (!registerGetMarkdown) return;
+    registerGetMarkdown(async () => editor.blocksToMarkdownLossy(editor.document));
+    return () => registerGetMarkdown(null);
+  }, [editor, registerGetMarkdown]);
+
   return (
     // Match the kit's reading column: the plan body reads at --tp-container-doc
     // (680px, the kit's `.plan-inner{max-width:var(--tp-container-doc)}`, Design
@@ -147,7 +167,7 @@ export function PlanEditor({ threadId }: { threadId: string }) {
           formattingToolbar={false}
           slashMenu={false}
           comments={false}
-          theme="light"
+          theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
           onChange={() => {
             if (!seededRef.current) return;
             notifyEdit();
