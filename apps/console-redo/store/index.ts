@@ -67,9 +67,16 @@ export const useComments = () => useThreadStore((s) => s.comments);
 export const useDiscussion = () => useThreadStore((s) => s.discussion);
 export const usePlan = () => useThreadStore((s) => s.plan);
 export const useSidebarSpaces = () => useThreadStore((s) => s.spaces);
+export const useSpaceThreads = (spaceId: string) =>
+  useThreadStore((s) => s.threadsBySpace[spaceId]);
+export const useSpaceExpanded = (spaceId: string) =>
+  useThreadStore((s) => s.expanded[spaceId] ?? false);
 
 export const useThreadStatus = () =>
   useThreadStore(useShallow((s) => ({ agentPresent: s.agentPresent, vm: s.vm, repos: s.repos })));
+
+export const useRailOpen = () => useThreadStore((s) => s.railOpen);
+export const useDockOpen = () => useThreadStore((s) => s.dockOpen);
 
 // Agent messages: select the two raw slices for this thread separately (each
 // only changes when its own data does), then merge — the merge dedups the live
