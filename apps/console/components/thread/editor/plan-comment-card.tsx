@@ -13,6 +13,7 @@ import { useOrganization } from '@clerk/nextjs';
 import type { Mention } from '@tempo/contracts';
 import { Check, CornerDownLeft, Loader2, Maximize2, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { useStickToBottom } from 'use-stick-to-bottom';
 import { MarkdownText } from '@/components/thread/markdown-text';
 import type { MentionableInputRef } from '@/components/thread/mention/mentionable-input';
 import { MentionableInput } from '@/components/thread/mention/mentionable-input';
@@ -46,6 +47,13 @@ export function PlanCommentCard({
   const replyRef = useRef<MentionableInputRef>(null);
   const candidates = useMentionCandidates();
 
+  // Stay at the top on open (read the original comment first); only auto-scroll
+  // when the user posts a reply, or when a reply lands while already at bottom.
+  const { scrollRef, contentRef, scrollToBottom } = useStickToBottom({
+    initial: false,
+    resize: 'smooth',
+  });
+
   const canReply = replyHasText && !sending && threadStore !== undefined;
 
   const sendReply = async () => {
@@ -69,6 +77,7 @@ export function PlanCommentCard({
       });
       replyRef.current.clear();
       setReplyHasText(false);
+      scrollToBottom('smooth');
     } finally {
       setSending(false);
     }
@@ -149,14 +158,16 @@ export function PlanCommentCard({
           </Tooltip>
         </div>
       ) : null}
-      <div className={listClass}>
-        {thread.comments.map((c) => (
-          <PlanCommentRow
-            key={c.id}
-            comment={c}
-            username={resolveAuthorLabel(c.userId, memberships?.data)}
-          />
-        ))}
+      <div ref={scrollRef} className={listClass}>
+        <div ref={contentRef} className="flex flex-col">
+          {thread.comments.map((c) => (
+            <PlanCommentRow
+              key={c.id}
+              comment={c}
+              username={resolveAuthorLabel(c.userId, memberships?.data)}
+            />
+          ))}
+        </div>
       </div>
 
       {thread.resolved ? (
