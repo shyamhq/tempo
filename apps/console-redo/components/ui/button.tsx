@@ -50,15 +50,25 @@ export function Button({
   ...props
 }: ButtonProps) {
   const Comp = asChild ? Slot : 'button';
+  // Radix Slot requires exactly one child, so with `asChild` the consumer's
+  // single element IS the content (it composes its own icon inside). The
+  // icon/kbd affordances only apply to the plain <button> form — rendering their
+  // null placeholders alongside `children` would hand Slot 3 children and throw.
   return (
     <Comp className={cn(buttonVariants({ variant, size, fullWidth }), className)} {...props}>
-      {icon ? <span className="inline-flex size-[13px]">{icon}</span> : null}
-      {children}
-      {kbd ? (
-        <span className="ml-0.5 rounded-[3px] border border-current px-1 font-mono text-[10px] opacity-70">
-          {kbd}
-        </span>
-      ) : null}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {icon ? <span className="inline-flex size-[13px]">{icon}</span> : null}
+          {children}
+          {kbd ? (
+            <span className="ml-0.5 rounded-[3px] border border-current px-1 font-mono text-[10px] opacity-70">
+              {kbd}
+            </span>
+          ) : null}
+        </>
+      )}
     </Comp>
   );
 }
