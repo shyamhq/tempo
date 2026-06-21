@@ -84,7 +84,9 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     title: string;
     description: string;
     agent_type: 'local' | 'hosted';
-    updated_at: Date | null;
+    // Raw db.execute returns the timestamp as the driver's native form — a string
+    // under the pg driver, not a Date (db.select would map it). Normalize below.
+    updated_at: Date | string | null;
     repos: string[];
   }>(sql`
     SELECT t.id, t.title, t.description, t.agent_type, t.updated_at, t.repos
@@ -98,7 +100,7 @@ export async function listThreads(workspaceId: string, spaceId?: string) {
     title: r.title,
     description: r.description,
     agent_type: r.agent_type,
-    updated_at: r.updated_at?.toISOString() ?? null,
+    updated_at: r.updated_at == null ? null : new Date(r.updated_at).toISOString(),
     agent_present: resolveAgentPresent(r.agent_type, r.repos, present.get(r.id) ?? false),
   }));
 }
