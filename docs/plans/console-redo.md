@@ -57,8 +57,9 @@ stays. This is a **client rewrite**, not a backend change.
 
 ### Repo shape
 
-- New app `apps/console-redo` (own `package.json`, Next 16 / React 19, own port),
-  added to the workspace + turbo. Built alongside `apps/console`.
+- New app `apps/console-redo` (own `package.json`, Next 16 / React 19, port 3000),
+  added to the workspace + turbo. Built alongside `apps/console` — run one Console
+  at a time during dev (Clerk callbacks target 3000; stop `apps/console` first).
 - Shared/untouched: `packages/contracts`, `packages/server`, `packages/db`,
   `packages/sse-client`, worker SSE.
 - During dev, console-redo shares `apps/console`'s `data/tempo.db` + env so

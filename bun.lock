@@ -95,6 +95,19 @@
         "react-email": "^6.6.0",
       },
     },
+    "apps/console-redo": {
+      "name": "@tempo/console-redo",
+      "dependencies": {
+        "next": "^16.2.6",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6",
+      },
+      "devDependencies": {
+        "@types/node": "^25.9.1",
+        "@types/react": "^19.2.15",
+        "@types/react-dom": "^19.2.3",
+      },
+    },
     "apps/worker": {
       "name": "@tempo/worker",
       "dependencies": {
@@ -851,6 +864,8 @@
     "@tavily/core": ["@tavily/core@0.7.6", "", { "dependencies": { "axios": "^1.7.7", "https-proxy-agent": "^7.0.6", "js-tiktoken": "^1.0.14" } }, "sha512-swNz2RaietpfXWrA+y/ERSQ9H3bq0mNu0hcp2OcVKqTrUUcdygEXIXr67o6qQ1XSjgBbB3FNQtAkrPPB8bYkaA=="],
 
     "@tempo/console": ["@tempo/console@workspace:apps/console"],
+
+    "@tempo/console-redo": ["@tempo/console-redo@workspace:apps/console-redo"],
 
     "@tempo/contracts": ["@tempo/contracts@workspace:packages/contracts"],
 
