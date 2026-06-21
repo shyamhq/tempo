@@ -26,15 +26,7 @@ import { Event, PresenceSignal, VmSignal } from '@tempo/contracts/events';
 import { type SseSubscription, subscribeToEvents } from '@tempo/sse-client';
 import { readUIMessageStream } from 'ai';
 import { useThreadStore } from '../store';
-
-// SEAM (T2.3): this mirrors apps/console's lib/api-client.ts workerEventsUrl.
-// When console-redo gains its own lib/api-client.ts (T2.3 hydration), move
-// WORKER_URL + this builder there and import it. Kept inline now so T2.2 is
-// self-contained. No cursor param — Last-Event-ID drives the resume.
-const WORKER_URL = process.env.NEXT_PUBLIC_WORKER_URL ?? 'http://localhost:3001';
-function workerEventsUrl(threadId: string): string {
-  return `${WORKER_URL}/api/threads/${threadId}/events`;
-}
+import { workerEventsUrl } from './api-client';
 
 export interface EventGatewayOptions {
   threadId: string;

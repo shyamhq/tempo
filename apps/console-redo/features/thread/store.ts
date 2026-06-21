@@ -26,6 +26,9 @@ export interface ThreadSlice {
   vm: VmState;
 
   setThread: (view: ThreadView) => void;
+  // Repos are not on GetThreadResponse — hydration seeds them from the separate
+  // /repos read through this setter (the same writer repo_linked routes through).
+  setRepos: (repos: string[]) => void;
   applyThreadRenamed: (e: z.infer<typeof ThreadRenamedEvent>) => void;
   applyRepoLinked: (e: z.infer<typeof RepoLinkedEvent>) => void;
   applyPresence: (frame: z.infer<typeof PresenceSignal>) => void;
@@ -44,6 +47,8 @@ export const createThreadSlice: StateCreator<ThreadStore, [], [], ThreadSlice> =
       agentPresent: view.agent_present,
       vm: view.vm,
     }),
+
+  setRepos: (repos) => set({ repos }),
 
   applyThreadRenamed: (e) =>
     set((s) => (s.thread ? { thread: { ...s.thread, title: e.title } } : {})),
