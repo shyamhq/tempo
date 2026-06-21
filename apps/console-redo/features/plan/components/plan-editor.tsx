@@ -23,9 +23,12 @@
 // Comments: BlockNote's documented Comments feature drives Tempo's data through
 // a custom CommentThreadStore (features/comments/comment-thread-store.ts) — reads
 // project the comments slice, writes go through features/comments/api.ts. The
-// CommentsExtension registers the comment mark and renders BlockNote's stock
-// comment UI (the AddComment formatting-toolbar button, the floating composer on
-// selection, and the floating thread card). The kit-themed card/gutter is T4.3.
+// CommentsExtension registers the comment mark; the stock comments overlay is
+// disabled (`comments={false}`) and the kit-styled presentation layer
+// (features/comments/components) takes over: <CommentControllers /> hosts the
+// floating composer + thread card via BlockNote's documented controllers, and
+// <CommentGutter /> renders the margin rail beside the doc column. The AddComment
+// toolbar button stays — it fires the pending-comment state the composer reads.
 
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
@@ -44,6 +47,7 @@ import { useAuth } from '@clerk/nextjs';
 import type { PlanBody } from '@tempo/contracts';
 import { useCallback, useEffect, useRef } from 'react';
 import { usePlan, useThreadStore } from '@/store';
+import { CommentControllers, CommentGutter } from '../../comments/components/comments-overlay';
 import { useCommentsExtension } from '../../comments/use-comments-extension';
 import { writePlan } from '../api';
 import { alertBlockTypeItems, alertSlashItems } from '../blocks/alert-block';
@@ -128,42 +132,57 @@ export function PlanEditor({ threadId }: { threadId: string }) {
   }, [editor, body]);
 
   return (
-    <div className="mx-auto w-full max-w-[var(--tp-container-doc)] px-6 py-10" data-plan-column>
-      <BlockNoteView
-        editor={editor}
-        formattingToolbar={false}
-        slashMenu={false}
-        theme="light"
-        onChange={() => {
-          if (!seededRef.current) return;
-          notifyEdit();
-        }}
-      >
-        <FormattingToolbarController
-          formattingToolbar={() => (
-            <FormattingToolbar
-              blockTypeSelectItems={[
-                ...blockTypeSelectItems(editor.dictionary),
-                ...alertBlockTypeItems,
-                htmlBlockTypeItem,
-              ]}
-            />
-          )}
-        />
-        <SuggestionMenuController
-          triggerCharacter="/"
-          getItems={async (query) =>
-            filterSuggestionItems(
-              [
-                ...getDefaultReactSlashMenuItems(editor),
-                ...alertSlashItems(editor),
-                htmlSlashItem(editor),
-              ],
-              query,
-            )
-          }
-        />
-      </BlockNoteView>
+    // Match the kit's reading column: the plan body reads at --tp-container-doc
+    // (680px, the kit's `.plan-inner{max-width:var(--tp-container-doc)}`, Design
+    // System Planning Tool/ui_kits/workbench/index.html line 123) with the comment
+    // gutter beside it. The kit's plan section fills its half of the split because
+    // the discussion panel claims the rest; until that dock lands (Phase 5) the
+    // row would float lost-centered in the empty main, so we let it sit at the
+    // doc width plus the gutter + the kit's doc padding (we zero BlockNote's own
+    // editor padding in globals.css so it doesn't double).
+    <div className="mx-auto flex w-full max-w-[calc(var(--tp-container-doc)+28px+8px+64px)] items-start gap-2 px-8 py-6">
+      <div className="min-w-0 flex-1" data-plan-column>
+        <BlockNoteView
+          editor={editor}
+          formattingToolbar={false}
+          slashMenu={false}
+          comments={false}
+          theme="light"
+          onChange={() => {
+            if (!seededRef.current) return;
+            notifyEdit();
+          }}
+        >
+          <FormattingToolbarController
+            formattingToolbar={() => (
+              <FormattingToolbar
+                blockTypeSelectItems={[
+                  ...blockTypeSelectItems(editor.dictionary),
+                  ...alertBlockTypeItems,
+                  htmlBlockTypeItem,
+                ]}
+              />
+            )}
+          />
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={async (query) =>
+              filterSuggestionItems(
+                [
+                  ...getDefaultReactSlashMenuItems(editor),
+                  ...alertSlashItems(editor),
+                  htmlSlashItem(editor),
+                ],
+                query,
+              )
+            }
+          />
+          {/* The comments presentation layer: kit-styled floating composer +
+              thread card. The gutter rail is a sibling of the doc column below. */}
+          <CommentControllers />
+        </BlockNoteView>
+      </div>
+      <CommentGutter editorRef={editorRef} />
     </div>
   );
 }

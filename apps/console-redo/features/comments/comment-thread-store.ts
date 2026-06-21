@@ -26,6 +26,7 @@ import { DefaultThreadStoreAuth, ThreadStore } from '@blocknote/core/comments';
 import type { Comment, Mention, Reply } from '@tempo/contracts';
 import { useThreadStore } from '../../store';
 import { createComment, createReply, deleteComment, resolveComment, unresolveComment } from './api';
+import { commentText } from './comment-text';
 
 // DefaultThreadStoreAuth('editor') would let the stock comment UI render a
 // per-comment Edit (canUpdateComment), a per-comment Delete (canDeleteComment),
@@ -94,7 +95,7 @@ export class CommentThreadStore extends ThreadStore {
     initialComment: { body: CommentBody; metadata?: unknown };
     metadata?: unknown;
   }): Promise<ThreadData> {
-    const text = extractText(options.initialComment.body);
+    const text = commentText(options.initialComment.body);
     const anchor = this.captureAnchor();
     const mentions = readMentions(options.initialComment.metadata);
     const created = await createComment(
@@ -117,7 +118,7 @@ export class CommentThreadStore extends ThreadStore {
     threadId: string;
     comment: { body: CommentBody; metadata?: unknown };
   }): Promise<CommentData> {
-    const text = extractText(options.comment.body);
+    const text = commentText(options.comment.body);
     const mentions = readMentions(options.comment.metadata);
     const reply = await createReply(
       options.threadId,
@@ -240,24 +241,4 @@ function textToCommentBody(text: string): CommentBody {
 
 function readMentions(metadata: unknown): Mention[] | undefined {
   return (metadata as { mentions?: Mention[] } | null | undefined)?.mentions;
-}
-
-type InlineLike = { type?: string; text?: string };
-type BlockLike = { content?: InlineLike[]; children?: BlockLike[] };
-
-function extractText(body: CommentBody): string {
-  const out: string[] = [];
-  const walk = (blocks: BlockLike[]) => {
-    for (const block of blocks) {
-      if (Array.isArray(block.content)) {
-        for (const inline of block.content) {
-          if (typeof inline.text === 'string') out.push(inline.text);
-        }
-      }
-      if (Array.isArray(block.children) && block.children.length > 0) walk(block.children);
-      out.push('\n');
-    }
-  };
-  walk(body as BlockLike[]);
-  return out.join('').trim();
 }
