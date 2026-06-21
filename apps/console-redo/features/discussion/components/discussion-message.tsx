@@ -7,8 +7,9 @@
 // renders initials on the actor-purple avatar with the inset bubble body.
 //
 // Presentational: it reads the message it's handed and the current Clerk user (to
-// show "You" for the Dev's own posts). Question-carrying and Agent-attribution
-// rows are deferred — T5.1 sends text-only Dev messages and renders text bodies.
+// show "You" for the Dev's own posts). Image attachments render below the body via
+// the shared AttachmentStrip (with lightbox). Question-carrying and
+// Agent-attribution rows are still deferred.
 
 import { useUser } from '@clerk/nextjs';
 import type { DiscussionMessage } from '@tempo/contracts';
@@ -16,6 +17,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { Avatar } from '@/components/ui/avatar';
+import { AttachmentStrip } from '@/features/attachments/components/attachment-strip';
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -23,8 +25,8 @@ function formatTime(iso: string): string {
 
 // Token-styled markdown body, matching the kit's `.turn .body` (12.5px / 1.6).
 // gfm + breaks mirror the sibling's MarkdownText so the Agent's lists, bold, and
-// inline code render the same. Mentions/attachments are deferred (T5.1 is
-// text-only), so no mention remark plugin here.
+// inline code render the same. Mentions are still deferred, so no mention remark
+// plugin here.
 const BODY_PLUGINS = [remarkGfm, remarkBreaks];
 
 const MD_COMPONENTS: Components = {
@@ -82,7 +84,7 @@ export function DiscussionMessageRow({ message }: { message: DiscussionMessage }
           {formatTime(message.created_at)}
         </time>
       </div>
-      {text.length > 0 ? (
+      {text.length > 0 || message.attachments.length > 0 ? (
         <div
           className={
             isAgent
@@ -90,7 +92,8 @@ export function DiscussionMessageRow({ message }: { message: DiscussionMessage }
               : 'break-words rounded-[11px] border border-border bg-inset px-[13px] py-[10px] text-[12.5px] leading-[1.6] text-ink'
           }
         >
-          <MessageMarkdown text={text} />
+          {text.length > 0 ? <MessageMarkdown text={text} /> : null}
+          <AttachmentStrip attachments={message.attachments} />
         </div>
       ) : null}
     </div>
