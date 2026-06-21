@@ -60,12 +60,6 @@ async function resolveUser(): Promise<AuthContext> {
   return { actor: 'user', user_id: userId, workspace_id: ws.id, org_id: orgId, role };
 }
 
-// Read X-Tempo-Session: agent requests carry the session id here (the CLI
-// sets it on every request after handshake). Returns null when missing.
-export function readSessionHeader(req: NextRequest): string | null {
-  return req.headers.get('x-tempo-session');
-}
-
 // RSC helper — pages call this to resolve the current Clerk Org's workspace
 // id without going through a Request. Throws if signed out or no active Org;
 // the Clerk middleware (proxy.ts) protects every UI page so neither should
@@ -79,7 +73,6 @@ export async function currentWorkspaceId(): Promise<string> {
   const ws = await getOrCreateWorkspaceForOrg(orgId, org.name);
   return ws.id;
 }
-
 
 function readBearer(req: NextRequest): string | null {
   const header = req.headers.get('authorization');

@@ -5,8 +5,6 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export const TooltipProvider = TP.Provider;
-export const TooltipRoot = TP.Root;
-export const TooltipTrigger = TP.Trigger;
 
 export function Tooltip({
   children,

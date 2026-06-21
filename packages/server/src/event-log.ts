@@ -3,7 +3,7 @@ import { shouldWake } from '@tempo/contracts';
 import { db } from '@tempo/db/client';
 import { newEventId } from '@tempo/db/ids';
 import { events, threads } from '@tempo/db/schema';
-import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import { listAttachmentsForParents } from './attachments';
 import { getHostedState } from './mailbox';
 import { appendToStream } from './redis';
@@ -174,14 +174,4 @@ async function resignAttachmentUrls(stored: Event[]): Promise<Event[]> {
     }
     return e;
   });
-}
-
-export async function latestEventId(threadId: string): Promise<string> {
-  const rows = await db
-    .select({ id: events.id })
-    .from(events)
-    .where(eq(events.thread_id, threadId))
-    .orderBy(desc(events.id))
-    .limit(1);
-  return rows[0]?.id ?? newEventId(0);
 }

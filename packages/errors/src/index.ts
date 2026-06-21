@@ -15,12 +15,6 @@ export class NotFoundError extends TempoError {
   }
 }
 
-export class UnauthorizedError extends TempoError {
-  constructor(message = 'unauthorized', options?: { cause?: unknown }) {
-    super('unauthorized', 401, message, options);
-  }
-}
-
 export class ForbiddenError extends TempoError {
   constructor(message = 'forbidden', options?: { cause?: unknown }) {
     super('forbidden', 403, message, options);
@@ -36,11 +30,5 @@ export class ConflictError extends TempoError {
 export class ValidationError extends TempoError {
   constructor(message = 'validation failed', options?: { cause?: unknown }) {
     super('invalid_input', 400, message, options);
-  }
-}
-
-export class InternalError extends TempoError {
-  constructor(message = 'internal_error', options?: { cause?: unknown }) {
-    super('internal_error', 500, message, options);
   }
 }
