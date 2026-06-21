@@ -1,4 +1,4 @@
-import type { Event, PresenceSignal, VmSignal } from '@tempo/contracts';
+import type { AgentChunkFrame, Event, PresenceSignal, VmSignal } from '@tempo/contracts';
 import { createReader, parseStreamEvent, streamKey } from './redis';
 
 const BLOCK_MS = 25_000;
@@ -18,7 +18,7 @@ export function sseStream(
   threadId: string,
   lastEventId?: string,
   // Optional per-connection filter; Agent connections pass `shouldDeliverToAgent`.
-  filter?: (event: Event | PresenceSignal | VmSignal) => boolean,
+  filter?: (event: Event | PresenceSignal | VmSignal | AgentChunkFrame) => boolean,
 ): Response {
   const encoder = new TextEncoder();
   const reader = createReader();

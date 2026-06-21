@@ -202,6 +202,25 @@ export const vm_runs = pgTable(
   ],
 );
 
+// One row per finalized Agent turn — the persisted AI SDK UIMessage's parts[].
+// Written once by finalizeTurn; live deltas ride the Redis stream, not Postgres.
+// `id` is the turn id carried on the live `agent_chunk` frames, so the browser's
+// live-assembled message and this row share one identity. role is constant
+// ('assistant'), reconstructed on read.
+export const agentMessages = pgTable(
+  'agent_messages',
+  {
+    id: text('id').primaryKey(),
+    thread_id: text('thread_id')
+      .notNull()
+      .references(() => threads.id),
+    parts_json: jsonb('parts_json').notNull(),
+    created_at: timestampDate('created_at'),
+  },
+  // Per-thread inserts are serialized by the turn lock, so created_at order is stable.
+  (t) => [index('idx_agent_messages_thread_created').on(t.thread_id, t.created_at)],
+);
+
 // CLI user tokens — issued via the /api/cli/exchange OAuth-code flow.
 // token_hash and refresh_token_hash store SHA-256(plaintext + pepper) so the
 // plaintext values are never persisted. Unique on hash ensures a stolen DB

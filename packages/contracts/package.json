@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-message": "./src/agent-message.ts",
     "./mcp": "./src/mcp.ts",
     "./http": "./src/http.ts",
     "./connectors": "./src/connectors.ts",
@@ -15,6 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "ai": "^6.0.208",
     "zod": "^4.4.3"
   }
 }

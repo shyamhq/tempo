@@ -21,7 +21,6 @@ import {
   ThreadId,
   ThreadSummary,
 } from './primitives';
-import { Trail } from './trails';
 
 // POST /api/threads
 export const CreateThreadRequest = z.object({
@@ -131,13 +130,6 @@ export const GetThreadResponse = z.object({
   // here and kept live by the `vm` SSE frame — same hydrate-then-push shape as
   // `agent_present`. Always null for Local Threads.
   vm: VmState.nullable(),
-});
-
-// GET /api/threads/:id/trails — derived view of the agent's work, grouped
-// into one trail per produced output (Comment reply, Plan edit, Discussion
-// message). Newest first.
-export const GetTrailsResponse = z.object({
-  trails: z.array(Trail),
 });
 
 // GET /api/threads/:id/plan
@@ -332,51 +324,8 @@ export const ThreadAccessResponse = z.object({
 });
 export type ThreadAccessResponse = z.infer<typeof ThreadAccessResponse>;
 
-// POST /api/agent-events — structured events emitted by the new CLI.
-// Shape mirrors the existing event-log union in packages/contracts/src/events.ts
-// minus the server-stamped id + created_at fields (Worker adds those on append).
-// Using the same `agent_*` kind strings means Console's UI renders these
-// without any UI-side changes.
-
-export const AgentTodoInput = z.object({
-  content: z.string().max(500),
-  status: z.enum(['pending', 'in_progress', 'completed']),
-  activeForm: z.string().max(500).optional(),
-});
-
-export const AgentToolUseEvent = z.object({
-  kind: z.literal('agent_tool_use'),
-  tool: z.string().max(64),
-  summary: z.string().max(200),
-});
-
-export const AgentNarrationEvent = z.object({
-  kind: z.literal('agent_narration'),
-  text: z.string().min(1).max(8000),
-});
-
-export const AgentTodosUpdatedEvent = z.object({
-  kind: z.literal('agent_todos_updated'),
-  todos: z.array(AgentTodoInput).max(50),
-});
-
 export const AgentTurnEndedEvent = z.object({
   kind: z.literal('agent_turn_ended'),
-});
-
-export const AgentThoughtEvent = z.object({
-  kind: z.literal('agent_thought'),
-  text: z.string().min(1).max(8000),
-});
-
-export const AgentToolFailedEvent = z.object({
-  kind: z.literal('agent_tool_failed'),
-  tool: z.string().max(64),
-});
-
-export const AgentModeChangedEvent = z.object({
-  kind: z.literal('agent_mode_changed'),
-  mode_id: z.string().max(64),
 });
 
 // The hosted runner's only provisioning report: a clone/boot failure. Posted
@@ -389,20 +338,27 @@ export const VmFailedReport = z.object({
   reason: z.string(),
 });
 
+// The two things an agent runtime still posts to /agent-events: the turn
+// boundary (event-log floor for getEventsSinceLastTurn) and a VM failure report.
+// All other agent activity is now UIMessageChunks via /agent-stream.
 export const AgentEventRequest = z.object({
   thread_id: ThreadId,
-  event: z.discriminatedUnion('kind', [
-    AgentToolUseEvent,
-    AgentToolFailedEvent,
-    AgentNarrationEvent,
-    AgentThoughtEvent,
-    AgentTodosUpdatedEvent,
-    AgentModeChangedEvent,
-    AgentTurnEndedEvent,
-    VmFailedReport,
-  ]),
+  event: z.discriminatedUnion('kind', [AgentTurnEndedEvent, VmFailedReport]),
 });
 export type AgentEventRequest = z.infer<typeof AgentEventRequest>;
+
+// POST /api/threads/:id/agent-stream (Worker) — a batch of AI SDK UIMessageChunks
+// for one turn; `done` marks the final flush. `chunks` is unknown[] so this
+// contract stays free of the `ai` runtime (the published CLI must not gain it).
+// The Worker doesn't re-validate each chunk (the SDK's chunk schema is a
+// LazySchema, not a Zod type): assembly is error-trapped and persists only a
+// non-empty message, so malformed input is dropped, never stored.
+export const AgentStreamRequest = z.object({
+  turn: z.string().min(1).max(128),
+  chunks: z.array(z.unknown()),
+  done: z.boolean().optional(),
+});
+export type AgentStreamRequest = z.infer<typeof AgentStreamRequest>;
 
 // GET /api/connectors/github/repos (Worker) — repos accessible to the
 // workspace's GitHub App installation, for the Console repo picker. Empty list

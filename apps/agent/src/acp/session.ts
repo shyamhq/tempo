@@ -12,10 +12,10 @@ import {
   type RequestPermissionResponse,
   type SessionNotification,
 } from '@agentclientprotocol/sdk';
-import type { ThreadId } from '@tempo/contracts';
+import type { ThreadId, UIMessageChunk } from '@tempo/contracts';
 import { TEMPO_AGENT_SYSTEM_PROMPT } from '@tempo/contracts/agent-prompt';
 import type { AgentEventRequest } from '@tempo/contracts/http';
-import { postLifecycleEvent } from '../lifecycle';
+import { postAgentChunks, postLifecycleEvent } from '../lifecycle';
 import { logger } from '../logger';
 import { ADAPTER_KILL_GRACE_MS, DISALLOWED_TOOLS, MAX_THINKING_TOKENS } from './config';
 import { NotificationMapper } from './notifications';
@@ -42,6 +42,14 @@ export class AcpSession {
   private conn: ClientSideConnection;
   private sessionId: string | null = null;
   private mapper = new NotificationMapper();
+  // The active turn id — set for the duration of one prompt(), read by the
+  // sessionUpdate callback to tag this turn's chunks. The persisted message and
+  // its live frames share this id.
+  private turn: string | null = null;
+  // Serializes every Worker POST. The ACP connection may dispatch sessionUpdate
+  // callbacks concurrently, so without this two batches could land out of order
+  // and scramble the assembly buffer.
+  private postChain: Promise<void> = Promise.resolve();
   private closed = false;
   private exited: Promise<number | null>;
 
@@ -112,12 +120,17 @@ export class AcpSession {
   // Payload is the same JSON envelope the old `--print` flag carried.
   async prompt(payload: string): Promise<StopReason> {
     if (!this.sessionId) throw new Error('acp: prompt before start()');
+    this.turn = `amsg_${crypto.randomUUID()}`;
+    await this.postChunks(this.mapper.startTurn(this.turn));
+
     const prompt: ContentBlock[] = [{ type: 'text', text: payload }];
     const res = await this.conn.prompt({ sessionId: this.sessionId, prompt });
 
-    // Flush any narration/thought left buffered at turn end.
-    for (const event of this.mapper.flushText()) await this.postEvent(event);
+    // Close open parts + finalize the persisted message; agent_turn_ended is the
+    // event-log turn boundary (drives getEventsSinceLastTurn), separate concern.
+    await this.postChunks(this.mapper.endTurn(), true);
     await this.postEvent({ kind: 'agent_turn_ended' });
+    this.turn = null;
 
     return res.stopReason;
   }
@@ -152,11 +165,11 @@ export class AcpSession {
   private clientImpl(): Client {
     return {
       sessionUpdate: async (params: SessionNotification): Promise<void> => {
-        // Defensive: a bug in the mapper (or an ACP shape we don't model)
-        // must not crash the Client handler — that would tear the whole session.
-        let events: AgentEventRequest['event'][] = [];
+        // Defensive: a mapper bug (or an ACP shape we don't model) must not crash
+        // the Client handler — that would tear down the whole session.
+        let chunks: UIMessageChunk[] = [];
         try {
-          events = this.mapper.handle(params);
+          chunks = this.mapper.handle(params);
         } catch (err) {
           logger.warn(
             { err: err instanceof Error ? err.message : String(err) },
@@ -164,7 +177,7 @@ export class AcpSession {
           );
           return;
         }
-        for (const event of events) await this.postEvent(event);
+        await this.postChunks(chunks);
       },
       requestPermission: async (
         params: RequestPermissionRequest,
@@ -201,13 +214,37 @@ export class AcpSession {
     };
   }
 
+  // Append a POST to the serial chain so ordering survives concurrent dispatch.
+  private enqueue(task: () => Promise<void>): Promise<void> {
+    const next = this.postChain.then(task, task);
+    this.postChain = next.catch(() => undefined);
+    return next;
+  }
+
   private async postEvent(event: AgentEventRequest['event']): Promise<void> {
-    await postLifecycleEvent({
-      workerUrl: this.opts.workerUrl,
-      token: this.opts.token,
-      threadId: this.opts.threadId,
-      event,
-    });
+    await this.enqueue(() =>
+      postLifecycleEvent({
+        workerUrl: this.opts.workerUrl,
+        token: this.opts.token,
+        threadId: this.opts.threadId,
+        event,
+      }),
+    );
+  }
+
+  private async postChunks(chunks: UIMessageChunk[], done = false): Promise<void> {
+    const turn = this.turn;
+    if (!turn) return;
+    await this.enqueue(() =>
+      postAgentChunks({
+        workerUrl: this.opts.workerUrl,
+        token: this.opts.token,
+        threadId: this.opts.threadId,
+        turn,
+        chunks,
+        done,
+      }),
+    );
   }
 }
 

@@ -5,7 +5,14 @@
 // connection live." Old events live in Postgres and load on page open — the
 // stream only needs enough recent entries to bridge a reconnect, so it's capped.
 
-import type { Event, PresenceSignal, VmSignal, VmState } from '@tempo/contracts';
+import type {
+  AgentChunkFrame,
+  Event,
+  PresenceSignal,
+  UIMessageChunk,
+  VmSignal,
+  VmState,
+} from '@tempo/contracts';
 import Redis from 'ioredis';
 
 const STREAM_PREFIX = 'tempo:t:';
@@ -65,12 +72,30 @@ export async function publishVmSignal(threadId: string, vm: VmState | null): Pro
   await pushFrame(threadId, { kind: 'vm', vm });
 }
 
+// One ephemeral frame per UIMessageChunk for live turns (browsers feed them into
+// readUIMessageStream); `turn` is the agent_messages row id. Pipelined so a batch
+// is a single round-trip with order preserved. Filtered out for agents.
+export async function publishAgentChunks(
+  threadId: string,
+  turn: string,
+  chunks: UIMessageChunk[],
+): Promise<void> {
+  if (chunks.length === 0) return;
+  const key = streamKey(threadId);
+  const pipeline = redis().pipeline();
+  for (const chunk of chunks) {
+    const frame: AgentChunkFrame = { kind: 'agent_chunk', turn, chunk };
+    pipeline.xadd(key, 'MAXLEN', '~', STREAM_MAXLEN, '*', 'payload', JSON.stringify(frame));
+  }
+  await pipeline.exec();
+}
+
 // MAXLEN ~ caps the stream in the same round-trip (lazy, macro-node granularity).
 // Auto-id (*) never rejects on concurrent writes; consumers order by the event's
 // own evt_<seq> id, so stream order isn't authoritative.
 async function pushFrame(
   threadId: string,
-  frame: Event | PresenceSignal | VmSignal,
+  frame: Event | PresenceSignal | VmSignal | AgentChunkFrame,
 ): Promise<void> {
   await redis().xadd(
     streamKey(threadId),
@@ -85,11 +110,17 @@ async function pushFrame(
 
 // Pull the JSON frame back out of a stream entry's flat [field, value, ...]
 // array. Returns null on a missing or unparseable payload. Pure.
-export function parseStreamEvent(fields: string[]): Event | PresenceSignal | VmSignal | null {
+export function parseStreamEvent(
+  fields: string[],
+): Event | PresenceSignal | VmSignal | AgentChunkFrame | null {
   for (let i = 0; i + 1 < fields.length; i += 2) {
     if (fields[i] === 'payload') {
       try {
-        return JSON.parse(fields[i + 1] as string) as Event | PresenceSignal | VmSignal;
+        return JSON.parse(fields[i + 1] as string) as
+          | Event
+          | PresenceSignal
+          | VmSignal
+          | AgentChunkFrame;
       } catch {
         return null;
       }
@@ -172,4 +203,34 @@ export async function arePresent(threadIds: string[]): Promise<Map<string, boole
   if (threadIds.length === 0) return new Map();
   const values = await redis().mget(threadIds.map(presenceKey));
   return new Map(threadIds.map((id, i) => [id, values[i] != null]));
+}
+
+// --- Per-turn chunk buffer ----------------------------------------------------
+// A turn's chunks arrive across stateless HTTP POSTs (the CLI/VM reach the Worker
+// only over HTTP) that can land on different containers, so finalizeTurn can't
+// assemble from any one process's memory — they accumulate in a shared Redis list.
+// TTL is the crash safety net; drainChunkBuffer deletes the list on finalize.
+const CHUNK_BUF_PREFIX = 'tempo:turnbuf:';
+const CHUNK_BUF_TTL_SEC = TURN_LOCK_TTL_SEC;
+function chunkBufKey(turn: string): string {
+  return `${CHUNK_BUF_PREFIX}${turn}`;
+}
+
+export async function bufferChunks(turn: string, chunks: UIMessageChunk[]): Promise<void> {
+  if (chunks.length === 0) return;
+  const key = chunkBufKey(turn);
+  // RPUSH + EXPIRE in one transaction so the key is never left without an expiry.
+  await redis()
+    .multi()
+    .rpush(key, ...chunks.map((c) => JSON.stringify(c)))
+    .expire(key, CHUNK_BUF_TTL_SEC)
+    .exec();
+}
+
+export async function drainChunkBuffer(turn: string): Promise<UIMessageChunk[]> {
+  const key = chunkBufKey(turn);
+  // Read + delete atomically so a late RPUSH can't be lost between the two.
+  const res = await redis().multi().lrange(key, 0, -1).del(key).exec();
+  const raw = (res?.[0]?.[1] ?? []) as string[];
+  return raw.map((s) => JSON.parse(s) as UIMessageChunk);
 }

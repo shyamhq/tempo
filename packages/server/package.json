@@ -19,6 +19,7 @@
     "@tempo/contracts": "workspace:*",
     "@tempo/db": "workspace:*",
     "@tempo/errors": "workspace:*",
+    "ai": "^6.0.208",
     "drizzle-orm": "^0.45.2",
     "ioredis": "^5.11.1",
     "octokit": "^5.0.5",

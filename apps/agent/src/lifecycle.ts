@@ -1,14 +1,45 @@
-import type { ThreadId } from '@tempo/contracts';
-import type { AgentEventRequest } from '@tempo/contracts/http';
+import type { ThreadId, UIMessageChunk } from '@tempo/contracts';
+import type { AgentEventRequest, AgentStreamRequest } from '@tempo/contracts/http';
 import { logger } from './logger';
 
-// Shared retry-aware POST for the CLI's event-stream wire. Used by
-// stream-pump (forwarding claude's narrations + tool calls) and connect.ts
-// (lifecycle: session_initiating / session_failed). One helper means one
-// retry policy — and one network-error log surface to grep.
-
+// The CLI's retry-aware POST wire to the Worker. One retry policy, one
+// network-error log surface. 4xx is terminal (don't retry); only 5xx + network
+// errors retry. Delays sit BETWEEN attempts — length+1 tries, no trailing sleep.
 const RETRY_DELAYS_MS = [250, 500, 1000] as const;
 
+async function postWithRetry(
+  url: string,
+  token: string,
+  body: unknown,
+  label: string,
+): Promise<void> {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        logger.debug({ label, status: res.status }, 'post');
+        return;
+      }
+      // 4xx: auth/contract failure — retrying won't help, and silence hides misconfig.
+      if (res.status < 500) {
+        logger.warn({ label, status: res.status }, 'post: client error, not retrying');
+        return;
+      }
+      logger.debug({ label, status: res.status, attempt }, 'post: server error, retrying');
+    } catch (err) {
+      logger.debug({ label, err, attempt }, 'post: network error, retrying');
+    }
+    const delay = RETRY_DELAYS_MS[attempt];
+    if (delay !== undefined) await new Promise((r) => setTimeout(r, delay));
+  }
+  logger.warn({ label }, 'post: dropped after retries');
+}
+
+// Turn-boundary / lifecycle events (e.g. agent_turn_ended) → the event log.
 export async function postLifecycleEvent(args: {
   workerUrl: string;
   token: string;
@@ -17,29 +48,21 @@ export async function postLifecycleEvent(args: {
 }): Promise<void> {
   const { workerUrl, token, threadId, event } = args;
   const body: AgentEventRequest = { thread_id: threadId, event };
+  await postWithRetry(`${workerUrl}/api/agent-events`, token, body, `event:${event.kind}`);
+}
 
-  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
-    try {
-      const res = await fetch(`${workerUrl}/api/agent-events`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-      if (res.ok || res.status < 500) {
-        logger.debug({ kind: event.kind, status: res.status }, 'event');
-        return;
-      }
-      logger.debug({ status: res.status, attempt }, 'lifecycle: server error, retrying');
-    } catch (err) {
-      logger.debug({ err, attempt }, 'lifecycle: network error, retrying');
-    }
-    const delay = RETRY_DELAYS_MS[attempt];
-    if (delay !== undefined) {
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  logger.warn({ kind: event.kind }, 'lifecycle: dropped after retries');
+// A turn's UIMessageChunk batch → the agent-stream ingest. `done` marks the final
+// flush, triggering terminal persistence on the Worker.
+export async function postAgentChunks(args: {
+  workerUrl: string;
+  token: string;
+  threadId: ThreadId;
+  turn: string;
+  chunks: UIMessageChunk[];
+  done?: boolean;
+}): Promise<void> {
+  const { workerUrl, token, threadId, turn, chunks, done } = args;
+  if (chunks.length === 0 && !done) return;
+  const body: AgentStreamRequest = { turn, chunks, done };
+  await postWithRetry(`${workerUrl}/api/threads/${threadId}/agent-stream`, token, body, 'chunks');
 }

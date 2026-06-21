@@ -72,13 +72,12 @@ describe('parseWakeEvent', () => {
     expect(parseWakeEvent(discussion(null))).toBeNull();
   });
 
-  test('agent activity (narration) is never a wake', () => {
+  test('agent activity (turn boundary) is never a wake', () => {
     expect(
       parseWakeEvent({
         id: 'evt_20260619000004',
         created_at: TS,
-        kind: 'agent_narration',
-        text: 'hi',
+        kind: 'agent_turn_ended',
       }),
     ).toBeNull();
   });

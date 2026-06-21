@@ -1,3 +1,4 @@
+export * from './agent-messages';
 export * from './attachments';
 export * from './block-html';
 export * from './cache';
@@ -10,8 +11,7 @@ export * from './ids';
 export * from './mailbox';
 export * from './plan';
 export * from './r2';
-// Presence + turn-lock helpers from redis.ts (the rest of redis.ts is
-// server-internal — the shared client never leaves the package).
+// Curated redis.ts surface — the shared client itself never leaves the package.
 export {
   acquireTurnLock,
   arePresent,
@@ -25,4 +25,3 @@ export {
 } from './redis';
 export * from './replies';
 export * from './threads';
-export * from './trails';
