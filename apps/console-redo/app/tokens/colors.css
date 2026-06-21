@@ -1,0 +1,131 @@
+/* ============================================================
+   Tempo — Color system
+   Light-first. A warm "paper" neutral scale (sand/stone), a single
+   terracotta accent doing the brand work, and a restrained set of
+   semantic hues (success / warning / danger / actor-violet).
+
+   Two layers:
+   1. BASE palette  — raw, theme-independent ramps (--tp-sand-*, --tp-clay-*)
+   2. SEMANTIC roles — what UI code should actually reference
+      (--tp-bg, --tp-ink, --tp-accent …). Re-pointed per theme.
+   ============================================================ */
+
+:root {
+  /* ---- BASE: warm paper neutrals ---- */
+  --tp-paper:      #FFFFFF;
+  --tp-sand-50:    #FAFAF8;
+  --tp-sand-100:   #F7F6F3;
+  --tp-sand-150:   #F6F5F2;
+  --tp-sand-200:   #F1EFEA;
+  --tp-sand-250:   #EAE8E2;
+  --tp-sand-300:   #DCD9D2;
+  --tp-sand-500:   #9C988F;
+  --tp-sand-600:   #65635D;
+  --tp-sand-900:   #1B1A17;
+
+  /* ---- BASE: terracotta (the brand) ---- */
+  --tp-clay-soft:  #F6E7DF;
+  --tp-clay-300:   #E8915F;
+  --tp-clay-400:   #E07A4E;
+  --tp-clay-500:   #C2562F;   /* the brand color */
+  --tp-clay-600:   #A8481F;
+  --tp-amber-line: #E6A24E;   /* highlight underline / comment anchor */
+
+  /* ---- BASE: semantic hues ---- */
+  --tp-green-500:  #2F9E68;
+  --tp-amber-500:  #D08A2C;
+  --tp-red-500:    #C2452F;
+  --tp-violet-500: #6B4BD6;   /* "actor" color — humans/you in multiplayer */
+
+  /* ============ SEMANTIC ROLES — LIGHT (default) ============ */
+  /* surfaces, back-to-front */
+  --tp-bg:         var(--tp-sand-150);
+  --tp-canvas:     var(--tp-paper);
+  --tp-sidebar:    var(--tp-sand-100);
+  --tp-panel:      var(--tp-sand-50);
+  --tp-inset:      var(--tp-sand-200);
+
+  /* borders */
+  --tp-border:        #EAE8E2;
+  --tp-border-strong: #DCD9D2;
+
+  /* ink (text), front-to-back */
+  --tp-ink:    #1B1A17;
+  --tp-ink-2:  #65635D;
+  --tp-ink-3:  #9C988F;
+
+  /* accent */
+  --tp-accent:       #C2562F;
+  --tp-accent-press: #A8481F;
+  --tp-accent-soft:  #F6E7DF;
+  --tp-accent-fg:    #FFFFFF;   /* text/icon ON the accent */
+
+  /* highlight — selectable text, comment anchors */
+  --tp-hl:        rgba(224, 138, 46, 0.20);
+  --tp-hl-active: rgba(224, 138, 46, 0.40);
+  --tp-hl-line:   #E6A24E;
+
+  /* semantic */
+  --tp-success: #2F9E68;
+  --tp-warning: #D08A2C;
+  --tp-danger:  #C2452F;
+  --tp-actor:   #6B4BD6;
+
+  /* tinted backgrounds (14% wash, never solid) */
+  --tp-success-bg: rgba(47, 158, 104, 0.14);
+  --tp-warning-bg: rgba(208, 138, 44, 0.16);
+  --tp-danger-bg:  rgba(194, 69, 47, 0.13);
+  --tp-actor-bg:   rgba(107, 75, 214, 0.12);
+
+  /* code */
+  --tp-code-bg:  #F1EFEA;
+  --tp-code-ink: #5A574F;
+
+  /* scrim behind modals */
+  --tp-backdrop: rgba(36, 33, 28, 0.30);
+
+  /* focus ring */
+  --tp-focus-ring: 0 0 0 3px var(--tp-accent-soft);
+}
+
+/* ============ SEMANTIC ROLES — DARK ============ */
+[data-theme="dark"] {
+  --tp-bg:         #121110;
+  --tp-canvas:     #1A1916;
+  --tp-sidebar:    #171512;
+  --tp-panel:      #1D1B17;
+  --tp-inset:      #242118;
+
+  --tp-border:        #2C2820;
+  --tp-border-strong: #3A352B;
+
+  --tp-ink:   #ECE7DC;
+  --tp-ink-2: #A8A296;
+  --tp-ink-3: #756F63;
+
+  --tp-accent:       #E07A4E;
+  --tp-accent-press: #C2562F;
+  --tp-accent-soft:  #36231A;
+  --tp-accent-fg:    #1A1106;
+
+  --tp-hl:        rgba(224, 138, 78, 0.18);
+  --tp-hl-active: rgba(224, 138, 78, 0.34);
+  --tp-hl-line:   #B5713F;
+
+  --tp-success: #46B581;
+  --tp-warning: #E0A84E;
+  --tp-danger:  #E06A52;
+  --tp-actor:   #9A7BE6;
+
+  --tp-success-bg: rgba(70, 181, 129, 0.16);
+  --tp-warning-bg: rgba(224, 168, 78, 0.16);
+  --tp-danger-bg:  rgba(224, 106, 82, 0.16);
+  --tp-actor-bg:   rgba(154, 123, 230, 0.16);
+
+  --tp-code-bg:  #242118;
+  --tp-code-ink: #C8C2B5;
+
+  --tp-backdrop: rgba(0, 0, 0, 0.58);
+
+  --tp-focus-ring: 0 0 0 3px rgba(224, 122, 78, 0.30);
+}

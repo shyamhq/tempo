@@ -1,0 +1,46 @@
+/* ============================================================
+   Tempo — Typography scale
+   Space Grotesk for display/headings, Inter for UI + docs prose,
+   JetBrains Mono for code, keys, metadata, timestamps.
+   Dense and small by default (compact-first product), with a
+   comfortable reading size reserved for plan/doc body copy.
+   ============================================================ */
+
+:root {
+  /* ---- font size scale (px) ---- */
+  --tp-text-2xs:  10px;
+  --tp-text-xs:   11px;
+  --tp-text-sm:   12px;
+  --tp-text-base: 13px;   /* default UI text (compact) */
+  --tp-text-md:   13.5px; /* doc/plan body — comfortable read */
+  --tp-text-lg:   15px;
+  --tp-text-xl:   17px;
+  --tp-text-2xl:  20px;
+  --tp-text-3xl:  24px;
+  --tp-text-4xl:  32px;
+  --tp-text-5xl:  44px;
+  --tp-text-6xl:  56px;
+  --tp-text-7xl:  72px;
+
+  /* ---- weights (avoid 800+; Space Grotesk 600 is plenty) ---- */
+  --tp-weight-regular:  400;
+  --tp-weight-book:     450;
+  --tp-weight-medium:   500;
+  --tp-weight-semibold: 600;
+  --tp-weight-bold:     700;
+
+  /* ---- letter-spacing ---- */
+  --tp-track-display: -0.03em;  /* big Space Grotesk headlines */
+  --tp-track-tight:   -0.02em;
+  --tp-track-snug:    -0.01em;
+  --tp-track-normal:  0;
+  --tp-track-label:   0.06em;   /* uppercase eyebrows / section labels */
+  --tp-track-mono:    -0.01em;
+
+  /* ---- line-height ---- */
+  --tp-leading-none:  1;
+  --tp-leading-snug:  1.25;   /* headings */
+  --tp-leading-base:  1.45;   /* dense UI */
+  --tp-leading-body:  1.62;   /* doc/plan prose */
+  --tp-leading-loose: 1.7;    /* docs long-form */
+}

@@ -1,0 +1,46 @@
+/* ============================================================
+   Tempo — Spacing, radii, layout
+   4px base grid. Compact-first: rows breathe on multiples of 4,
+   not 8. Sharp-ish corners (nothing rounder than ~16px except pills).
+   ============================================================ */
+
+:root {
+  /* ---- spacing (4px grid) ---- */
+  --tp-space-0:  0;
+  --tp-space-px: 1px;
+  --tp-space-1:  2px;
+  --tp-space-2:  4px;
+  --tp-space-3:  6px;
+  --tp-space-4:  8px;
+  --tp-space-5:  10px;
+  --tp-space-6:  12px;
+  --tp-space-8:  16px;
+  --tp-space-10: 20px;
+  --tp-space-12: 24px;
+  --tp-space-14: 28px;
+  --tp-space-16: 32px;
+  --tp-space-20: 40px;
+  --tp-space-24: 48px;
+  --tp-space-32: 64px;
+
+  /* ---- radii ---- */
+  --tp-radius-xs:   4px;   /* inputs, badges, small chips */
+  --tp-radius-sm:   6px;   /* buttons, list rows */
+  --tp-radius-md:   7px;   /* pills, segmented controls */
+  --tp-radius-lg:   9px;   /* cards, banners */
+  --tp-radius-xl:   11px;  /* popovers, drawers */
+  --tp-radius-2xl:  14px;  /* floating panels */
+  --tp-radius-3xl:  16px;  /* modals */
+  --tp-radius-pill: 999px;
+
+  /* ---- containers ---- */
+  --tp-container-doc:  680px;   /* plan / reading column */
+  --tp-container-md:   1000px;
+  --tp-container-lg:   1200px;
+
+  /* ---- motion ---- */
+  --tp-ease:          cubic-bezier(0.2, 0, 0, 1);
+  --tp-duration-fast: 120ms;
+  --tp-duration-base: 160ms;
+  --tp-duration-slow: 240ms;
+}
