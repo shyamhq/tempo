@@ -161,7 +161,12 @@ export function Sidebar({ initial }: { initial: Space[] }) {
         </button>
       </div>
 
-      <DndContext id="sidebar-spaces" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <DndContext
+        id="sidebar-spaces"
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onDragEnd}
+      >
         <div className="flex-1 min-h-0 overflow-y-auto px-2.5 pb-3.5">
           <SortableContext items={filtered.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             {filtered.map((s) => (

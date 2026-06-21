@@ -39,9 +39,14 @@ export async function createComment(input: CreateCommentInput): Promise<Comment>
   const heads = replyId ? await verifyAttachmentsInR2(threadId, attachment_ids) : [];
 
   await db.transaction(async (tx) => {
-    await tx
-      .insert(comments)
-      .values({ id, thread_id: threadId, plan_quote, plan_context, anchor_block_id, author_user_id });
+    await tx.insert(comments).values({
+      id,
+      thread_id: threadId,
+      plan_quote,
+      plan_context,
+      anchor_block_id,
+      author_user_id,
+    });
     if (replyId) {
       await tx.insert(replies).values({
         id: replyId,
