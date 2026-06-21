@@ -21,7 +21,7 @@ import {
   Plug,
   Sun,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,20 @@ export function ThreadTopBar({
   const thread = useThread();
   const spaceName = useThreadSpaceName(threadId);
   const dockOpen = useDockOpen();
+
+  // The new-thread compose lands Local Threads with ?connect=1 to auto-open the
+  // Connect dialog (the Dev must run `npx tempo-agent connect`). Seed the dialog's
+  // open state from the param, then strip it via replaceState so a refresh — or
+  // closing and reopening — doesn't reopen it. replaceState (not router.replace)
+  // keeps it shallow: no rerender, no re-fetch of the thread session.
+  const searchParams = useSearchParams();
+  const [connectOpen, setConnectOpen] = useState(() => searchParams.get('connect') === '1');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: strip-once on mount
+  useEffect(() => {
+    if (searchParams.get('connect') === '1') {
+      window.history.replaceState(null, '', `/t/${threadId}`);
+    }
+  }, []);
 
   return (
     <div className="flex h-[46px] shrink-0 items-center gap-[10px] border-b border-border bg-canvas px-[14px]">
@@ -71,7 +85,7 @@ export function ThreadTopBar({
 
       <ThemeToggle />
 
-      <ConnectButton threadId={threadId} />
+      <ConnectButton threadId={threadId} open={connectOpen} onOpenChange={setConnectOpen} />
 
       <ToolbarButton
         toggled={dockOpen}
@@ -94,8 +108,17 @@ export function ThreadTopBar({
 // stale inset-0 overlay whose Radix-set inline pointer-events:auto swallows every
 // page click. Centering + the scale-in keyframe both carry the -translate so the
 // dialog stays centered during and after the animation — mirrors settings-modal.
-function ConnectButton({ threadId }: { threadId: string }) {
-  const [open, setOpen] = useState(false);
+function ConnectButton({
+  threadId,
+  open,
+  onOpenChange,
+}: {
+  threadId: string;
+  // Lifted to ThreadTopBar so the ?connect=1 deep-link (Local thread creation)
+  // can auto-open the same dialog the toolbar button opens.
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [token, setToken] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -148,14 +171,18 @@ function ConnectButton({ threadId }: { threadId: string }) {
       open={open}
       onOpenChange={(next) => {
         // Clear the prior failure on open so the fetch effect re-attempts after a
-        // first-fetch failure (the button stays mounted across open/close).
-        if (next) setFailed(false);
-        setOpen(next);
+        // first-fetch failure, and clear `copied` so a reopened dialog doesn't show
+        // a stale "Copied" state (the button stays mounted across open/close).
+        if (next) {
+          setFailed(false);
+          setCopied(false);
+        }
+        onOpenChange(next);
       }}
     >
       <Dialog.Trigger asChild>
         <ToolbarButton
-          onClick={() => setOpen(true)}
+          onClick={() => onOpenChange(true)}
           icon={<Plug className="size-[13px]" aria-hidden />}
         >
           Connect
