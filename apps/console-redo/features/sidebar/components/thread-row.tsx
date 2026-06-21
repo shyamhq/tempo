@@ -7,7 +7,10 @@
 // thread and its agent is live (the only per-thread presence signal available;
 // SpaceThreadLite carries no presence field).
 
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
+import { GripVertical } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { useThreadStore } from '@/store';
@@ -31,6 +34,12 @@ export function ThreadRow({
     (s) => s.renaming?.kind === 'thread' && s.renaming.id === thread.id,
   );
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: thread.id,
+    data: { kind: 'thread', spaceId },
+    disabled: renaming,
+  });
+
   const onMenu = (a: MenuAction) => {
     const store = useThreadStore.getState();
     if (a.kind === 'rename') {
@@ -45,6 +54,12 @@ export function ThreadRow({
 
   return (
     <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.4 : 1,
+      }}
       className={cn(
         'group/thread relative rounded-sm transition-colors',
         active ? 'bg-canvas' : 'hover:bg-inset',
@@ -63,6 +78,16 @@ export function ThreadRow({
         {active ? (
           <span className="absolute -left-px top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary" />
         ) : null}
+
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag thread"
+          className="pointer-events-auto flex shrink-0 cursor-grab items-center text-ink-3 opacity-0 transition-opacity group-hover/thread:opacity-100 active:cursor-grabbing"
+        >
+          <GripVertical className="size-[13px]" />
+        </button>
 
         {active && agentPresent ? (
           <span

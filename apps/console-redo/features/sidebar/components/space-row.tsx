@@ -5,8 +5,10 @@
 // "New thread" link. Reads expand/rename state from the sidebar slice and
 // triggers behaviour through slice actions.
 
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { Space } from '@tempo/contracts';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronRight, GripVertical, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { colorForSpace } from '@/lib/space-color';
 import { cn } from '@/lib/utils';
@@ -32,6 +34,13 @@ export function SpaceRow({
     (s) => s.renaming?.kind === 'space' && s.renaming.id === space.id,
   );
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } =
+    useSortable({
+      id: space.id,
+      data: { kind: 'space', spaceId: space.id },
+      disabled: renaming,
+    });
+
   const color = colorForSpace(space.id);
 
   const onMenu = (a: MenuAction) => {
@@ -50,12 +59,33 @@ export function SpaceRow({
 
   return (
     <div className="px-2">
-      <div className="group flex w-full items-center gap-2 rounded-sm pr-2 transition-colors hover:bg-inset">
+      <div
+        ref={setNodeRef}
+        style={{
+          transform: CSS.Transform.toString(transform),
+          transition,
+          opacity: isDragging ? 0.4 : 1,
+        }}
+        className={cn(
+          'group flex w-full items-center gap-1 rounded-sm pr-2 transition-colors hover:bg-inset',
+          isOver ? 'bg-primary/[0.08] ring-2 ring-inset ring-primary' : null,
+        )}
+      >
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag space"
+          className="flex shrink-0 cursor-grab items-center pl-1 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+        >
+          <GripVertical className="size-[13px]" />
+        </button>
+
         <button
           type="button"
           onClick={() => useThreadStore.getState().toggleExpanded(space.id)}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm py-1.5 pl-2 text-left outline-none focus-visible:shadow-[var(--tp-focus-ring)]"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm py-1.5 text-left outline-none focus-visible:shadow-[var(--tp-focus-ring)]"
         >
           <ChevronRight
             className={cn(
@@ -103,16 +133,21 @@ export function SpaceRow({
             ) : threads.length === 0 ? (
               <div className="px-2 py-1 text-sm text-ink-3">No threads yet.</div>
             ) : (
-              threads.map((t) => (
-                <ThreadRow
-                  key={t.id}
-                  thread={t}
-                  spaceId={space.id}
-                  active={t.id === activeThreadId}
-                  agentPresent={agentPresent}
-                  spaces={spaces}
-                />
-              ))
+              <SortableContext
+                items={threads.map((t) => t.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {threads.map((t) => (
+                  <ThreadRow
+                    key={t.id}
+                    thread={t}
+                    spaceId={space.id}
+                    active={t.id === activeThreadId}
+                    agentPresent={agentPresent}
+                    spaces={spaces}
+                  />
+                ))}
+              </SortableContext>
             )}
             <Link
               href={`/t/new?space=${space.id}`}
