@@ -34,6 +34,9 @@ export interface SidebarSlice extends SidebarTree {
   renaming: RenameTarget;
 
   setSidebar: (tree: SidebarTree) => void;
+  // Best-effort re-seed of the whole rail (same path as hydration). The compose
+  // calls it post-create so the new Thread row + bumped count appear.
+  refreshSidebar: () => Promise<void>;
   toggleExpanded: (spaceId: string, force?: boolean) => void;
   startRename: (target: RenameTarget) => void;
   clearRename: () => void;
@@ -58,6 +61,14 @@ export const createSidebarSlice: StateCreator<ThreadStore, [], [], SidebarSlice>
   renaming: null,
 
   setSidebar: (tree) => set({ spaces: tree.spaces, threadsBySpace: tree.threadsBySpace }),
+
+  refreshSidebar: async () => {
+    try {
+      get().setSidebar(await api.getSpaces());
+    } catch (e) {
+      console.error('refreshSidebar: load failed', e);
+    }
+  },
 
   toggleExpanded: (spaceId, force) =>
     set((s) => ({

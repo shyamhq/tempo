@@ -2,7 +2,13 @@
 // lib/api-client. Components never call these directly — the hydrate() helper
 // (hooks/useThreadSession) does, seeding the slices.
 
-import { GetThreadResponse } from '@tempo/contracts/http';
+import type { CreateThreadRequest } from '@tempo/contracts/http';
+import {
+  CreateThreadResponse,
+  GetConnectTokenResponse,
+  GetThreadResponse,
+  ListThreadsResponse,
+} from '@tempo/contracts/http';
 import { z } from 'zod';
 import { request } from '../../lib/api-client';
 
@@ -14,6 +20,32 @@ export function getThread(threadId: string) {
     `/api/threads/${encodeURIComponent(threadId)}`,
     undefined,
     GetThreadResponse,
+  );
+}
+
+// New-thread compose. z.input so the caller can omit `repos` (the contract
+// defaults it to []).
+export function createThread(input: z.input<typeof CreateThreadRequest>) {
+  return request('POST', '/api/threads', input, CreateThreadResponse);
+}
+
+// The in-thread Connect affordance. Token is invariant per Thread, so callers
+// fetch it once and cache.
+export function getConnectToken(threadId: string) {
+  return request(
+    'GET',
+    `/api/threads/${encodeURIComponent(threadId)}/connect-token`,
+    undefined,
+    GetConnectTokenResponse,
+  );
+}
+
+// The home's richer thread list (presence + updated_at), distinct from the
+// sidebar's lighter /api/spaces tree.
+export function listThreads(spaceId?: string) {
+  const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : '';
+  return request('GET', `/api/threads${query}`, undefined, ListThreadsResponse).then(
+    (r) => r.threads,
   );
 }
 

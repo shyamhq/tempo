@@ -9,10 +9,23 @@
 // acts via store actions / the markdown getter it's handed (composition happens
 // in ThreadView — the top-bar holds no plan or fetch knowledge).
 
-import { ArrowLeft, ChevronRight, Copy, MessageSquare, Moon, Play, Sun } from 'lucide-react';
+import * as Dialog from '@radix-ui/react-dialog';
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Copy,
+  MessageSquare,
+  Moon,
+  Play,
+  Plug,
+  Sun,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { getConnectToken } from '@/features/thread/api';
 import { cn } from '@/lib/utils';
 import { useDockOpen, useThread, useThreadSpaceName, useThreadStore } from '@/store';
 
@@ -58,6 +71,8 @@ export function ThreadTopBar({
 
       <ThemeToggle />
 
+      <ConnectButton threadId={threadId} />
+
       <ToolbarButton
         toggled={dockOpen}
         onClick={() => useThreadStore.getState().toggleDock()}
@@ -68,6 +83,128 @@ export function ThreadTopBar({
 
       <CopyHandoffButton getMarkdown={getMarkdown} />
     </div>
+  );
+}
+
+// The Connect affordance: opens a centered Radix Dialog showing the
+// `npx tempo-agent connect <token>` command for attaching a local Agent. The
+// token is invariant per Thread, so it's fetched once on first open and cached.
+//
+// No forceMount: Radix unmounts both surfaces on close. forceMount would leave a
+// stale inset-0 overlay whose Radix-set inline pointer-events:auto swallows every
+// page click. Centering + the scale-in keyframe both carry the -translate so the
+// dialog stays centered during and after the animation — mirrors settings-modal.
+function ConnectButton({ threadId }: { threadId: string }) {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
+
+  // ponytail: ephemeral dialog-only state with one caller — fetched inline rather
+  // than via a store slice (not shared, not worth a slice). Fetch once on first
+  // open; the token never changes, so subsequent opens reuse the cached value. A
+  // failed fetch leaves token null, so re-opening the dialog (which clears
+  // `failed`) re-attempts.
+  useEffect(() => {
+    if (!open || token !== null) return;
+    let cancelled = false;
+    getConnectToken(threadId)
+      .then((r) => {
+        if (!cancelled) setToken(r.connect_token);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, token, threadId]);
+
+  const cmd = token ? `npx tempo-agent connect ${token}` : null;
+
+  const copy = async () => {
+    if (!cmd) return;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard write rejects on a denied permission or insecure context —
+      // leave the copied state off so the affordance reads as "not copied".
+    }
+  };
+
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        // Clear the prior failure on open so the fetch effect re-attempts after a
+        // first-fetch failure (the button stays mounted across open/close).
+        if (next) setFailed(false);
+        setOpen(next);
+      }}
+    >
+      <Dialog.Trigger asChild>
+        <ToolbarButton
+          onClick={() => setOpen(true)}
+          icon={<Plug className="size-[13px]" aria-hidden />}
+        >
+          Connect
+        </ToolbarButton>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="tp-fade-in fixed inset-0 z-[70] bg-[var(--tp-backdrop)]" />
+        <Dialog.Content className="tp-scale-in fixed left-1/2 top-1/2 z-[71] w-[460px] max-w-[90vw] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-canvas p-5 shadow-lg outline-none">
+          <Dialog.Title className="font-display text-base font-semibold text-ink">
+            Connect the Agent
+          </Dialog.Title>
+          <Dialog.Description className="mt-1 text-sm text-ink-2">
+            Run this in your repo to connect a local Agent to this Thread.
+          </Dialog.Description>
+
+          <div className="mt-4 flex min-h-[2.5rem] items-start gap-2 rounded-md border border-border bg-code-bg p-3 font-mono text-xs text-code-ink">
+            {failed ? (
+              <span className="text-danger">Failed to load connect command.</span>
+            ) : cmd ? (
+              <>
+                <span className="flex-1 break-all">{cmd}</span>
+                <button
+                  type="button"
+                  onClick={() => void copy()}
+                  aria-label="Copy connect command"
+                  className="shrink-0 text-ink-3 outline-none transition-colors hover:text-ink focus-visible:shadow-[var(--tp-focus-ring)]"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-success" aria-hidden />
+                  ) : (
+                    <Copy className="size-4" aria-hidden />
+                  )}
+                </button>
+              </>
+            ) : (
+              <span className="text-ink-3">Loading…</span>
+            )}
+          </div>
+
+          <div className="mt-4 flex justify-end">
+            <Dialog.Close asChild>
+              <Button variant="secondary" size="sm">
+                Close
+              </Button>
+            </Dialog.Close>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
 
@@ -199,6 +336,11 @@ function ToolbarButton({
   primary?: boolean;
   toggled?: boolean;
 }) {
+  let variantClass = 'border-border-strong bg-canvas text-ink hover:bg-inset';
+  if (primary)
+    variantClass = 'border-primary bg-primary text-primary-foreground hover:bg-primary-press';
+  else if (toggled) variantClass = 'border-transparent bg-primary-soft text-primary';
+
   return (
     <button
       type="button"
@@ -207,11 +349,7 @@ function ToolbarButton({
       className={cn(
         'inline-flex h-[26px] shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[7px] border px-[9px] text-[12px] font-medium outline-none transition-colors focus-visible:shadow-[var(--tp-focus-ring)]',
         '[&>svg]:size-[13px]',
-        primary
-          ? 'border-primary bg-primary text-primary-foreground hover:bg-primary-press'
-          : toggled
-            ? 'border-transparent bg-primary-soft text-primary'
-            : 'border-border-strong bg-canvas text-ink hover:bg-inset',
+        variantClass,
       )}
     >
       {icon}
