@@ -12,6 +12,9 @@ import {
   CreateCommentResponse,
   type CreateReplyRequest,
   CreateReplyResponse,
+  DeleteCommentResponse,
+  ResolveCommentResponse,
+  UnresolveCommentResponse,
 } from '@tempo/contracts/http';
 import type { z } from 'zod';
 import { workerRequest } from '../../lib/api-client';
@@ -40,6 +43,36 @@ export function createReply(
     `/api/comments/${encodeURIComponent(commentId)}/replies`,
     input,
     CreateReplyResponse,
+    getToken,
+  );
+}
+
+export function resolveComment(commentId: string, getToken: () => Promise<string | null>) {
+  return workerRequest(
+    'POST',
+    `/api/comments/${encodeURIComponent(commentId)}/resolve`,
+    undefined,
+    ResolveCommentResponse,
+    getToken,
+  );
+}
+
+export function unresolveComment(commentId: string, getToken: () => Promise<string | null>) {
+  return workerRequest(
+    'POST',
+    `/api/comments/${encodeURIComponent(commentId)}/unresolve`,
+    undefined,
+    UnresolveCommentResponse,
+    getToken,
+  );
+}
+
+export function deleteComment(commentId: string, getToken: () => Promise<string | null>) {
+  return workerRequest(
+    'DELETE',
+    `/api/comments/${encodeURIComponent(commentId)}`,
+    undefined,
+    DeleteCommentResponse,
     getToken,
   );
 }

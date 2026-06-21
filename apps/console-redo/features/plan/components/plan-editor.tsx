@@ -20,15 +20,16 @@
 // server-side (browser caller → Dev user id; Agent → null) and emits a
 // plan_edited event the gateway echoes back.
 //
-// Comments: the `comment` mark is registered on the ProseMirror schema via
-// `_tiptapOptions` so existing comment marks in a stored plan parse and render.
-// Comment creation, anchors, and the comment card/gutter are T4.2 / T4.3 — not
-// wired here.
+// Comments: BlockNote's documented Comments feature drives Tempo's data through
+// a custom CommentThreadStore (features/comments/comment-thread-store.ts) — reads
+// project the comments slice, writes go through features/comments/api.ts. The
+// CommentsExtension registers the comment mark and renders BlockNote's stock
+// comment UI (the AddComment formatting-toolbar button, the floating composer on
+// selection, and the floating thread card). The kit-themed card/gutter is T4.3.
 
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 
-import { CommentMark } from '@blocknote/core/comments';
 import { filterSuggestionItems } from '@blocknote/core/extensions';
 import { BlockNoteView } from '@blocknote/mantine';
 import {
@@ -43,6 +44,7 @@ import { useAuth } from '@clerk/nextjs';
 import type { PlanBody } from '@tempo/contracts';
 import { useCallback, useEffect, useRef } from 'react';
 import { usePlan, useThreadStore } from '@/store';
+import { useCommentsExtension } from '../../comments/use-comments-extension';
 import { writePlan } from '../api';
 import { alertBlockTypeItems, alertSlashItems } from '../blocks/alert-block';
 import { htmlBlockTypeItem, htmlSlashItem } from '../blocks/html-block';
@@ -54,13 +56,24 @@ export function PlanEditor({ threadId }: { threadId: string }) {
   const plan = usePlan();
   const body = plan.body;
 
-  // Register the comment mark on the ProseMirror schema (mark-only, no
-  // CommentsExtension UI) so stored comment marks parse and render. The full
-  // comments integration is T4.2.
-  const editor = useCreateBlockNote({
-    schema: planSchemaClient,
-    _tiptapOptions: { extensions: [CommentMark] },
-  });
+  // The live editor, assigned synchronously right after creation, so the comment
+  // store's captureAnchor reads the PM selection at the instant createThread
+  // fires (no useEffect window where an unlucky create posts an empty anchor).
+  const editorRef = useRef<ReturnType<typeof useCreateBlockNote> | null>(null);
+
+  // The comments feature owns its full integration into the editor (thread store,
+  // resolveUsers, anchor capture). This hook returns the BlockNote extension to
+  // splice in; the plan feature holds no comment knowledge.
+  const commentsExtension = useCommentsExtension(threadId, editorRef);
+
+  // CommentsExtension registers the comment mark + drives BlockNote's stock
+  // comment UI (the AddComment toolbar button, floating composer, floating thread
+  // card). The extension is stable for the thread's lifetime, so the editor only
+  // rebuilds on a thread change.
+  const editor = useCreateBlockNote({ schema: planSchemaClient, extensions: [commentsExtension] }, [
+    commentsExtension,
+  ]);
+  editorRef.current = editor;
 
   // The PM JSON the editor currently holds, as a string, so we can tell an
   // external body change (initial load / Agent edit) apart from the echo of our
@@ -118,7 +131,6 @@ export function PlanEditor({ threadId }: { threadId: string }) {
     <div className="mx-auto w-full max-w-[var(--tp-container-doc)] px-6 py-10" data-plan-column>
       <BlockNoteView
         editor={editor}
-        comments={false}
         formattingToolbar={false}
         slashMenu={false}
         theme="light"
