@@ -47,10 +47,10 @@ import { useAuth } from '@clerk/nextjs';
 import type { PlanBody } from '@tempo/contracts';
 import { useTheme } from 'next-themes';
 import { useCallback, useEffect, useRef } from 'react';
-import { usePlan, useThreadStore } from '@/store';
+import { useAgentTurnLive, usePlan, useThreadStore } from '@/store';
 import { CommentControllers, CommentGutter } from '../../comments/components/comments-overlay';
 import { useCommentsExtension } from '../../comments/use-comments-extension';
-import { writePlan } from '../api';
+import { beaconPlan, writePlan } from '../api';
 import { alertBlockTypeItems, alertSlashItems } from '../blocks/alert-block';
 import { htmlBlockTypeItem, htmlSlashItem } from '../blocks/html-block';
 import { planSchemaClient } from '../schema';
@@ -70,6 +70,12 @@ export function PlanEditor({
   const { resolvedTheme } = useTheme();
   const plan = usePlan();
   const body = plan.body;
+  // Lock the editor while the Agent is actively streaming a turn: an Agent plan
+  // edit lands as a setContent re-apply (the seed effect below), which would
+  // clobber an in-progress Dev edit. Locking on the live-turn signal (not mere
+  // presence — the Agent is present but idle most of the time) keeps the Dev out
+  // only for the window where a concurrent re-apply could eat their work.
+  const readOnly = useAgentTurnLive(threadId);
 
   // The live editor, assigned synchronously right after creation, so the comment
   // store's captureAnchor reads the PM selection at the instant createThread
@@ -89,6 +95,11 @@ export function PlanEditor({
     commentsExtension,
   ]);
   editorRef.current = editor;
+
+  // useCreateBlockNote takes no `editable` option; toggle it on the live editor.
+  useEffect(() => {
+    editor.isEditable = !readOnly;
+  }, [editor, readOnly]);
 
   // The PM JSON the editor currently holds, as a string, so we can tell an
   // external body change (initial load / Agent edit) apart from the echo of our
@@ -117,12 +128,47 @@ export function PlanEditor({
     [threadId, getToken],
   );
 
+  // The unload beacon needs a Bearer token synchronously (the page is closing —
+  // an async getToken() won't resolve in time). Keep the latest Clerk JWT in a
+  // ref, refreshed every 30s (Clerk tokens expire in ~60s). Best-effort: a tab
+  // closed between ticks may carry a slightly stale token and the beacon skips.
+  const beaconTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const t = await getToken();
+        // Keep the last-known-good token: a transient null (token mid-refresh)
+        // must not clobber a still-usable one and blind the beacon for 30s.
+        if (!cancelled && t) beaconTokenRef.current = t;
+      } catch {
+        // ignore — the beacon silently skips on a missing token
+      }
+    };
+    refresh();
+    const interval = setInterval(refresh, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [getToken]);
+
+  const unloadBeacon = useCallback(
+    (pmJson: unknown) => {
+      const token = beaconTokenRef.current;
+      if (!token) return; // best-effort; no token = skip the beacon
+      beaconPlan(threadId, { pm_json: pmJson }, token);
+    },
+    [threadId],
+  );
+
   const { notifyEdit } = usePlanAutoSave({
     // PM JSON (not the blocks projection) is the at-rest format: the blocks
     // projection drops `blocknoteIgnore` marks (comments), PM JSON preserves
     // them.
     getPmJson: () => editor._tiptapEditor.getJSON(),
     persist,
+    unloadBeacon,
   });
 
   // Seed on first availability and re-apply on external body changes (Agent
@@ -169,7 +215,10 @@ export function PlanEditor({
           comments={false}
           theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
           onChange={() => {
-            if (!seededRef.current) return;
+            // The readOnly check is not redundant with editor.isEditable: the
+            // isEditable effect runs after paint, so a change firing in the same
+            // cycle the lock turns on would slip through without this guard.
+            if (!seededRef.current || readOnly) return;
             notifyEdit();
           }}
         >

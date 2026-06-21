@@ -20,6 +20,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // write returns we fire one follow-up save with the freshest snapshot. So at
 // most one save is in flight per editor at a time, and the freshest snapshot
 // always wins.
+//
+// Unload: a `beforeunload` listener flushes any pending save via the caller's
+// keepalive beacon so the request survives the page going away. We do NOT await
+// it — beforeunload handlers may not keep the page open.
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -29,6 +33,7 @@ const BACKOFF_SCHEDULE_MS = [2_000, 5_000, 10_000];
 export function usePlanAutoSave({
   getPmJson,
   persist,
+  unloadBeacon,
 }: {
   // Snapshot the current editor's ProseMirror JSON. Called inside save() — the
   // latest call wins, so the freshest snapshot is always persisted.
@@ -36,6 +41,9 @@ export function usePlanAutoSave({
   // Optimistic-slice-write + HTTP write. Throws on failure so the hook can
   // drive its backoff retry.
   persist: (pmJson: unknown) => Promise<void>;
+  // Synchronous-friendly unload flush. The caller fires a `keepalive` request
+  // so the write survives the page going away (a normal async save cannot).
+  unloadBeacon: (pmJson: unknown) => void;
 }) {
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
@@ -111,6 +119,23 @@ export function usePlanAutoSave({
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
   }, [runSave, status]);
+
+  // beforeunload fires before the page goes away. Flush via the caller's
+  // keepalive beacon so the request survives the unload — we do NOT await it
+  // (beforeunload handlers may not keep the page open). Only when work could be
+  // lost: a debounce timer is armed, a follow-up is queued, or a save is in
+  // flight without keepalive. The beacon is idempotent (last-write-wins on the
+  // server), so a double-write when the in-flight save also lands is acceptable;
+  // losing the edit isn't.
+  useEffect(() => {
+    const onUnload = () => {
+      if (debounceTimer.current || pending.current || inFlight.current) {
+        unloadBeacon(getPmJsonRef.current());
+      }
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [unloadBeacon]);
 
   // Tidy timers on unmount so a slow save can't update state after teardown.
   useEffect(

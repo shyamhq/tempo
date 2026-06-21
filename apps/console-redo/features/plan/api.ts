@@ -15,7 +15,7 @@
 import type { Plan } from '@tempo/contracts';
 import { GetThreadResponse, type WritePlanRequest, WritePlanResponse } from '@tempo/contracts/http';
 import type { z } from 'zod';
-import { request, workerRequest } from '../../lib/api-client';
+import { request, workerBeacon, workerRequest } from '../../lib/api-client';
 
 export function writePlan(
   threadId: string,
@@ -29,6 +29,18 @@ export function writePlan(
     WritePlanResponse,
     getToken,
   );
+}
+
+// Page-unload flush of pending plan edits. Same POST route as writePlan, but
+// fire-and-forget over a keepalive beacon with a synchronously-supplied token —
+// a `beforeunload` handler cannot await getToken(). Last-write-wins on the
+// server makes a double-write (beacon + an in-flight save both landing) safe.
+export function beaconPlan(
+  threadId: string,
+  input: z.input<typeof WritePlanRequest>,
+  token: string,
+): void {
+  workerBeacon(`/api/threads/${encodeURIComponent(threadId)}/plan`, input, token);
 }
 
 // Re-read the canonical plan body. Used by the gateway's onPlanEdited seam to
