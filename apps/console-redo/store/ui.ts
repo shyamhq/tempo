@@ -1,10 +1,15 @@
 'use client';
 
 // Global UI slice: viewer preferences that aren't tied to one feature's data —
-// the right rail, the bottom dock, display density, and per-thread/-comment
-// "last seen" timestamps. This is the ONLY persisted slice (localStorage via the
-// persist middleware in store/index.ts, partialized to exactly these fields), so
-// layout choices and read-state survive reloads while live thread data does not.
+// the left nav rail, the right dockable panel, display density, and
+// per-thread/-comment "last seen" timestamps. This is the ONLY persisted slice
+// (localStorage via the persist middleware in store/index.ts, partialized to
+// exactly these fields), so layout choices and read-state survive reloads while
+// live thread data does not.
+//
+// railOpen  → the left workspace/spaces/threads nav (the app frame's sidebar).
+// dockOpen  → the right dockable panel (Phase 5 fills it with discussion/agent);
+//             railTab selects which view it shows.
 
 import type { StateCreator } from 'zustand';
 import type { ThreadStore } from './index';
@@ -32,7 +37,7 @@ export interface UiSlice {
 }
 
 export const createUiSlice: StateCreator<ThreadStore, [], [], UiSlice> = (set) => ({
-  railOpen: false,
+  railOpen: true,
   railTab: 'discussion',
   dockOpen: false,
   density: 'comfortable',
