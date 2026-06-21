@@ -3,7 +3,7 @@
 import { useOrganization, useUser } from '@clerk/nextjs';
 import type { DiscussionMessage } from '@tempo/contracts';
 import { Sparkles } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useStickToBottom } from 'use-stick-to-bottom';
 import { AttachmentStrip } from '../attachments/attachment-strip';
 import { MarkdownText } from '../markdown-text';
 import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
@@ -23,39 +23,9 @@ export function MessageList({
   const { memberships } = useOrganization({ memberships: true });
   const currentUserId = user?.id ?? null;
 
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const lastCountRef = useRef(messages.length);
-  // Tracks bottom-proximity captured on the user's last scroll. Must be sampled
-  // before a new message lands — measuring after-the-fact uses the already-grown
-  // scrollHeight and a tall message would push the threshold past any tolerance.
-  const wasNearBottomRef = useRef(true);
-
-  useLayoutEffect(() => {
-    // Snap to bottom on mount so a panel opening with prior messages shows the
-    // newest first. `wasNearBottomRef` defaults to true so subsequent arrivals
-    // also auto-scroll until the user manually scrolls up.
-    scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight });
-  }, []);
-
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      wasNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  useEffect(() => {
-    const prevCount = lastCountRef.current;
-    lastCountRef.current = messages.length;
-    if (messages.length <= prevCount) return;
-    if (wasNearBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages.length]);
+  // Snap to bottom on mount, smooth-stick on new messages, and release the lock
+  // when the user scrolls up — all handled by use-stick-to-bottom.
+  const { scrollRef, contentRef } = useStickToBottom({ initial: 'instant', resize: 'smooth' });
 
   if (messages.length === 0 && !endSlot && emptyState) {
     return <div className="flex-1 flex items-center justify-center px-6">{emptyState}</div>;
@@ -66,8 +36,8 @@ export function MessageList({
   const lastIdx = messages.length - 1;
 
   return (
-    <div ref={scrollerRef} className="flex-1 overflow-y-auto px-4 py-4">
-      <div className="flex flex-col">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={contentRef} className="flex flex-col">
         {messages.map((m, i) => {
           const dayKey = dayKeyOf(m.created_at);
           const showDay = dayKey !== lastDayKey;
@@ -103,7 +73,6 @@ export function MessageList({
           );
         })}
         {endSlot ? <div className="mt-[18px]">{endSlot}</div> : null}
-        <div ref={bottomRef} />
       </div>
     </div>
   );
