@@ -198,6 +198,87 @@
   }
 }
 
+/* Anchored-comment highlights. BlockNote's comment mark renders as
+   `span.bn-thread-mark` (with `data-orphan` when the anchored text was
+   deleted); the selected thread gets an overlay decoration carrying
+   `.bn-thread-mark-selected`. Theme them to the kit's amber wash: a soft fill
+   + underline at rest, a stronger fill when hovered or focused — matching the
+   kit's `mark.hl` / `mark.hl.active`. (Design System Planning Tool/ui_kits/
+   workbench/index.html lines 133-134.) */
+.bn-thread-mark {
+  background: var(--tp-hl);
+  border-bottom: 2px solid var(--tp-hl-line);
+  border-radius: 2px;
+  padding: 1px 0;
+  cursor: pointer;
+}
+.bn-thread-mark:hover,
+.bn-thread-mark-selected {
+  background: var(--tp-hl-active);
+}
+/* BlockNote flags a mark data-orphan when its thread is resolved OR its quoted
+   text was edited away. Either way it reads as normal text — no wash, no
+   underline; the gutter marker carries the thread so the plan stays clean. */
+.bn-thread-mark[data-orphan="true"] {
+  background: transparent;
+  border-bottom: none;
+}
+
+/* Plan-document prose. BlockNote ships Mantine's stock typography (its own font
+   stack, larger sizes, neutral ink); override it under the plan column so the
+   plan reads exactly like the kit's `.doc` (Design System Planning Tool/ui_kits/
+   workbench/index.html: body `p` lines 131-132 → --tp-text-md / --tp-leading-body
+   / --tp-ink-2; `h2` line 130 → Space Grotesk 600, 14px, --tp-ink; inline `code`
+   lines 19-20). Scoped to [data-plan-column] so no other surface is touched. */
+[data-plan-column] .bn-editor {
+  font-family: var(--tp-font-sans);
+  background: transparent;
+  padding-inline: 0;
+}
+[data-plan-column] .bn-block-content,
+[data-plan-column] .bn-inline-content {
+  font-size: var(--tp-text-md);
+  line-height: var(--tp-leading-body);
+  color: var(--tp-ink-2);
+}
+[data-plan-column] .bn-block-content[data-content-type="heading"] {
+  font-family: var(--tp-font-display);
+  font-weight: var(--tp-weight-semibold);
+  letter-spacing: var(--tp-track-tight);
+  line-height: var(--tp-leading-snug);
+  color: var(--tp-ink);
+  padding-top: var(--tp-space-6);
+}
+/* BlockNote sizes headings via `font-size: var(--level)` (em-relative to the
+   base content size). Redefine --level per level so the kit's display scale
+   wins without out-specifying BlockNote's heading rule: h1 → --tp-text-2xl,
+   h2 → --tp-text-lg, h3 → --tp-text-base, against the --tp-text-md body. */
+[data-plan-column] .bn-block-content[data-content-type="heading"][data-level="1"] {
+  --level: calc(var(--tp-text-2xl) / var(--tp-text-md) * 1em);
+}
+[data-plan-column] .bn-block-content[data-content-type="heading"][data-level="2"] {
+  --level: calc(var(--tp-text-lg) / var(--tp-text-md) * 1em);
+}
+[data-plan-column] .bn-block-content[data-content-type="heading"][data-level="3"] {
+  --level: calc(var(--tp-text-base) / var(--tp-text-md) * 1em);
+}
+[data-plan-column] .bn-block-content[data-content-type="bulletListItem"],
+[data-plan-column] .bn-block-content[data-content-type="numberedListItem"],
+[data-plan-column] .bn-block-content[data-content-type="checkListItem"] {
+  font-size: var(--tp-text-md);
+  line-height: var(--tp-leading-body);
+  color: var(--tp-ink-2);
+}
+[data-plan-column] .bn-inline-content code {
+  font-family: var(--tp-font-mono);
+  font-size: 0.86em;
+  background: var(--tp-code-bg);
+  color: var(--tp-code-ink);
+  padding: 1.5px 5px;
+  border-radius: var(--tp-radius-xs);
+  border: 1px solid var(--tp-border);
+}
+
 /* Deliberately NOT mapped into @theme: the --tp-space-* / --tp-container-* grid
    and --tp-ease / --tp-duration-* motion tokens (Tailwind's default 4px spacing
    and transition utilities already match the kit; the raw vars remain for exact
