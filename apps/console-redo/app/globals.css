@@ -11,6 +11,48 @@
 @import "./tokens/elevation.css";
 @import "./tokens/base.css";
 
+/* shadcn/Radix primitives read a fixed set of semantic CSS variables. Bridge
+   them to the closest --tp-* role so shadcn components render in the kit's
+   palette. Defined once in :root: because every --tp-* re-points under
+   [data-theme="dark"], these references follow dark mode automatically — no
+   second block. shadcn's `accent` is the subtle hover/active surface tint
+   (ghost buttons, menu-item hover), NOT the brand accent; the brand terracotta
+   maps to `primary`. `--radius` is the kit's card radius (9px); the radius
+   scale itself lives in @theme inline below (single source of truth), so we do
+   not restate shadcn's calc-derived --radius-sm/md/lg/xl. */
+:root {
+  --background: var(--tp-bg);
+  --foreground: var(--tp-ink);
+  --card: var(--tp-canvas);
+  --card-foreground: var(--tp-ink);
+  --popover: var(--tp-panel);
+  --popover-foreground: var(--tp-ink);
+  --primary: var(--tp-accent);
+  --primary-foreground: var(--tp-accent-fg);
+  --secondary: var(--tp-inset);
+  --secondary-foreground: var(--tp-ink);
+  --muted: var(--tp-inset);
+  --muted-foreground: var(--tp-ink-3);
+  --accent: var(--tp-inset);
+  --accent-foreground: var(--tp-ink);
+  --destructive: var(--tp-danger);
+  --destructive-foreground: var(--tp-accent-fg);
+  --border: var(--tp-border);
+  --input: var(--tp-border);
+  --ring: var(--tp-accent);
+  --radius: var(--tp-radius-lg);
+
+  /* shadcn sidebar primitive */
+  --sidebar: var(--tp-sidebar);
+  --sidebar-foreground: var(--tp-ink);
+  --sidebar-primary: var(--tp-accent);
+  --sidebar-primary-foreground: var(--tp-accent-fg);
+  --sidebar-accent: var(--tp-inset);
+  --sidebar-accent-foreground: var(--tp-ink);
+  --sidebar-border: var(--tp-border);
+  --sidebar-ring: var(--tp-accent);
+}
+
 /* `inline` is load-bearing: utilities resolve to var(--tp-*) at use-site,
    so the [data-theme="dark"] re-pointing in colors.css/elevation.css flows
    through automatically. Plain @theme would freeze the light values. */
@@ -30,12 +72,6 @@
   --color-ink: var(--tp-ink);
   --color-ink-2: var(--tp-ink-2);
   --color-ink-3: var(--tp-ink-3);
-
-  /* accent */
-  --color-accent: var(--tp-accent);
-  --color-accent-press: var(--tp-accent-press);
-  --color-accent-soft: var(--tp-accent-soft);
-  --color-accent-fg: var(--tp-accent-fg);
 
   /* highlight */
   --color-hl: var(--tp-hl);
@@ -114,6 +150,49 @@
   --shadow-sm: var(--tp-shadow-sm);
   --shadow-lg: var(--tp-shadow-lg);
   --shadow-glow: var(--tp-shadow-glow);
+
+  /* shadcn semantic colors — expose the bridged vars as utilities so the
+     classes shadcn components emit (bg-background, text-muted-foreground,
+     border-border, ring-ring, …) resolve. Radius utilities are deliberately
+     omitted: the kit's --radius-* scale above is the single source of truth,
+     and shadcn's rounded-* classes already resolve through it. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* shadcn `accent` = the subtle hover/active surface (ghost buttons, menu-item
+     hover), mapped to the kit's inset well — NOT the brand. Brand terracotta is
+     `primary` (= --tp-accent); the kit's brand tints --tp-accent-soft/-press stay
+     raw vars and get utilities when a component needs them. --color-sidebar
+     (surface) stays owned by the kit mapping above; only sidebar sub-roles here. */
+  --color-accent: var(--accent);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
 }
 
 /* Deliberately NOT mapped into @theme: the --tp-space-* / --tp-container-* grid
