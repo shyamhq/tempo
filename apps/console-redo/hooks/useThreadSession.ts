@@ -13,6 +13,7 @@
 import { useAuth, useUser } from '@clerk/nextjs';
 import { useEffect, useRef } from 'react';
 import { getPersistedMessages } from '../features/agent/api';
+import { getPlan } from '../features/plan/api';
 import { type EventGateway, openEventGateway } from '../lib/event-gateway';
 import { useThreadStore } from '../store';
 import { hydrateThread } from './hydrateThread';
@@ -65,6 +66,15 @@ export function useThreadSession(threadId: string): void {
               .then((messages) =>
                 useThreadStore.getState().setPersistedMessages(threadId, messages),
               )
+              .catch(logHydrateError);
+          },
+          // A plan edit landed: refetch the canonical body so the live editor
+          // reloads on an Agent edit. The plan editor compares the incoming body
+          // against what it last saved and skips a re-apply when they match, so
+          // the Dev's own save echo doesn't disturb the cursor.
+          onPlanEdited: () => {
+            void getPlan(threadId)
+              .then((plan) => useThreadStore.getState().setPlan(plan))
               .catch(logHydrateError);
           },
         });
