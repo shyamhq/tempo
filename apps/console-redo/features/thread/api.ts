@@ -7,10 +7,11 @@ import {
   CreateThreadResponse,
   GetConnectTokenResponse,
   GetThreadResponse,
+  GithubReposResponse,
   ListThreadsResponse,
 } from '@tempo/contracts/http';
 import { z } from 'zod';
-import { request } from '../../lib/api-client';
+import { request, workerRequest } from '../../lib/api-client';
 
 const ThreadReposResponse = z.object({ repos: z.array(z.string()) });
 
@@ -46,6 +47,19 @@ export function listThreads(spaceId?: string) {
   const query = spaceId ? `?space_id=${encodeURIComponent(spaceId)}` : '';
   return request('GET', `/api/threads${query}`, undefined, ListThreadsResponse).then(
     (r) => r.threads,
+  );
+}
+
+// GitHub repos the workspace's App installation can see — for the compose repo
+// picker. Worker route (Bearer JWT, getToken passed per-call); returns [] when
+// GitHub isn't connected, which the picker renders as a connect prompt.
+export function listGithubRepos(getToken: () => Promise<string | null>) {
+  return workerRequest(
+    'GET',
+    '/api/connectors/github/repos',
+    undefined,
+    GithubReposResponse,
+    getToken,
   );
 }
 

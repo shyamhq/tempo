@@ -12,23 +12,26 @@
 // /t/new resolves here. The sidebar's "New thread" link passes ?space=<id>; it
 // preselects that Space, but the Dev can change the target before creating.
 //
-// ponytail: the repo picker is a plain owner/repo add-list, NOT apps/console's
-// autocomplete-against-GitHub modal. console-redo has no worker GitHub-repos
-// client (the listGithubRepos infra apps/console's RepoPicker depends on isn't
-// wired here yet); the add-list captures the same `repos: string[]` the contract
-// wants. Swap in the autocomplete picker when the worker repos client lands.
-//
 // Images attach via the shared uploader (features/attachments). Bytes stay in
 // the browser as blob: URLs until submit; the init+PUT pass runs inside submit()
 // AFTER createThread, since /init needs the thread id (uploadAll(thread.id)).
 
 import { useAuth } from '@clerk/nextjs';
 import type { AgentType } from '@tempo/contracts';
-import { Bug, Cloud, Command, GitBranch, RefreshCcw, Search, Sparkles, X } from 'lucide-react';
+import {
+  Bug,
+  Cloud,
+  Command,
+  GitBranch,
+  Plus,
+  RefreshCcw,
+  Search,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { type KeyboardEvent, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   AttachmentAddButton,
   AttachmentDragOverlay,
@@ -41,6 +44,7 @@ import {
 } from '@/features/attachments/use-attachment-uploader';
 import { postDiscussionMessage } from '@/features/discussion/api';
 import { createThread } from '@/features/thread/api';
+import { RepoPicker } from '@/features/thread/components/repo-picker';
 import { cn } from '@/lib/utils';
 import { useSidebarSpaces, useThreadStore } from '@/store';
 
@@ -387,13 +391,10 @@ function AgentTypeCard({
   );
 }
 
-// The Hosted repo-context bar: attached repos as removable chips + an owner/repo
-// add field. Sits below the composer (thread-scoped). Repos provision the VM, so
-// the bar carries a "Sandbox starts on send" note once any repo is attached.
-//
-// ponytail: a plain add-list, not apps/console's autocomplete-against-GitHub
-// modal — console-redo has no worker GitHub-repos client yet. Same `string[]`
-// shape; swap in the picker when that infra lands.
+// The Hosted repo-context bar: attached repos as removable chips + an "Add repo"
+// button that opens the multi-select GitHub repo picker modal. Sits below the
+// composer (thread-scoped). Repos provision the VM, so the bar carries a
+// "Sandbox starts on send" note once any repo is attached.
 function ThreadContextBar({
   repos,
   onReposChange,
@@ -403,60 +404,47 @@ function ThreadContextBar({
   onReposChange: (repos: string[]) => void;
   disabled: boolean;
 }) {
-  const [draft, setDraft] = useState('');
-  const value = draft.trim();
-  // ponytail: mirrors CreateThreadRequest.repos in @tempo/contracts http.ts
-  // (one `/`, no whitespace) — single source of truth, so the inline check never
-  // rejects an owner/name the server would accept.
-  const valid = /^[^/\s]+\/[^/\s]+$/.test(value) && !repos.includes(value);
-
-  const add = () => {
-    if (!valid) return;
-    onReposChange([...repos, value]);
-    setDraft('');
-  };
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-b-xl border-t border-border bg-inset px-3 py-2">
-      <span className="shrink-0 select-none text-2xs font-semibold uppercase tracking-label text-ink-3">
-        Repos
-      </span>
-
-      {repos.map((fullName) => (
-        <RepoChip
-          key={fullName}
-          fullName={fullName}
-          onRemove={() => onReposChange(repos.filter((r) => r !== fullName))}
-          disabled={disabled}
-        />
-      ))}
-
-      <Input
-        mono
-        size="sm"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            add();
-          }
-        }}
-        placeholder="owner/repo"
-        disabled={disabled}
-        aria-label="Add a repository (owner/repo)"
-        className="h-[26px] max-w-[180px] flex-1"
-      />
-      <Button variant="ghost" size="sm" onClick={add} disabled={disabled || !valid}>
-        Add
-      </Button>
-
-      {repos.length > 0 ? (
-        <span className="ml-auto shrink-0 text-xs font-medium text-warning">
-          Sandbox starts on send
+    <>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-b-xl border-t border-border bg-inset px-3 py-2">
+        <span className="shrink-0 select-none text-2xs font-semibold uppercase tracking-label text-ink-3">
+          Repos
         </span>
-      ) : null}
-    </div>
+
+        {repos.map((fullName) => (
+          <RepoChip
+            key={fullName}
+            fullName={fullName}
+            onRemove={() => onReposChange(repos.filter((r) => r !== fullName))}
+            disabled={disabled}
+          />
+        ))}
+
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          disabled={disabled}
+          className="inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-0.5 text-sm font-medium text-primary transition-colors hover:border-border hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="size-3" strokeWidth={2} aria-hidden /> Add repo
+        </button>
+
+        {repos.length > 0 ? (
+          <span className="ml-auto shrink-0 text-xs font-medium text-warning">
+            Sandbox starts on send
+          </span>
+        ) : null}
+      </div>
+
+      <RepoPicker
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        selectedRepos={repos}
+        onConfirm={onReposChange}
+      />
+    </>
   );
 }
 
