@@ -1,4 +1,6 @@
+import { UpdateThreadRequest } from '@tempo/contracts/http';
 import {
+  deleteThread,
   getHostedState,
   getPlan,
   getThread,
@@ -7,15 +9,50 @@ import {
   listMessagesForThread,
   resolveAgentPresent,
   threadBelongsToWorkspace,
+  updateThread,
 } from '@tempo/server';
 import type { NextRequest } from 'next/server';
 import { authFromRequest } from '../../../../server/actor';
-import { err, ok } from '../../../../server/http';
+import { err, ok, parseBody, toResponse } from '../../../../server/http';
+
+// PATCH /api/threads/:id — rename / move / reorder, used by the sidebar's inline
+// rename and the row menu's move-to. space_id and sort_order stay Dev-only.
+// Mirrors apps/console/app/api/threads/[id]/route.ts.
+export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await authFromRequest(req);
+  if (!auth) return err('unauthorized', 401);
+  const { id } = await ctx.params;
+  if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
+  const parsed = await parseBody(req, UpdateThreadRequest);
+  if (!parsed.ok) return parsed.response;
+  if (auth.actor === 'agent' && (parsed.data.space_id || parsed.data.sort_order !== undefined)) {
+    return err('forbidden', 403);
+  }
+  try {
+    const thread = await updateThread(id, parsed.data);
+    return ok({ thread });
+  } catch (e) {
+    return toResponse(e);
+  }
+}
+
+// DELETE /api/threads/:id — the sidebar row menu's delete (after confirm).
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const auth = await authFromRequest(req);
+  if (auth?.actor !== 'user') return err('unauthorized', 401);
+  const { id } = await ctx.params;
+  if (!(await threadBelongsToWorkspace(id, auth.workspace_id))) return err('forbidden', 403);
+  try {
+    await deleteThread(id);
+  } catch (e) {
+    return toResponse(e);
+  }
+  return ok({ ok: true });
+}
 
 // GET /api/threads/:id — hydration. Assembles GetThreadResponse: thread meta +
 // plan + comments + discussion + live presence/vm. Mirrors
-// apps/console/app/api/threads/[id]/route.ts (GET only; the rewrite has no
-// thread DELETE/PATCH in T2.3).
+// apps/console/app/api/threads/[id]/route.ts.
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const auth = await authFromRequest(req);
   if (!auth) return err('unauthorized', 401);
