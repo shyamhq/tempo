@@ -1,3 +1,4 @@
+import { ClerkProvider } from '@clerk/nextjs';
 import { Inter, JetBrains_Mono, Space_Grotesk } from 'next/font/google';
 import type { ReactNode } from 'react';
 import './globals.css';
@@ -34,7 +35,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       data-theme="light"
       className={`${spaceGrotesk.variable} ${inter.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        <ClerkProvider>{children}</ClerkProvider>
+      </body>
     </html>
   );
 }
