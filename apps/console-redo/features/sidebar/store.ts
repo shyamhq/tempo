@@ -10,12 +10,22 @@
 // selectors and call these actions; the actions call features/sidebar/api.ts.
 // Components never see fetch, Zod, or a business rule.
 
+import { arrayMove } from '@dnd-kit/sortable';
 import type { Space, SpaceThreadLite } from '@tempo/contracts';
 import type { ThreadRenamedEvent } from '@tempo/contracts/events';
 import type { z } from 'zod';
 import type { StateCreator } from 'zustand';
 import type { ThreadStore } from '../../store';
 import * as api from './api';
+
+// Fractional indexing: a row dropped between `prev` and `next` takes the
+// midpoint of their sort_order values. Missing prev = head of list (next - 1);
+// missing next = tail (prev + 1); both missing = first row (1).
+function midpoint(prev: number | undefined, next: number | undefined): number {
+  if (prev === undefined) return next === undefined ? 1 : next - 1;
+  if (next === undefined) return prev + 1;
+  return (prev + next) / 2;
+}
 
 export type RenameTarget =
   | { kind: 'space'; id: string }
@@ -49,8 +59,10 @@ export interface SidebarSlice extends SidebarTree {
   createSpace: () => Promise<void>;
   renameSpace: (spaceId: string, name: string) => Promise<void>;
   deleteSpace: (spaceId: string) => Promise<void>;
+  reorderSpace: (activeId: string, overId: string) => Promise<void>;
   renameThread: (spaceId: string, threadId: string, title: string) => Promise<void>;
   moveThread: (threadId: string, fromSpaceId: string, toSpaceId: string) => Promise<void>;
+  reorderThread: (spaceId: string, activeId: string, overId: string) => Promise<void>;
   deleteThread: (spaceId: string, threadId: string) => Promise<void>;
 }
 
@@ -135,6 +147,29 @@ export const createSidebarSlice: StateCreator<ThreadStore, [], [], SidebarSlice>
     }
   },
 
+  // Same-list reorder: arrayMove the spaces, give the moved row the midpoint of
+  // its new neighbours' sort_orders, write optimistically, then PATCH. Snapshot
+  // both slices for the one rollback shape every mutation here uses.
+  reorderSpace: async (activeId, overId) => {
+    const prev = { spaces: get().spaces, threadsBySpace: get().threadsBySpace };
+    const { spaces } = prev;
+    const from = spaces.findIndex((s) => s.id === activeId);
+    const to = spaces.findIndex((s) => s.id === overId);
+    if (from < 0 || to < 0) return;
+    const reordered = arrayMove(spaces, from, to);
+    const idx = reordered.findIndex((s) => s.id === activeId);
+    const sortOrder = midpoint(reordered[idx - 1]?.sort_order, reordered[idx + 1]?.sort_order);
+    set({
+      spaces: reordered.map((s, i) => (i === idx ? { ...s, sort_order: sortOrder } : s)),
+    });
+    try {
+      await api.updateSpace(activeId, { sort_order: sortOrder });
+    } catch (e) {
+      set(prev);
+      throw e;
+    }
+  },
+
   renameThread: async (spaceId, threadId, title) => {
     const prev = { spaces: get().spaces, threadsBySpace: get().threadsBySpace };
     set((s) => ({
@@ -170,6 +205,31 @@ export const createSidebarSlice: StateCreator<ThreadStore, [], [], SidebarSlice>
     });
     try {
       await api.updateThread(threadId, { space_id: toSpaceId });
+    } catch (e) {
+      set(prev);
+      throw e;
+    }
+  },
+
+  // Same-space reorder (cross-space moves go through moveThread). Mirror of
+  // reorderSpace, operating on the space's thread list.
+  reorderThread: async (spaceId, activeId, overId) => {
+    const threads = get().threadsBySpace[spaceId] ?? [];
+    const from = threads.findIndex((t) => t.id === activeId);
+    const to = threads.findIndex((t) => t.id === overId);
+    if (from < 0 || to < 0) return;
+    const reordered = arrayMove(threads, from, to);
+    const idx = reordered.findIndex((t) => t.id === activeId);
+    const sortOrder = midpoint(reordered[idx - 1]?.sort_order, reordered[idx + 1]?.sort_order);
+    const prev = { spaces: get().spaces, threadsBySpace: get().threadsBySpace };
+    set((s) => ({
+      threadsBySpace: {
+        ...s.threadsBySpace,
+        [spaceId]: reordered.map((t, i) => (i === idx ? { ...t, sort_order: sortOrder } : t)),
+      },
+    }));
+    try {
+      await api.updateThread(activeId, { sort_order: sortOrder });
     } catch (e) {
       set(prev);
       throw e;
