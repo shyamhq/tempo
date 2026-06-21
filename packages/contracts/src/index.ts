@@ -6,7 +6,6 @@ export type {
   TempoUIMessage,
   UIMessage,
   UIMessageChunk,
-  UIMessagePart,
 } from './agent-message';
 // Runtime-safe (no `ai` runtime) — usable from the CLI and the Console client.
 export { isEmptyAgentResponse, stripEmptyAgentText } from './agent-text';

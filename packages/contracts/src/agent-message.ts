@@ -6,7 +6,7 @@
 import type { UIMessage, UIMessageChunk } from 'ai';
 import { validateUIMessages } from 'ai';
 
-export type { UIMessage, UIMessageChunk, UIMessagePart } from 'ai';
+export type { UIMessage, UIMessageChunk } from 'ai';
 
 export type TempoUIMessage = UIMessage;
 

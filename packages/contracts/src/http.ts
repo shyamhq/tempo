@@ -132,9 +132,6 @@ export const GetThreadResponse = z.object({
   vm: VmState.nullable(),
 });
 
-// GET /api/threads/:id/plan
-export const GetPlanResponse = Plan;
-
 // POST /api/threads/:id/plan
 // Both Dev (Console) and Agent write through this single endpoint. PM JSON
 // is the wire format for both — the Agent no longer round-trips through
@@ -174,11 +171,9 @@ export const CreateReplyRequest = z.object({
 export const CreateReplyResponse = Reply;
 
 // POST /api/comments/:id/resolve
-export const ResolveCommentRequest = z.object({});
 export const ResolveCommentResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/comments/:id/unresolve
-export const UnresolveCommentRequest = z.object({});
 export const UnresolveCommentResponse = z.object({ ok: z.literal(true) });
 
 // POST /api/threads/:id/attachments/init
@@ -232,14 +227,6 @@ export const DeleteThreadResponse = z.object({ ok: z.literal(true) });
 // Thread state loads via GET /api/threads/:id, then this delivers new events as
 // a stream of `event: <kind>\ndata: <Event JSON>\n\n` frames.
 
-// Error envelope for all 4xx/5xx responses
-export const HttpError = z.object({
-  error: z.string(),
-  message: z.string().optional(),
-  details: z.record(z.string(), z.unknown()).optional(),
-});
-export type HttpError = z.infer<typeof HttpError>;
-
 // POST /api/cli/exchange — exchanges an OAuth code for a CLI user token.
 // The code is a short-lived signed JWT minted by Console's /cli/authorize page.
 // code_verifier shape per RFC 7636 §4.1: 43–128 chars from the unreserved set.
@@ -253,22 +240,9 @@ export const CliExchangeRequest = z.object({
 });
 export type CliExchangeRequest = z.infer<typeof CliExchangeRequest>;
 
-export const CliExchangeResponse = z.object({
-  token: z.string(),
-  refresh_token: z.string(),
-  expires_at: z.string().datetime(),
-  user_id: z.string(),
-  email: z.string().email(),
-});
-export type CliExchangeResponse = z.infer<typeof CliExchangeResponse>;
-
 // POST /api/cli/refresh — rotate-on-use token refresh.
 export const CliRefreshRequest = z.object({ refresh_token: z.string() });
 export type CliRefreshRequest = z.infer<typeof CliRefreshRequest>;
-
-// Same shape as exchange — rotate issues a fresh pair.
-export const CliRefreshResponse = CliExchangeResponse;
-export type CliRefreshResponse = z.infer<typeof CliRefreshResponse>;
 
 // Slim Turn 1 context snapshot — same shape the hosted drain returns on
 // first:true. Both CLI (/access) and hosted (drain) inject this as the

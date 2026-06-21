@@ -2,7 +2,6 @@ import { z } from 'zod';
 
 export const ThreadId = z.string().regex(/^thr_[A-Z0-9]{26}$/);
 export const SpaceId = z.string().regex(/^spc_[A-Z0-9]{26}$/);
-export const PlanId = z.string().regex(/^pln_[A-Z0-9]{26}$/);
 export const CommentId = z.string().regex(/^cmt_[A-Z0-9]{26}$/);
 export const ReplyId = z.string().regex(/^rep_[A-Z0-9]{26}$/);
 export const MessageId = z.string().regex(/^msg_[A-Z0-9]{26}$/);
@@ -12,18 +11,12 @@ export const ConnectToken = z.string().regex(/^tmp_[A-Za-z0-9_-]{32,}$/);
 
 export type ThreadId = z.infer<typeof ThreadId>;
 export type SpaceId = z.infer<typeof SpaceId>;
-export type PlanId = z.infer<typeof PlanId>;
 export type CommentId = z.infer<typeof CommentId>;
 export type ReplyId = z.infer<typeof ReplyId>;
 export type MessageId = z.infer<typeof MessageId>;
 export type AttachmentId = z.infer<typeof AttachmentId>;
 export type EventId = z.infer<typeof EventId>;
 export type ConnectToken = z.infer<typeof ConnectToken>;
-
-// Sentinel matching newEventId(0) on the Console. Lexicographically less than
-// every real event ID, so passing it as a cursor to readEventsAfter returns
-// all events since thread creation.
-export const ZERO_EVENT_CURSOR: EventId = 'evt_00000000000000';
 
 // A @mention extracted from a Discussion message or Comment reply body. `id`
 // is the Clerk user id for kind='user', the literal 'agent' for kind='agent'.
@@ -99,9 +92,6 @@ export const SpaceThreadLite = z.object({
   sort_order: z.number(),
 });
 export type SpaceThreadLite = z.infer<typeof SpaceThreadLite>;
-
-export const QuestionType = z.enum(['single_choice', 'multi_choice', 'open_text']);
-export type QuestionType = z.infer<typeof QuestionType>;
 
 export const QuestionInput = z.discriminatedUnion('type', [
   z.object({
