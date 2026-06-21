@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+/* Design-system tokens are the source of truth, imported in dependency
+   order (fonts → colors → typography → spacing → elevation → base). The
+   @theme inline block below maps them into Tailwind v4 utilities by
+   reference — no value is restated. */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/elevation.css";
+@import "./tokens/base.css";
+
+/* `inline` is load-bearing: utilities resolve to var(--tp-*) at use-site,
+   so the [data-theme="dark"] re-pointing in colors.css/elevation.css flows
+   through automatically. Plain @theme would freeze the light values. */
+@theme inline {
+  /* surfaces */
+  --color-bg: var(--tp-bg);
+  --color-canvas: var(--tp-canvas);
+  --color-sidebar: var(--tp-sidebar);
+  --color-panel: var(--tp-panel);
+  --color-inset: var(--tp-inset);
+
+  /* borders */
+  --color-border: var(--tp-border);
+  --color-border-strong: var(--tp-border-strong);
+
+  /* ink */
+  --color-ink: var(--tp-ink);
+  --color-ink-2: var(--tp-ink-2);
+  --color-ink-3: var(--tp-ink-3);
+
+  /* accent */
+  --color-accent: var(--tp-accent);
+  --color-accent-press: var(--tp-accent-press);
+  --color-accent-soft: var(--tp-accent-soft);
+  --color-accent-fg: var(--tp-accent-fg);
+
+  /* highlight */
+  --color-hl: var(--tp-hl);
+  --color-hl-active: var(--tp-hl-active);
+  --color-hl-line: var(--tp-hl-line);
+
+  /* semantic */
+  --color-success: var(--tp-success);
+  --color-warning: var(--tp-warning);
+  --color-danger: var(--tp-danger);
+  --color-actor: var(--tp-actor);
+
+  --color-success-bg: var(--tp-success-bg);
+  --color-warning-bg: var(--tp-warning-bg);
+  --color-danger-bg: var(--tp-danger-bg);
+  --color-actor-bg: var(--tp-actor-bg);
+
+  /* code */
+  --color-code-bg: var(--tp-code-bg);
+  --color-code-ink: var(--tp-code-ink);
+
+  /* backdrop (modal scrim) */
+  --color-backdrop: var(--tp-backdrop);
+
+  /* fonts */
+  --font-display: var(--tp-font-display);
+  --font-sans: var(--tp-font-sans);
+  --font-mono: var(--tp-font-mono);
+
+  /* type scale — overrides Tailwind's defaults so the kit's compact-first
+     sizes win (text-sm = 12px, text-base = 13px, text-lg = 15px, …) */
+  --text-2xs: var(--tp-text-2xs);
+  --text-xs: var(--tp-text-xs);
+  --text-sm: var(--tp-text-sm);
+  --text-base: var(--tp-text-base);
+  --text-md: var(--tp-text-md);
+  --text-lg: var(--tp-text-lg);
+  --text-xl: var(--tp-text-xl);
+  --text-2xl: var(--tp-text-2xl);
+  --text-3xl: var(--tp-text-3xl);
+  --text-4xl: var(--tp-text-4xl);
+  --text-5xl: var(--tp-text-5xl);
+  --text-6xl: var(--tp-text-6xl);
+  --text-7xl: var(--tp-text-7xl);
+
+  --font-weight-regular: var(--tp-weight-regular);
+  --font-weight-book: var(--tp-weight-book);
+  --font-weight-medium: var(--tp-weight-medium);
+  --font-weight-semibold: var(--tp-weight-semibold);
+  --font-weight-bold: var(--tp-weight-bold);
+
+  --tracking-display: var(--tp-track-display);
+  --tracking-tight: var(--tp-track-tight);
+  --tracking-snug: var(--tp-track-snug);
+  --tracking-normal: var(--tp-track-normal);
+  --tracking-label: var(--tp-track-label);
+  --tracking-mono: var(--tp-track-mono);
+
+  --leading-none: var(--tp-leading-none);
+  --leading-snug: var(--tp-leading-snug);
+  --leading-base: var(--tp-leading-base);
+  --leading-body: var(--tp-leading-body);
+  --leading-loose: var(--tp-leading-loose);
+
+  /* radii */
+  --radius-xs: var(--tp-radius-xs);
+  --radius-sm: var(--tp-radius-sm);
+  --radius-md: var(--tp-radius-md);
+  --radius-lg: var(--tp-radius-lg);
+  --radius-xl: var(--tp-radius-xl);
+  --radius-2xl: var(--tp-radius-2xl);
+  --radius-3xl: var(--tp-radius-3xl);
+  --radius-pill: var(--tp-radius-pill);
+
+  /* shadows */
+  --shadow-sm: var(--tp-shadow-sm);
+  --shadow-lg: var(--tp-shadow-lg);
+  --shadow-glow: var(--tp-shadow-glow);
+}
+
+/* Deliberately NOT mapped into @theme: the --tp-space-* / --tp-container-* grid
+   and --tp-ease / --tp-duration-* motion tokens (Tailwind's default 4px spacing
+   and transition utilities already match the kit; the raw vars remain for exact
+   use), and --tp-focus-ring (a box-shadow value, not a color — apply it via
+   shadow-[var(--tp-focus-ring)]). */

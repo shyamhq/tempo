@@ -1,0 +1,14 @@
+/* ============================================================
+   Tempo — Typefaces
+   Space Grotesk (display) · Inter (UI + docs body) · JetBrains Mono (code)
+   Faces are loaded via next/font/google in app/layout.tsx, which exposes
+   each as a CSS variable (--font-space-grotesk / --font-inter /
+   --font-jetbrains-mono). The --tp-font-* tokens point at those, keeping
+   the design system's token contract while self-hosting the fonts the
+   standard Next way.
+   ============================================================ */
+:root {
+  --tp-font-display: var(--font-space-grotesk), "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --tp-font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --tp-font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", Menlo, monospace;
+}
