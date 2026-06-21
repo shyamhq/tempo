@@ -47,7 +47,10 @@ export function WorkspaceSwitcher() {
   };
 
   return (
-    <DropdownMenu.Root>
+    // Non-modal: a modal dropdown sets `body { pointer-events: none }` while
+    // open, which the settings Dialog (opened from a menu item) would capture as
+    // its restore value and leave stuck on close — killing page scroll/clicks.
+    <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger asChild>
         <button
           type="button"
