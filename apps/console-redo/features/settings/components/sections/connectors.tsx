@@ -10,37 +10,52 @@
 // mutation re-fetches the list to refresh status. Per-row pending state is local.
 
 import { useOrganization } from '@clerk/nextjs';
+import {
+  SiFigma,
+  SiGithub,
+  SiJira,
+  SiLinear,
+  SiNotion,
+  SiSentry,
+  SiVercel,
+} from '@icons-pack/react-simple-icons';
 import type { ConnectorId } from '@tempo/contracts/connectors';
 import { CONNECTORS } from '@tempo/contracts/connectors';
 import type { ConnectorState, ConnectorStatusResponse } from '@tempo/contracts/http';
-import type { LucideIcon } from 'lucide-react';
-import {
-  AlertCircle,
-  BookOpen,
-  Frame,
-  GitBranch,
-  GitPullRequest,
-  Globe,
-  MessageSquare,
-  Zap,
-} from 'lucide-react';
+import type { ComponentType, SVGProps } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { disconnectConnector, listConnectors, setConnectorEnabled, startConnect } from '../../api';
 import { SectionFrame } from '../section-frame';
 
-// Maps each connector id to a Lucide icon. Chosen to reflect the real provider
-// brand where Lucide has an equivalent; generic category icon otherwise.
-const CONNECTOR_ICONS: Record<ConnectorId, LucideIcon> = {
-  github: GitPullRequest,
-  linear: GitBranch,
-  jira: AlertCircle,
-  sentry: Zap,
-  notion: BookOpen,
-  slack: MessageSquare,
-  vercel: Globe,
-  figma: Frame,
+type BrandIcon = ComponentType<SVGProps<SVGSVGElement>>;
+
+// Slack's official mark (the four-shape glyph). Inlined because Simple Icons
+// dropped Slack for trademark reasons; fills with currentColor like the rest.
+function SlackMark(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" {...props}>
+      <title>Slack</title>
+      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.685 8.834a2.528 2.528 0 0 1-2.521 2.521 2.527 2.527 0 0 1-2.521-2.521V2.522A2.527 2.527 0 0 1 15.164 0a2.528 2.528 0 0 1 2.521 2.522v6.312zM15.164 18.956a2.528 2.528 0 0 1 2.521 2.522A2.528 2.528 0 0 1 15.164 24a2.527 2.527 0 0 1-2.521-2.522v-2.522h2.521zM15.164 17.685a2.527 2.527 0 0 1-2.521-2.52 2.526 2.526 0 0 1 2.521-2.521h6.312A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.524 2.52h-6.312z" />
+    </svg>
+  );
+}
+
+// The real provider brand marks (Simple Icons), rendered monochrome via the
+// component default `color="currentColor"` so they read on the dark tiles (the
+// brand hex — e.g. GitHub's near-black — would vanish there). Slack is not in
+// Simple Icons (removed under Salesforce's trademark policy), so its mark is
+// inlined above.
+const CONNECTOR_ICONS: Record<ConnectorId, BrandIcon> = {
+  github: SiGithub,
+  linear: SiLinear,
+  jira: SiJira,
+  sentry: SiSentry,
+  notion: SiNotion,
+  slack: SlackMark,
+  vercel: SiVercel,
+  figma: SiFigma,
 };
 
 type LoadState =
@@ -193,7 +208,7 @@ function ConnectorRow({
   return (
     <div className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
       <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-inset text-ink-2">
-        <Icon className="size-4" strokeWidth={1.75} />
+        <Icon className="size-4" />
       </span>
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
