@@ -46,6 +46,12 @@ export interface EventGatewayOptions {
   // dedups the live turn by id). Wired in T2.3; the live stream is finalized
   // here regardless.
   onAgentTurnEnded?: () => void;
+  // A plan edit landed (Dev or Agent). The plan_edited events carry only the
+  // timestamp — the canonical body is refetched so the live editor reloads on
+  // an Agent edit. The Dev's own save is a no-op reload (the body already
+  // matches the editor); the editor reconciles by skipping a re-apply when the
+  // body is byte-identical to what it last saved.
+  onPlanEdited?: () => void;
 }
 
 export interface EventGateway {
@@ -180,11 +186,17 @@ function dispatch(event: Event, opts: EventGatewayOptions, closeLiveTurn: () => 
       store.applyCommentDeleted(event);
       return;
     case 'plan_edited_by_dev':
-    case 'plan_edited_by_agent':
-      // Bump plan meta. The slice supplies updated_by from the actor for a Dev
-      // edit and forces null for an agent edit (it discriminates on event.kind).
-      // The canonical plan body arrives on the refetch T2.3 wires.
+      // The Dev's own edit is already in the editor; just bump the meta. No body
+      // refetch — refetching mid-type would race the next optimistic save and
+      // flicker/jump the cursor.
       store.applyPlanEdited(event, opts.actorUserId());
+      return;
+    case 'plan_edited_by_agent':
+      // An Agent edit changed the body out from under the editor — bump meta and
+      // refetch the canonical body (plan_edited carries none) so the live editor
+      // reloads. The editor's serialized-compare skips a no-op re-apply.
+      store.applyPlanEdited(event, opts.actorUserId());
+      opts.onPlanEdited?.();
       return;
     case 'discussion_message_posted':
       store.applyDiscussionMessagePosted(event);
