@@ -1,3 +1,5 @@
+import { plugin } from 'bun';
+
 // Global test preload (see bunfig.toml). Seeds dummy values for every required
 // worker env var BEFORE any module imports src/env.ts, so unit tests can import
 // worker modules without standing up real secrets. `??=` never clobbers a value
@@ -20,3 +22,16 @@ const defaults: Record<string, string> = {
 for (const [key, value] of Object.entries(defaults)) {
   process.env[key] ??= value;
 }
+
+// `bun test` doesn't get the `--loader=.md:text` flag the dev/build scripts use,
+// so register it here — otherwise modules that inline bundled skills
+// (src/skills/index.ts) fail to import the markdown as text.
+plugin({
+  name: 'md-text',
+  setup(build) {
+    build.onLoad({ filter: /\.md$/ }, async (args) => ({
+      exports: { default: await Bun.file(args.path).text() },
+      loader: 'object',
+    }));
+  },
+});

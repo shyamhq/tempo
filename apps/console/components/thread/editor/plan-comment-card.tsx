@@ -21,7 +21,7 @@ import { useMentionCandidates } from '@/components/thread/mention/use-mention-ca
 import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useThreadUi } from '@/store/thread-ui';
-import { extractBlockNoteText } from './comment-thread-bridge';
+import { AGENT_AUTHOR_ID, extractBlockNoteText } from './comment-thread-bridge';
 
 export type PlanCommentCardVariant = 'card' | 'panel';
 
@@ -267,6 +267,7 @@ export function PlanCommentCard({
 type MembershipRow = NonNullable<ReturnType<typeof useOrganization>['memberships']>['data'];
 
 function resolveAuthorLabel(userId: string, members: MembershipRow | null | undefined): string {
+  if (userId === AGENT_AUTHOR_ID) return 'Agent';
   const m = members?.find((x) => x.publicUserData?.userId === userId);
   const pub = m?.publicUserData;
   if (!pub) return userId;
