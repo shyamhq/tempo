@@ -9,12 +9,35 @@ WORKDIR /repo
 COPY package.json bun.lockb* bun.lock* turbo.json tsconfig.base.json biome.json ./
 COPY apps/console/package.json ./apps/console/package.json
 COPY apps/agent/package.json ./apps/agent/package.json
+# Every workspace member must be present or `bun install --frozen-lockfile`
+# sees a changed workspace and aborts — even members this image never runs.
+COPY apps/worker/package.json ./apps/worker/package.json
 COPY packages/contracts/package.json ./packages/contracts/package.json
 COPY packages/db/package.json ./packages/db/package.json
+COPY packages/errors/package.json ./packages/errors/package.json
+COPY packages/server/package.json ./packages/server/package.json
+COPY packages/sse-client/package.json ./packages/sse-client/package.json
 RUN bun install --frozen-lockfile
 
 COPY packages ./packages
 COPY apps/console ./apps/console
+
+# NEXT_PUBLIC_* are inlined into the client bundle at build time, so they must be
+# present here, not supplied as runtime secrets. Worker URL + Clerk publishable
+# key come from fly.toml [build.args] / --build-arg; the Clerk route paths are
+# static defaults.
+ARG NEXT_PUBLIC_WORKER_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
+ENV NEXT_PUBLIC_WORKER_URL=$NEXT_PUBLIC_WORKER_URL \
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL \
+    NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL \
+    NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL \
+    NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL
 
 WORKDIR /repo/apps/console
 RUN bun run build

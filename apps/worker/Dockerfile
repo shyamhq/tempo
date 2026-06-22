@@ -11,13 +11,18 @@ COPY apps/console/package.json ./apps/console/package.json
 COPY apps/agent/package.json ./apps/agent/package.json
 COPY packages/contracts/package.json ./packages/contracts/package.json
 COPY packages/db/package.json ./packages/db/package.json
+COPY packages/errors/package.json ./packages/errors/package.json
+COPY packages/server/package.json ./packages/server/package.json
+COPY packages/sse-client/package.json ./packages/sse-client/package.json
 RUN bun install --frozen-lockfile
 
 COPY packages ./packages
 COPY apps/worker ./apps/worker
 
 WORKDIR /repo/apps/worker
-RUN bun build --target=node --bundle src/index.ts --outdir dist --outfile index.js
+# Use the package.json build script (single source of truth) — it carries the
+# --loader=.md:text flag the worker needs for its src/skills/*.md imports.
+RUN bun run build
 
 # Stage 2: production runtime — minimal Node 20 image.
 FROM node:20-slim AS runtime

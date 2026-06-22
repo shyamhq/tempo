@@ -15,10 +15,15 @@ apps/console/data
 .git
 .gitignore
 
-# Env files
+# Env files — exclude at every level. A bare `.env.*` only matches the context
+# root, so nested apps/console/.env.local was leaking local dev creds into the
+# image (Next logged "Environments: .env.local" during the build).
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 
 # Misc
 .DS_Store
