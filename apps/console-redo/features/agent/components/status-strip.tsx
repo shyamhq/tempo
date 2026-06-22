@@ -1,12 +1,13 @@
 'use client';
 
 // The bottom status strip (kit `.strip`, workbench index.html lines 205-208,
-// 494-506): presence on the left, an activity chip summarizing the latest agent
-// turn (opens the activity drawer), and the VM provisioning pill on the right.
+// 494-506). Everything sits on the LEFT: presence, the VM status, then an
+// activity chip summarizing the latest agent turn (opens the activity drawer).
+// The right side is intentionally empty.
 //
 // It lives in the agent feature because its job is summarizing agent activity
-// (presence, the latest turn, turn-live). The VM pill is the one non-agent bit,
-// read through the shared store selector.
+// (presence, the latest turn, turn-live). The VM bit is read through the shared
+// store selector.
 //
 // Presentational: it reads presence / agent messages / vm via store selectors
 // and toggles the drawer via a store action. The kit's "· Local CLI" presence
@@ -26,11 +27,11 @@ import {
 } from '@/store';
 import { summarizeActivity } from '../activity';
 
-// The VM pill for a Hosted thread. While the sandbox provisions it shows the live
-// phase; once the agent is live (the "done" signal — there is no `done` phase)
-// it settles to a steady "VM sandbox" so the Dev always knows the agent runs in a
-// VM, instead of sticking on "Cloning repo" forever (the old bug). Local threads
-// have no VM, so this is null for them.
+// The VM status for a Hosted thread, shown on the LEFT next to presence: the live
+// phase while the sandbox comes up (Provisioning VM → Cloning repo), then a steady
+// "VM sandbox" once the agent is live (the "done" signal — there is no `done`
+// phase, so completion is agent presence). `failed` is terminal. Local threads
+// have no VM → null. The richer step-by-step view lives in the ProvisioningCard.
 type VmPill = { label: string; tone: 'primary' | 'warning' | 'danger' | 'muted' };
 
 function vmPillFor(
@@ -45,10 +46,6 @@ function vmPillFor(
       ? { label: 'Provisioning VM', tone: 'primary' }
       : { label: 'Cloning repo', tone: 'warning' };
   }
-  // No VM frame yet and the agent isn't up — nothing is running (a hosted thread
-  // before its first spawn, or an idle one). The "Agent idle" indicator covers
-  // that; don't claim a sandbox exists. The steady pill is for when it actually does.
-  if (vm === null && !agentPresent) return null;
   return { label: 'VM sandbox', tone: 'muted' };
 }
 
@@ -59,9 +56,9 @@ const PILL_TONE: Record<VmPill['tone'], string> = {
   muted: 'text-ink-3',
 };
 
-// `muted` is the settled state — show a Server icon instead of a pulsing dot.
-// For the three active tones, map directly to a dot background class.
-const DOT_BG: Partial<Record<VmPill['tone'], string>> = {
+// `muted` is the settled state — a Server icon, no pulse. The live/failed tones
+// render a coloured dot instead.
+const PILL_DOT: Partial<Record<VmPill['tone'], string>> = {
   primary: 'tp-pulse bg-primary',
   warning: 'bg-warning',
   danger: 'bg-danger',
@@ -91,6 +88,20 @@ export function StatusStrip({ threadId }: { threadId: string }) {
         {agentPresent ? 'Agent live' : 'Agent idle'}
       </span>
 
+      {vmPill ? (
+        <span className={`inline-flex items-center gap-1.5 ${PILL_TONE[vmPill.tone]}`}>
+          {vmPill.tone === 'muted' ? (
+            <Server className="size-[12px] shrink-0" strokeWidth={2} aria-hidden />
+          ) : (
+            <span
+              className={`size-[7px] shrink-0 rounded-full ${PILL_DOT[vmPill.tone]}`}
+              aria-hidden
+            />
+          )}
+          <span className="font-mono">{vmPill.label}</span>
+        </span>
+      ) : null}
+
       {summary ? (
         <button
           type="button"
@@ -115,22 +126,6 @@ export function StatusStrip({ threadId }: { threadId: string }) {
           ) : null}
           <ChevronUp className="size-[13px] text-ink-3" aria-hidden />
         </button>
-      ) : null}
-
-      <div className="flex-1" />
-
-      {vmPill ? (
-        <span className={`inline-flex items-center gap-1.5 ${PILL_TONE[vmPill.tone]}`}>
-          {vmPill.tone === 'muted' ? (
-            <Server className="size-[12px] shrink-0" strokeWidth={2} aria-hidden />
-          ) : (
-            <span
-              className={`size-[7px] shrink-0 rounded-full ${DOT_BG[vmPill.tone]}`}
-              aria-hidden
-            />
-          )}
-          <span className="font-mono">{vmPill.label}</span>
-        </span>
       ) : null}
     </div>
   );
