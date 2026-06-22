@@ -1,0 +1,90 @@
+# DigitalOcean App Platform spec — Tempo console (Next.js standalone).
+#
+# Deploy:  doctl apps create --spec .do/console.yaml   (AFTER the worker exists)
+# Update:  doctl apps update <APP_ID> --spec .do/console.yaml
+#
+# App Platform builds the root Dockerfile from GitHub, so committed+pushed source
+# is what gets built. A PRE_DEPLOY job runs Drizzle migrations against Neon
+# before each release goes live.
+#
+# SECRETS ARE NOT IN THIS FILE. After `doctl apps create`, set these in the DO
+# control panel (App-Level Environment Variables, type=Encrypted) so both the
+# service and the migrate job inherit them:
+#   DATABASE_URL, REDIS_URL, CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET,
+#   CLI_AUTH_SECRET, WORKER_INTERNAL_TOKEN, TOKEN_HASH_PEPPER, RESEND_API_KEY,
+#   R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET,
+#   (optional) GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_SLUG,
+#   (optional) PIPEDREAM_CLIENT_ID, PIPEDREAM_CLIENT_SECRET, PIPEDREAM_PROJECT_ID
+name: tempo-console
+region: nyc
+
+services:
+  - name: console
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: shyamhq/tempo
+      branch: main
+      deploy_on_push: false
+    http_port: 3000
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    routes:
+      - path: /
+    health_check:
+      # Next.js has no /health route; the root returns 200. Swap to a dedicated
+      # /api/health path if you add one.
+      http_path: /
+      initial_delay_seconds: 15
+      period_seconds: 10
+      timeout_seconds: 3
+      failure_threshold: 5
+    envs:
+      - key: NODE_ENV
+        scope: RUN_AND_BUILD_TIME
+        value: production
+      # Console's own URL (RSC self-fetch, connector callbacks). Bindable OK at
+      # runtime.
+      - key: CONSOLE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      # Server -> worker wake calls. Literal worker URL (cross-app).
+      - key: WORKER_URL
+        scope: RUN_TIME
+        value: https://REPLACE-WITH-WORKER-URL.ondigitalocean.app
+      # --- BUILD_TIME: Next inlines NEXT_PUBLIC_* into the client bundle. ---
+      # Bindables do NOT resolve at build time with Dockerfiles, so these are
+      # literals. NEXT_PUBLIC_WORKER_URL is the worker's URL, known only after
+      # the worker's first deploy — that is why the worker deploys first.
+      - key: NEXT_PUBLIC_WORKER_URL
+        scope: BUILD_TIME
+        value: https://REPLACE-WITH-WORKER-URL.ondigitalocean.app
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        scope: BUILD_TIME
+        value: pk_live_REPLACE_ME   # public key, but instance-specific
+      - key: NEXT_PUBLIC_CLERK_SIGN_IN_URL
+        scope: BUILD_TIME
+        value: /sign-in
+      - key: NEXT_PUBLIC_CLERK_SIGN_UP_URL
+        scope: BUILD_TIME
+        value: /sign-up
+      - key: NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL
+        scope: BUILD_TIME
+        value: /
+      - key: NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL
+        scope: BUILD_TIME
+        value: /
+
+jobs:
+  - name: migrate
+    kind: PRE_DEPLOY
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: shyamhq/tempo
+      branch: main
+      deploy_on_push: false
+    # Drizzle migrator bundled into the console image by the Dockerfile.
+    # Inherits DATABASE_URL from the app-level secrets you set in the panel.
+    run_command: node packages/db/src/migrate.js
+    instance_size_slug: apps-s-1vcpu-0.5gb

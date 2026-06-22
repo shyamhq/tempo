@@ -1,0 +1,56 @@
+# DigitalOcean App Platform spec — Tempo worker (Bun build -> node runtime).
+#
+# Deploy:  doctl apps create --spec .do/worker.yaml
+# Update:  doctl apps update <APP_ID> --spec .do/worker.yaml
+#
+# App Platform builds apps/worker/Dockerfile straight from the GitHub repo, so
+# any change to the Dockerfile/source must be committed + pushed to `branch`
+# before it deploys (unlike fly, there is no local upload).
+#
+# SECRETS ARE NOT IN THIS FILE. After `doctl apps create`, set them in the DO
+# control panel (Settings -> App-Level Environment Variables, type=Encrypted):
+#   DATABASE_URL, REDIS_URL, CLERK_SECRET_KEY, CLI_AUTH_SECRET,
+#   HOSTED_AUTH_SECRET, WORKER_INTERNAL_TOKEN, TOKEN_HASH_PEPPER,
+#   E2B_API_KEY, MOONSHOT_API_KEY, TAVILY_API_KEY,
+#   R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET,
+#   (optional) GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_SLUG,
+#   (optional) PIPEDREAM_CLIENT_ID, PIPEDREAM_CLIENT_SECRET, PIPEDREAM_PROJECT_ID
+# Note: `doctl apps update --spec` is declarative and will drop env vars not in
+# this file — manage secrets in the control panel, or keep a gitignored spec.
+name: tempo-worker
+region: nyc   # New York = US East, nearest to Neon/Upstash us-east-1
+
+services:
+  - name: worker
+    dockerfile_path: apps/worker/Dockerfile
+    source_dir: /
+    github:
+      repo: shyamhq/tempo
+      branch: main            # set to the branch that holds the Dockerfiles
+      deploy_on_push: false   # explicit deploys via doctl, no git-push magic
+    http_port: 3001
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 10
+      timeout_seconds: 2
+      failure_threshold: 5
+    envs:
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: production
+      - key: WORKER_LOG_LEVEL
+        scope: RUN_TIME
+        value: info
+      # Worker's own public URL (E2B sandboxes reach the MCP endpoint here).
+      # ${APP_URL} resolves at runtime to this app's domain — no manual step.
+      - key: WORKER_PUBLIC_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      # CORS origin = the console app's URL. Cross-app, so a literal — fill in
+      # after the console app's first deploy, then redeploy this worker.
+      - key: CONSOLE_ORIGIN
+        scope: RUN_TIME
+        value: https://REPLACE-WITH-CONSOLE-URL.ondigitalocean.app
