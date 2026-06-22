@@ -21,6 +21,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { useMemo } from 'react';
+import { useStickToBottom } from 'use-stick-to-bottom';
 import { cn } from '@/lib/utils';
 import { partRowKind, partToolName, type RowKind, toolFileHint, toolLabel } from '../activity';
 
@@ -107,6 +108,10 @@ export function ActivityFeed({ messages }: { messages: TempoUIMessage[] }) {
   // memoize on the (already-memoized) messages array so it only recomputes when
   // the timeline actually changes.
   const rows = useMemo(() => buildRows(messages), [messages]);
+  // Snap to the newest event on open, smooth-stick as the turn streams in — the
+  // same chat-style auto-scroll the discussion dock uses. Released when the Dev
+  // scrolls up to read earlier events.
+  const { scrollRef, contentRef } = useStickToBottom({ initial: 'instant', resize: 'smooth' });
 
   if (rows.length === 0) {
     return (
@@ -117,10 +122,12 @@ export function ActivityFeed({ messages }: { messages: TempoUIMessage[] }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto pt-2 pb-4">
-      {rows.map((row) => (
-        <EventRow key={row.key} row={row} />
-      ))}
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pt-2 pb-4">
+      <div ref={contentRef} className="flex flex-col">
+        {rows.map((row) => (
+          <EventRow key={row.key} row={row} />
+        ))}
+      </div>
     </div>
   );
 }
