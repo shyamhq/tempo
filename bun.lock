@@ -32,8 +32,8 @@
         "zod": "^4.4.3",
       },
     },
-    "apps/console-redo": {
-      "name": "@tempo/console-redo",
+    "apps/console": {
+      "name": "@tempo/console",
       "dependencies": {
         "@blocknote/core": "0.51.4",
         "@blocknote/mantine": "0.51.4",
@@ -756,7 +756,7 @@
 
     "@tavily/core": ["@tavily/core@0.7.6", "", { "dependencies": { "axios": "^1.7.7", "https-proxy-agent": "^7.0.6", "js-tiktoken": "^1.0.14" } }, "sha512-swNz2RaietpfXWrA+y/ERSQ9H3bq0mNu0hcp2OcVKqTrUUcdygEXIXr67o6qQ1XSjgBbB3FNQtAkrPPB8bYkaA=="],
 
-    "@tempo/console-redo": ["@tempo/console-redo@workspace:apps/console-redo"],
+    "@tempo/console": ["@tempo/console@workspace:apps/console"],
 
     "@tempo/contracts": ["@tempo/contracts@workspace:packages/contracts"],
 
