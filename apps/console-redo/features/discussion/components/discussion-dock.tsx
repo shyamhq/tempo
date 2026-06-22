@@ -15,9 +15,9 @@ import { MessageSquare } from 'lucide-react';
 import { useEffect } from 'react';
 import { useStickToBottom } from 'use-stick-to-bottom';
 import { useAgentPresent, useDiscussion, useThreadStore } from '@/store';
+import { ProvisioningCard } from '../../agent/components/provisioning-card';
 import { DiscussionComposer } from './discussion-composer';
 import { DiscussionMessageRow } from './discussion-message';
-import { ProvisioningCard } from './provisioning-card';
 import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function DiscussionDock({ threadId }: { threadId: string }) {

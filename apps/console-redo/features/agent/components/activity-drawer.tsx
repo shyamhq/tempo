@@ -23,6 +23,7 @@ import {
 } from '@/store';
 import { countEdits, countTools } from '../activity';
 import { ActivityFeed } from './activity-feed';
+import { ProvisioningCard } from './provisioning-card';
 
 export function ActivityDrawer({ threadId }: { threadId: string }) {
   const open = useActivityOpen();
@@ -47,6 +48,10 @@ export function ActivityDrawer({ threadId }: { threadId: string }) {
           </Dialog.Description>
           <Header live={live} agentPresent={agentPresent} latest={latest} />
           {live ? <ProgressBar /> : null}
+          {/* Provisioning sits above the feed (and renders nothing once there's no
+              VM to report) — during provisioning the feed is still empty, so this
+              is the prominent thing the Dev sees here, mirroring the discussion dock. */}
+          <ProvisioningCard />
           <ActivityFeed messages={messages} />
         </Dialog.Content>
       </Dialog.Portal>
