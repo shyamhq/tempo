@@ -82,6 +82,10 @@ export const useAgentPresent = () => useThreadStore((s) => s.agentPresent);
 // stable until the gateway writes a new vm frame.
 export const useVm = () => useThreadStore((s) => s.vm);
 
+// Local vs hosted. Drives the VM-only surfaces (the status strip's "VM sandbox"
+// pill, the discussion provisioning card) so they never render for a Local thread.
+export const useAgentType = () => useThreadStore((s) => s.thread?.agent_type ?? null);
+
 // Whether a turn is streaming right now: the gateway holds the in-progress
 // message in agentLive while a turn runs and clears it on agent_turn_ended, so
 // its presence is the authoritative "live" signal (vs. heuristically reading

@@ -17,6 +17,7 @@ import { useStickToBottom } from 'use-stick-to-bottom';
 import { useAgentPresent, useDiscussion, useThreadStore } from '@/store';
 import { DiscussionComposer } from './discussion-composer';
 import { DiscussionMessageRow } from './discussion-message';
+import { ProvisioningCard } from './provisioning-card';
 import { LiveQuestionCard, MinimizedQuestionCard } from './question-card';
 
 export function DiscussionDock({ threadId }: { threadId: string }) {
@@ -56,6 +57,9 @@ export function DiscussionDock({ threadId }: { threadId: string }) {
       ) : (
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto pt-[2px] pb-2">
           <div ref={contentRef} className="flex flex-col">
+            {/* Hosted-VM provisioning checklist — renders nothing for Local or once
+                there's no VM state to report. Sits above the first message. */}
+            <ProvisioningCard />
             {messages.map((m, i) => {
               // A question-message that is the LAST message overall is the live
               // (interactive) stepper; once the Dev's answer message appends via
