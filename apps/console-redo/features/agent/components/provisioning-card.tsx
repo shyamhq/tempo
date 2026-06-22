@@ -1,9 +1,11 @@
 'use client';
 
-// The Hosted-VM provisioning card, injected at the top of the discussion log so
-// the Dev can SEE the sandbox come up (set up container → clone repo → start the
-// agent) instead of it being a buried pill on the status strip. Three steps,
-// derived from the live `vm` SSE state + agent presence:
+// The Hosted-VM provisioning card — the agent's startup sequence (set up
+// container → clone repo → start the agent), so it lives in the agent feature.
+// Rendered in two places: the top of the discussion log (provisioning happens at
+// thread start) AND the agent activity drawer (where the Dev watches agent
+// activity once the Plan is drafted). Three steps, derived from the live `vm` SSE
+// state + agent presence:
 //
 //   - "Set up a cloud container" — active while phase=provisioning; done once a
 //     sandbox_id exists (phase advances to cloning) or the agent is live.
