@@ -15,20 +15,56 @@
 // than fabricated (agent brief §5: fix/render the invariant, never invent data).
 
 import type { VmState } from '@tempo/contracts';
-import { ChevronUp } from 'lucide-react';
+import { ChevronUp, Server } from 'lucide-react';
 import {
   useAgentMessages,
   useAgentPresent,
   useAgentTurnLive,
+  useAgentType,
   useThreadStore,
   useVm,
 } from '@/store';
 import { summarizeActivity } from '../activity';
 
-const VM_PHASE_LABEL: Record<VmState['phase'], string> = {
-  provisioning: 'Provisioning VM',
-  cloning: 'Cloning repo',
-  failed: 'VM failed',
+// The VM pill for a Hosted thread. While the sandbox provisions it shows the live
+// phase; once the agent is live (the "done" signal — there is no `done` phase)
+// it settles to a steady "VM sandbox" so the Dev always knows the agent runs in a
+// VM, instead of sticking on "Cloning repo" forever (the old bug). Local threads
+// have no VM, so this is null for them.
+type VmPill = { label: string; tone: 'primary' | 'warning' | 'danger' | 'muted' };
+
+function vmPillFor(
+  agentType: string | null,
+  vm: VmState | null,
+  agentPresent: boolean,
+): VmPill | null {
+  if (agentType !== 'hosted') return null;
+  if (vm?.phase === 'failed') return { label: 'VM failed', tone: 'danger' };
+  if (vm && !agentPresent) {
+    return vm.phase === 'provisioning'
+      ? { label: 'Provisioning VM', tone: 'primary' }
+      : { label: 'Cloning repo', tone: 'warning' };
+  }
+  // No VM frame yet and the agent isn't up — nothing is running (a hosted thread
+  // before its first spawn, or an idle one). The "Agent idle" indicator covers
+  // that; don't claim a sandbox exists. The steady pill is for when it actually does.
+  if (vm === null && !agentPresent) return null;
+  return { label: 'VM sandbox', tone: 'muted' };
+}
+
+const PILL_TONE: Record<VmPill['tone'], string> = {
+  primary: 'text-primary',
+  warning: 'text-warning',
+  danger: 'text-danger',
+  muted: 'text-ink-3',
+};
+
+// `muted` is the settled state — show a Server icon instead of a pulsing dot.
+// For the three active tones, map directly to a dot background class.
+const DOT_BG: Partial<Record<VmPill['tone'], string>> = {
+  primary: 'tp-pulse bg-primary',
+  warning: 'bg-warning',
+  danger: 'bg-danger',
 };
 
 export function StatusStrip({ threadId }: { threadId: string }) {
@@ -36,10 +72,12 @@ export function StatusStrip({ threadId }: { threadId: string }) {
   const messages = useAgentMessages(threadId);
   const turnLive = useAgentTurnLive(threadId);
   const vm = useVm();
+  const agentType = useAgentType();
   const setActivityOpen = useThreadStore((s) => s.setActivityOpen);
 
   const latest = messages.at(-1);
   const summary = latest ? summarizeActivity(latest, turnLive) : null;
+  const vmPill = vmPillFor(agentType, vm, agentPresent);
 
   return (
     <div className="flex h-[30px] shrink-0 items-center gap-4 border-t border-border bg-canvas px-[14px] text-[11.5px] text-ink-2">
@@ -81,23 +119,17 @@ export function StatusStrip({ threadId }: { threadId: string }) {
 
       <div className="flex-1" />
 
-      {vm ? (
-        <span
-          className={`inline-flex items-center gap-1.5 ${
-            vm.phase === 'failed' ? 'text-danger' : vm.phase === 'cloning' ? 'text-warning' : ''
-          }`}
-        >
-          <span
-            className={`size-[7px] shrink-0 rounded-full ${
-              vm.phase === 'failed'
-                ? 'bg-danger'
-                : vm.phase === 'cloning'
-                  ? 'bg-warning'
-                  : 'tp-pulse bg-primary'
-            }`}
-            aria-hidden
-          />
-          <span className="font-mono">{VM_PHASE_LABEL[vm.phase]}</span>
+      {vmPill ? (
+        <span className={`inline-flex items-center gap-1.5 ${PILL_TONE[vmPill.tone]}`}>
+          {vmPill.tone === 'muted' ? (
+            <Server className="size-[12px] shrink-0" strokeWidth={2} aria-hidden />
+          ) : (
+            <span
+              className={`size-[7px] shrink-0 rounded-full ${DOT_BG[vmPill.tone]}`}
+              aria-hidden
+            />
+          )}
+          <span className="font-mono">{vmPill.label}</span>
         </span>
       ) : null}
     </div>
